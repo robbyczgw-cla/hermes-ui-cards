@@ -90,7 +90,7 @@ test('a chat that is no longer active shows a notice instead of a dead button', 
   const { container, unmount } = await mount(toolResult(choiceCard))
   await click(container.querySelectorAll('[role="radio"]')[0])
   await click(buttonByText(container, 'Send'))
-  assert.match(container.textContent, /no longer active/)
+  assert.match(container.textContent, /Couldn't send. Open this chat and check that Hermes is connected/ )
   assert.equal(buttonByText(container, 'Send'), undefined)
   // after the user opens the chat, "Try again" brings the button back
   testHost.submitResult = true
@@ -109,11 +109,12 @@ test('no session id: fail closed, nothing is sent anywhere', async () => {
   await unmount()
 })
 
-test('offline gateway: notice, no actions', async () => {
+test('a different backend gateway state does not block the addressed session', async () => {
   host.state.gateway.set('connecting')
   const { container, unmount } = await mount(toolResult(choiceCard))
-  assert.match(container.textContent, /not connected/)
-  assert.equal(buttonByText(container, 'Send'), undefined)
+  await click(container.querySelector('[role="radio"]'))
+  await click(buttonByText(container, 'Send'))
+  assert.equal(lastReply().sessionId, 'sess-1')
   await unmount()
 })
 

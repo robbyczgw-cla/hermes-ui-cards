@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import secrets
 import threading
 import time
@@ -31,6 +32,10 @@ _pending_lock = threading.Lock()
 # and the Webapp attached to a gateway) bind HERMES_SESSION_PLATFORM=local for every local
 # client, CLI included; only the agent platform the hooks receive says "desktop".
 _turn_platform: dict[str, tuple[float, str]] = {}
+# session id -> {normalized card JSON: tool result} for the running turn (idempotent repeats)
+_turn_cards: dict[str, dict[str, str]] = {}
+CARD_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
+REPLY_RE = re.compile(r"^\[hui-card\] (\{.*\})\s*$", re.M)
 
 
 def configure(settings_reader) -> None:
@@ -115,6 +120,18 @@ def _write_card_file(card: dict, text: str) -> Path:
     return path
 
 
+def read_card_file(card_id: str) -> dict | None:
+    """The card a Desktop card file holds (the JSON in its trailing comment), or None."""
+    if not isinstance(card_id, str) or not CARD_ID_RE.match(card_id):
+        return None
+    try:
+        text = (cards_dir() / f"{card_id}.md").read_text(encoding="utf-8")
+        start = text.rindex("<!-- hermes-ui-cards ") + len("<!-- hermes-ui-cards ")
+        return json.loads(text[start:text.rindex(" -->")])
+    except (OSError, ValueError):
+        return None
+
+
 def media_tag(path: Path) -> str:
     value = str(path)
     return f'MEDIA:"{value}"' if any(ch.isspace() for ch in value) else f"MEDIA:{value}"
@@ -139,6 +156,61 @@ def take_pending(session_id: str) -> list[str]:
     return [tag for ts, tag in entries if now - ts <= PENDING_TTL_S]
 
 
+def _message_text(message) -> str:
+    if not isinstance(message, dict):
+        return ""
+    content = message.get("content")
+    if isinstance(content, list):
+        return "".join(part.get("text", "") for part in content if isinstance(part, dict))
+    return content if isinstance(content, str) else ""
+
+
+def _messages_since_card(history, card_id: str, user_message: str) -> int | None:
+    """User messages typed after the card was shown (the current one excluded), or None if the
+    card's tool result is not in the history (compacted away or another session)."""
+    if not isinstance(history, list):
+        return None
+    shown = None
+    for index, message in enumerate(history):
+        if isinstance(message, dict) and message.get("role") == "tool" and card_id in _message_text(message):
+            shown = index
+    if shown is None:
+        return None
+    later = [m for m in history[shown + 1:] if isinstance(m, dict) and m.get("role") == "user"]
+    if later and _message_text(later[-1]).strip() == (user_message or "").strip():
+        later = later[:-1]
+    return len(later)
+
+
+def answer_context(user_message: str, history=None) -> str | None:
+    """Context for a turn that answers a card: what the card asked (kept on disk, so it survives
+    compaction of the tool result) and a warning when the answer is stale."""
+    match = REPLY_RE.search(user_message or "")
+    if not match:
+        return None
+    try:
+        reply = json.loads(match.group(1))
+    except ValueError:
+        return None
+    card_id = reply.get("card") if isinstance(reply, dict) else None
+    card = read_card_file(card_id) if isinstance(card_id, str) else None
+    if card is None:
+        return None
+    what = card.get("title") or card.get("question") or card["type"]
+    lines = [f"[hermes-ui-cards] This message answers your {card['type']} card \"{what}\" ({card_id})."]
+    if card["type"] == "confirm":
+        lines.append(f"The action on that card: {card.get('action', '')}")
+        if card.get("command"):
+            lines.append(f"Command on that card: {card['command']}")
+        lines.append("Do exactly that action and nothing more; anything else needs a new confirmation.")
+    since = _messages_since_card(history, card_id, user_message)
+    if since:
+        lines.append(f"The user wrote {since} other message{'s' if since != 1 else ''} after this card was shown. "
+                     "Check that the answer still fits the conversation"
+                     + (" and ask again before you act on it." if card["type"] == "confirm" else "."))
+    return "\n".join(lines)
+
+
 DESKTOP_HINT = (
     "[hermes-ui-cards] When the user has to tick off a list, compare 2-4 options, fill in several details, "
     "follow steps or approve an action with consequences, show an interactive card with the hui_present tool "
@@ -146,22 +218,32 @@ DESKTOP_HINT = (
 )
 
 
-def on_turn_start(session_id: str = "", platform: str = "", **_kwargs):
-    """pre_llm_call: forget MEDIA lines of a turn that never finished, and on Desktop remind the
-    model that cards exist (Hermes defers plugin tools behind tool_search, so the model would
-    otherwise only see the tool's name). The hint is ephemeral: it is not stored in the session."""
+def on_turn_start(session_id: str = "", platform: str = "", user_message: str = "",
+                  conversation_history=None, **_kwargs):
+    """pre_llm_call: forget MEDIA lines of a turn that never finished; on Desktop remind the model
+    that cards exist (Hermes defers plugin tools behind tool_search, so the model would otherwise
+    only see the tool's name); when the message answers a card, say which card and what it asked.
+    The context is ephemeral: it is not stored in the session."""
     platform = str(platform or "").strip().lower()
     now = time.time()
     with _pending_lock:
         _pending.pop(session_id or "", None)
+        _turn_cards.pop(session_id or "", None)
         if session_id and platform:
             for key in [k for k, v in _turn_platform.items() if now - v[0] > PENDING_TTL_S]:
                 _turn_platform.pop(key, None)
             _turn_platform[session_id] = (now, platform)
+    parts = []
+    try:
+        answered = answer_context(user_message, conversation_history)
+    except Exception:
+        answered = None
+    if answered:
+        parts.append(answered)
     surface = platform or current_surface(session_id)
     if surface == "desktop" and bool(setting("enabled", True)):
-        return {"context": DESKTOP_HINT}
-    return None
+        parts.append(DESKTOP_HINT)
+    return {"context": "\n\n".join(parts)} if parts else None
 
 
 def ensure_media_lines(response_text: str = "", session_id: str = "", **_kwargs):
@@ -170,16 +252,22 @@ def ensure_media_lines(response_text: str = "", session_id: str = "", **_kwargs)
     tags = take_pending(session_id)
     if not tags or not isinstance(response_text, str):
         return None
-    missing = [t for t in tags if t.split(":", 1)[1].strip('"') not in response_text]
+    missing = [t for t in tags if not _has_media_line(response_text, t.split(":", 1)[1].strip('"'))]
     if not missing:
         return None
     return response_text.rstrip() + "\n\n" + "\n".join(missing)
 
 
+def _has_media_line(text: str, path: str) -> bool:
+    """Whether `text` delivers `path` as a MEDIA tag (bare or quoted), not just mentions it."""
+    quoted = re.escape(path)
+    return bool(re.search(rf'MEDIA:(?:"{quoted}"|{quoted})(?![^\s"])', text))
+
+
 # ── the tool ──
 
 def _new_card_id(card: dict) -> str:
-    return f"{card.get('id') or card['type']}-{secrets.token_hex(3)}"
+    return f"{card.get('id') or card['type']}-{secrets.token_hex(5)}"
 
 
 def _error(message: str, problems: list | None = None, warnings: list | None = None) -> str:
@@ -220,9 +308,20 @@ def present(args: dict, session_id: str = "", surface: str | None = None) -> str
     if card is None:
         return _error(f"Card rejected ({len(problems)} problem{'s' if len(problems) != 1 else ''}). "
                       "Fix these fields and call hui_present again.", problems, warnings)
+    size = len(json.dumps(card, ensure_ascii=False).encode("utf-8"))
+    limit = SCHEMA["limits"]["maxCardBytes"]
+    if size > limit:  # ids and defaults count: the Desktop checks the normalized card
+        return _error(f"Card rejected: {size} bytes once ids and defaults are added (limit {limit}). "
+                      "Shorten texts or split it into two cards.")
+    surface = current_surface(session_id) if surface is None else surface
+    content_key = json.dumps([card, surface, bool(setting("enabled", True)), display_settings()],
+                             sort_keys=True, ensure_ascii=False)
+    with _pending_lock:
+        repeat = _turn_cards.get(session_id, {}).get(content_key) if session_id else None
+    if repeat:  # the same card twice in one turn: one card, not two answerable copies
+        return repeat
     card = {"cardId": _new_card_id(card), **card}
     text = render_text(card)
-    surface = current_surface(session_id) if surface is None else surface
     result: dict = {"ok": True, "cardId": card["cardId"], "type": card["type"]}
     if surface == "desktop" and bool(setting("enabled", True)):
         path = _write_card_file(card, text)
@@ -238,7 +337,11 @@ def present(args: dict, session_id: str = "", surface: str | None = None) -> str
         result.update({"surface": surface or "text", "text": text, "next": TEXT_NEXT})
     if warnings:
         result["warnings"] = warnings
-    return json.dumps(result, ensure_ascii=False)
+    out = json.dumps(result, ensure_ascii=False)
+    if session_id:
+        with _pending_lock:
+            _turn_cards.setdefault(session_id, {})[content_key] = out
+    return out
 
 
 def handle_present(args, **kwargs) -> str:

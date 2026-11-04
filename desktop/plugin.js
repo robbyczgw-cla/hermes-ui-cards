@@ -334,7 +334,9 @@ const STRINGS = {
     sent: 'Sent',
     answered: 'Your answer',
     inactive: 'This chat is no longer active. Open it to answer.',
-    offline: 'Hermes is not connected right now.',
+    sendFailed: "Couldn't send. Open this chat and check that Hermes is connected, then try again.",
+    charactersLeft: '{n} characters left',
+    shortenField: 'Shorten this field',
     oversize: 'Your answer is too long to send. Please shorten it.',
     retry: 'Try again',
     riskLow: 'Low risk',
@@ -410,7 +412,9 @@ const STRINGS = {
     sent: 'Gesendet',
     answered: 'Deine Antwort',
     inactive: 'Dieser Chat ist nicht mehr aktiv. Öffne ihn, um zu antworten.',
-    offline: 'Hermes ist gerade nicht verbunden.',
+    sendFailed: 'Senden fehlgeschlagen. Öffne diesen Chat und prüfe, ob Hermes verbunden ist. Versuche es dann erneut.',
+    charactersLeft: 'Noch {n} Zeichen',
+    shortenField: 'Bitte kürzen',
     oversize: 'Deine Antwort ist zu lang. Bitte kürze sie.',
     retry: 'Nochmal versuchen',
     riskLow: 'Geringes Risiko',
@@ -710,7 +714,7 @@ function fitReply(mark, summary, data) {
 // ── 40-store.js ──
 // Card state that must survive reopening the chat: the sent answer (no second send)
 // and work in progress (checklist ticks, form drafts). Kept in ctx.storage (plugin-
-// scoped, on this computer), keyed by cardId; the oldest cards are dropped beyond a cap.
+// scoped, on this computer), keyed by session and card; the oldest cards are dropped beyond a cap.
 
 const STORE_CAP = 300
 const ANSWER_CAP = 5000
@@ -728,16 +732,7 @@ const cardListeners = new Map()
 
 function useStorage(storage) {
   cardStorage = storage || memoryStorage()
-  // Upgrade answers written by older versions before their draft records can be evicted.
-  const ids = cardStorage.get('index', [])
-  if (Array.isArray(ids)) for (const id of ids) {
-    const record = cardStorage.get(`card.${id}`, null)
-    if (record && record.answer) {
-      if (!cardStorage.get(`answer.${id}`, null)) saveAnswer(id, record.answer)
-      const { answer, ...draft } = record
-      cardStorage.set(`card.${id}`, draft)
-    }
-  }
+
 }
 
 function readCard(cardId) {
@@ -784,10 +779,10 @@ function subscribeCard(cardId, fn) {
 }
 
 function useCardRecord(cardId) {
-  const [record, setRecord] = useState(() => readCard(cardId))
+  const [record, setRecord] = useState(() => cardId ? readCard(cardId) : {})
   useEffect(() => {
-    setRecord(readCard(cardId))
-    return subscribeCard(cardId, setRecord)
+    setRecord(cardId ? readCard(cardId) : {})
+    if (cardId) return subscribeCard(cardId, setRecord)
   }, [cardId])
   return record
 }
@@ -1018,22 +1013,17 @@ function CodeBlock({ code, lang }) {
 // One answer per card: send it into the card's own chat, remember it, never send twice.
 
 function useCardAnswer(card, sessionId, lang) {
-  const record = useCardRecord(card.cardId)
-  const gateway = sdk.useValue ? sdk.useValue(sdk.host.state.gateway) : 'open'
-  const [problem, setProblem] = useState(null) // null | 'inactive' | 'offline'
+  const key = sessionId ? `${sessionId}\u0000${card.cardId}` : null
+  const record = useCardRecord(key)
+  const [problem, setProblem] = useState(null) // null | 'inactive' | 'failed' | 'oversize'
   const sending = useRef(false)
   const [focusAnswer, setFocusAnswer] = useState(false)
 
   const answered = Boolean(record.answer)
-  const offline = typeof gateway === 'string' && gateway !== 'open'
 
   const submit = useCallback(
     answer => {
-      if (sending.current || readCard(card.cardId).answer) return false
-      if (offline) {
-        setProblem('offline')
-        return false
-      }
+      if (!key || sending.current || readCard(key).answer) return false
       sending.current = true
       try {
         const reply = buildReply(card, answer, lang)
@@ -1041,11 +1031,11 @@ function useCardAnswer(card, sessionId, lang) {
         // Fail closed: without the card's own session there is no safe place to send.
         const ok = sessionId ? sdk.host.composer.submit(sessionId, reply.text) === true : false
         if (!ok) {
-          setProblem('inactive')
+          setProblem('failed')
           return false
         }
         setProblem(null)
-        writeCard(card.cardId, {
+        writeCard(key, {
           answer: { mark: reply.mark, summary: reply.summary, data: reply.data, selection: answer, at: Date.now() }
         })
         setFocusAnswer(true)
@@ -1054,25 +1044,23 @@ function useCardAnswer(card, sessionId, lang) {
         sending.current = false
       }
     },
-    [card, sessionId, lang, offline]
+    [card, sessionId, lang, key]
   )
 
   // Work in progress (ticks, drafts) that should survive reopening the chat.
-  const saveDraft = useCallback(draft => writeCard(card.cardId, { draft }), [card.cardId])
+  const saveDraft = useCallback(draft => { if (key) writeCard(key, { draft }) }, [key])
 
   const locked = answered
   const status = answered
     ? jsx(AnsweredBar, { lang, record: record.answer, focus: focusAnswer })
-    : !sessionId || problem === 'inactive'
+    : !sessionId || problem === 'failed'
       ? jsx(NoticeBar, {
-          text: t(lang, 'inactive'),
+          text: t(lang, sessionId ? 'sendFailed' : 'inactive'),
           action: jsx(Btn, { variant: 'ghost', onClick: () => setProblem(null), children: t(lang, 'retry') })
         })
       : problem === 'oversize'
         ? jsx(NoticeBar, { text: t(lang, 'oversize') })
-      : offline || problem === 'offline'
-        ? jsx(NoticeBar, { text: t(lang, 'offline') })
-        : null
+      : null
 
   return {
     record,
@@ -1080,9 +1068,9 @@ function useCardAnswer(card, sessionId, lang) {
     answer: record.answer,
     answered,
     locked,
-    canSend: Boolean(sessionId) && !answered && !offline && problem !== 'inactive',
-    // No dead buttons: actions disappear while the card can't send (answered, chat gone, offline).
-    showActions: Boolean(sessionId) && !answered && !offline && problem !== 'inactive',
+    canSend: Boolean(sessionId) && !answered && problem !== 'failed',
+    // No dead buttons: actions disappear while the card can't send (answered or chat unavailable).
+    showActions: Boolean(sessionId) && !answered && problem !== 'failed',
     submit,
     saveDraft,
     status
@@ -1657,6 +1645,20 @@ function FormCard({ card, sessionId, display, lang }) {
     if (e) errors[f.name] = e
   }
   const hasErrors = Object.keys(errors).length > 0
+  const reply = buildReply(card, { values: formOutput(card, values) }, lang)
+  const remaining = MAX_REPLY - [...reply.text].length
+  const ranked = card.fields.map(f => ({ name: f.name, size: [...JSON.stringify(formOutput(card, values)[f.name])].length }))
+    .sort((a, b) => b.size - a.size)
+  const oversizeFields = new Set()
+  if (!reply.fits) {
+    let excess = -remaining
+    for (const field of ranked) {
+      if (field.size <= 4) break
+      oversizeFields.add(field.name)
+      excess -= field.size - 2
+      if (excess <= 0) break
+    }
+  }
 
   // After a failed submit, move focus to the first field that needs attention.
   useEffect(() => {
@@ -1674,7 +1676,7 @@ function FormCard({ card, sessionId, display, lang }) {
   const onSubmit = event => {
     event.preventDefault()
     setTried(true)
-    if (hasErrors) {
+    if (hasErrors || !reply.fits) {
       setFocusTick(n => n + 1)
       return
     }
@@ -1696,7 +1698,7 @@ function FormCard({ card, sessionId, display, lang }) {
           {
             field,
             value: values[field.name] ?? '',
-            error: tried ? errors[field.name] : null,
+            error: oversizeFields.has(field.name) ? t(lang, 'shortenField') : tried ? errors[field.name] : null,
             disabled: ans.locked,
             lang,
             baseId,
@@ -1705,6 +1707,7 @@ function FormCard({ card, sessionId, display, lang }) {
           field.name
         )
       ),
+      remaining <= MAX_REPLY * 0.15 ? jsx('span', { className: 'huic-help', 'aria-live': 'polite', children: t(lang, 'charactersLeft', { n: new Intl.NumberFormat(lang === 'de' ? 'de-DE' : 'en-US').format(remaining) }) }) : null,
       // Enter in a single-line field submits the form; the visible button sits in the footer.
       jsx('button', { type: 'submit', hidden: true, tabIndex: -1, 'aria-hidden': true })
     ]
@@ -1717,6 +1720,7 @@ function FormCard({ card, sessionId, display, lang }) {
           type: 'submit',
           form: formId,
           className: 'huic-btn huic-btn-primary',
+          disabled: !reply.fits,
           children: card.submitLabel || t(lang, 'submit')
         })
       })
@@ -2013,7 +2017,6 @@ function StepsCard({ card, sessionId, display, lang }) {
     previous.current = index
   }, [index])
   const move = next => {
-    if (ans.locked) return
     setIndex(next)
     ans.saveDraft({ index: next })
   }
@@ -2021,10 +2024,7 @@ function StepsCard({ card, sessionId, display, lang }) {
   const progressText = t(lang, 'stepOf', { n: index + 1, total: card.steps.length })
   return jsx(Shell, {
     card, display, labelId, title: card.title,
-    children: ans.locked ? jsx('ol', {
-      style: { margin: 0, paddingLeft: 22 },
-      children: card.steps.map((s, i) => jsx('li', { children: s.title }, i))
-    }) : [
+    children: [
       jsx('span', { className: 'huic-sub', children: progressText }),
       jsx('div', {
         className: 'huic-progress', role: 'progressbar', 'aria-label': progressText,
@@ -2036,11 +2036,11 @@ function StepsCard({ card, sessionId, display, lang }) {
       step.command ? jsx(CodeBlock, { code: step.command, lang }) : null,
       step.image ? jsx(CardImage, { src: step.image }, index) : null
     ],
-    footer: ans.showActions ? jsx(Footer, { children: jsxs(Fragment, { children: [
-      jsx(Btn, { variant: 'ghost', onClick: () => ans.submit({ stuck: index + 1 }), children: t(lang, 'stuck') }),
+    footer: (ans.showActions || ans.answered) ? jsx(Footer, { children: jsxs(Fragment, { children: [
+      ans.showActions ? jsx(Btn, { variant: 'ghost', onClick: () => ans.submit({ stuck: index + 1 }), children: t(lang, 'stuck') }) : null,
       jsx(Btn, { disabled: index === 0, onClick: () => move(index - 1), children: t(lang, 'back') }),
       index === card.steps.length - 1
-        ? jsx(Btn, { variant: 'primary', onClick: () => ans.submit({ completed: true }), children: card.finishLabel || t(lang, 'finish') })
+        ? (ans.showActions ? jsx(Btn, { variant: 'primary', onClick: () => ans.submit({ completed: true }), children: card.finishLabel || t(lang, 'finish') }) : null)
         : jsx(Btn, { variant: 'primary', onClick: () => move(index + 1), children: t(lang, 'next') })
     ] }) }) : null,
     after: ans.status
@@ -2176,7 +2176,7 @@ function CardView({ result, sessionId, fallback }) {
       sessionId: typeof sessionId === 'string' && sessionId ? sessionId : null,
       lang
     },
-    parsed.card.cardId
+    `${sessionId || ''}\u0000${parsed.card.cardId}`
   )
 }
 

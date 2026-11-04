@@ -49,6 +49,6 @@ function CardView({ result, sessionId, fallback }) {
       sessionId: typeof sessionId === 'string' && sessionId ? sessionId : null,
       lang
     },
-    parsed.card.cardId
+    `${sessionId || ''}\u0000${parsed.card.cardId}`
   )
 }

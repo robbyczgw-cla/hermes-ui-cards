@@ -1,6 +1,6 @@
 // Card state that must survive reopening the chat: the sent answer (no second send)
 // and work in progress (checklist ticks, form drafts). Kept in ctx.storage (plugin-
-// scoped, on this computer), keyed by cardId; the oldest cards are dropped beyond a cap.
+// scoped, on this computer), keyed by session and card; the oldest cards are dropped beyond a cap.
 
 const STORE_CAP = 300
 const ANSWER_CAP = 5000
@@ -18,16 +18,7 @@ const cardListeners = new Map()
 
 function useStorage(storage) {
   cardStorage = storage || memoryStorage()
-  // Upgrade answers written by older versions before their draft records can be evicted.
-  const ids = cardStorage.get('index', [])
-  if (Array.isArray(ids)) for (const id of ids) {
-    const record = cardStorage.get(`card.${id}`, null)
-    if (record && record.answer) {
-      if (!cardStorage.get(`answer.${id}`, null)) saveAnswer(id, record.answer)
-      const { answer, ...draft } = record
-      cardStorage.set(`card.${id}`, draft)
-    }
-  }
+
 }
 
 function readCard(cardId) {
@@ -74,10 +65,10 @@ function subscribeCard(cardId, fn) {
 }
 
 function useCardRecord(cardId) {
-  const [record, setRecord] = useState(() => readCard(cardId))
+  const [record, setRecord] = useState(() => cardId ? readCard(cardId) : {})
   useEffect(() => {
-    setRecord(readCard(cardId))
-    return subscribeCard(cardId, setRecord)
+    setRecord(cardId ? readCard(cardId) : {})
+    if (cardId) return subscribeCard(cardId, setRecord)
   }, [cardId])
   return record
 }

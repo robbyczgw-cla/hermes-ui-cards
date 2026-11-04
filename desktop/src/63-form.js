@@ -165,6 +165,20 @@ function FormCard({ card, sessionId, display, lang }) {
     if (e) errors[f.name] = e
   }
   const hasErrors = Object.keys(errors).length > 0
+  const reply = buildReply(card, { values: formOutput(card, values) }, lang)
+  const remaining = MAX_REPLY - [...reply.text].length
+  const ranked = card.fields.map(f => ({ name: f.name, size: [...JSON.stringify(formOutput(card, values)[f.name])].length }))
+    .sort((a, b) => b.size - a.size)
+  const oversizeFields = new Set()
+  if (!reply.fits) {
+    let excess = -remaining
+    for (const field of ranked) {
+      if (field.size <= 4) break
+      oversizeFields.add(field.name)
+      excess -= field.size - 2
+      if (excess <= 0) break
+    }
+  }
 
   // After a failed submit, move focus to the first field that needs attention.
   useEffect(() => {
@@ -182,7 +196,7 @@ function FormCard({ card, sessionId, display, lang }) {
   const onSubmit = event => {
     event.preventDefault()
     setTried(true)
-    if (hasErrors) {
+    if (hasErrors || !reply.fits) {
       setFocusTick(n => n + 1)
       return
     }
@@ -204,7 +218,7 @@ function FormCard({ card, sessionId, display, lang }) {
           {
             field,
             value: values[field.name] ?? '',
-            error: tried ? errors[field.name] : null,
+            error: oversizeFields.has(field.name) ? t(lang, 'shortenField') : tried ? errors[field.name] : null,
             disabled: ans.locked,
             lang,
             baseId,
@@ -213,6 +227,7 @@ function FormCard({ card, sessionId, display, lang }) {
           field.name
         )
       ),
+      remaining <= MAX_REPLY * 0.15 ? jsx('span', { className: 'huic-help', 'aria-live': 'polite', children: t(lang, 'charactersLeft', { n: new Intl.NumberFormat(lang === 'de' ? 'de-DE' : 'en-US').format(remaining) }) }) : null,
       // Enter in a single-line field submits the form; the visible button sits in the footer.
       jsx('button', { type: 'submit', hidden: true, tabIndex: -1, 'aria-hidden': true })
     ]
@@ -225,6 +240,7 @@ function FormCard({ card, sessionId, display, lang }) {
           type: 'submit',
           form: formId,
           className: 'huic-btn huic-btn-primary',
+          disabled: !reply.fits,
           children: card.submitLabel || t(lang, 'submit')
         })
       })

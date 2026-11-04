@@ -72,11 +72,13 @@ most 300 code points, email 200, textarea 1000, Other 300, and Change and rating
 ## 3. After the answer
 
 - The card shows the answer it sent and can't be sent again (no double sends).
-- Checklist ticks and the answered state are kept in the Desktop's plugin storage, keyed by
-  `cardId`, so they survive reopening the chat or restarting the app (on that computer).
+- Drafts and the answered state are kept in the Desktop's plugin storage, keyed by
+  `sessionId` and `cardId`, so they survive reopening the chat or restarting the app (on that computer).
   Up to 300 recent drafts and 5000 recent answered records are retained independently.
-- If the card's chat has no open composer (an old or closed session), the card says
-  "This chat is no longer active" instead of showing a dead button.
+- A card without a session is inactive. If submission fails, the card asks the user to open
+  the chat, check the Hermes connection, and try again.
+- Answered steps retain their current content, copy control, and navigation. Forms show a
+  live reply budget near the limit and mark fields to shorten when the reply is too long.
 - Text surfaces have no state: the user simply replies with a number or words, and the model
   maps it to the options it saw in the tool result.
 

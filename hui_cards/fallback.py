@@ -344,6 +344,19 @@ def _when(start: str, end, L: _L, show_zone: bool) -> str:
     return out
 
 
+def _in_zone(value, zone: str):
+    """An ISO time with an offset, converted to `zone` and written without one (the Desktop card
+    shows the same wall-clock time). Naive times, unknown zones or missing tz data: unchanged."""
+    if not isinstance(value, str) or not zone or not _OFFSET.search(value):
+        return value
+    try:
+        from zoneinfo import ZoneInfo
+        local = datetime.datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(ZoneInfo(zone))
+    except Exception:
+        return value
+    return local.strftime("%Y-%m-%dT%H:%M")
+
+
 def _schedule(card: dict, L: _L) -> list[str]:
     """Slots that are not available are listed with "✗" and "(not available)" and get no number,
     so the numbers the user can reply with only ever point at free slots."""
@@ -353,7 +366,9 @@ def _schedule(card: dict, L: _L) -> list[str]:
         lines.append(f"{L['timezone']}: {zone}")
     k = 0
     for s in card.get("slots") or []:
-        when = _when(str(s.get("start", "")), s.get("end"), L, not zone)
+        start, end = _in_zone(str(s.get("start", "")), zone), _in_zone(s.get("end"), zone)
+        # Still carrying an offset (no zone, or one we can't resolve): show it.
+        when = _when(start, end, L, not zone or bool(_OFFSET.search(start)))
         extra = _join([_one(s.get("label", "")), _one(s.get("note", ""))])
         if s.get("unavailable"):
             lines.append("✗ " + _join([f"{when} ({L['unavailable']})", extra]))
@@ -369,6 +384,8 @@ def _schedule(card: dict, L: _L) -> list[str]:
         hint = L("No slot is free. Reply with a time that suits you.", "Kein Termin ist frei. Antworte mit einer Zeit, die dir passt.")
     elif card.get("multiple"):
         hint = _hint_pick_many(k, None, None, L)
+    elif k == 1:
+        hint = L("Reply with 1 to take it.", "Antworte mit 1, um ihn zu nehmen.")
     else:
         hint = L(f"Reply with a number (1–{k}).", f"Antworte mit einer Zahl (1–{k}).")
     return lines + [hint]

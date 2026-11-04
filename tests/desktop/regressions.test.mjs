@@ -68,11 +68,12 @@ test('draft eviction retains the answered tombstone', async () => {
   await click(buttonByText(m.container, 'Yes, go ahead'))
   const id = JSON.parse(result).card.cardId
   await m.unmount()
-  const ids = [id, ...Array.from({ length: 299 }, (_, i) => `filler${i}`)]
+  const storedKey = `sess-1\u0000${id}`
+  const ids = [storedKey, ...Array.from({ length: 299 }, (_, i) => `filler${i}`)]
   storage.set('index', ids)
   const other = await mount(toolResult({ type: 'checklist', items: [{ text: 'Other' }] }), { registration })
   await click(other.container.querySelector('input'))
-  assert.equal(storage.get(`card.${id}`, null), null)
+  assert.equal(storage.get(`card.${storedKey}`, null), null)
   await other.unmount()
   m = await mount(result, { registration })
   assert.match(m.container.textContent, /Your answer/)
@@ -85,12 +86,14 @@ test('oversized form stays editable and does not send or mutate values', async (
   const m = await mount(toolResult({ type: 'form', fields }))
   const inputs = [...m.container.querySelectorAll('textarea')]
   for (const input of inputs) await type(input, '😀'.repeat(1000))
-  await click(buttonByText(m.container, 'Submit'))
+  assert.equal(buttonByText(m.container, 'Submit').disabled, true)
   assert.equal(testHost.submissions.length, 0)
-  assert.match(m.container.textContent, /too long to send/)
+  assert.match(m.container.textContent, /Shorten this field/)
+  assert.match(m.container.textContent, /characters left/)
   assert.equal(cp(inputs[0].value), 1000)
   await type(inputs[0], 'short')
   await type(inputs[1], 'short')
+  assert.equal(buttonByText(m.container, 'Submit').disabled, false)
   await click(buttonByText(m.container, 'Submit'))
   assert.equal(lastReply().json.values.f0, 'short')
   assert.equal(lastReply().json.values.f4, '😀'.repeat(1000))
@@ -119,17 +122,40 @@ test('sending and cancelling a change preserve keyboard focus', async () => {
   await m.unmount()
 })
 
-test('legacy answered records migrate before draft eviction', async () => {
-  const storage = makeStorage()
-  const result = toolResult({ type: 'confirm', title: 'Legacy?', action: 'Continue' })
-  const id = JSON.parse(result).card.cardId
-  storage.set('index', [id])
-  storage.set(`card.${id}`, { answer: { mark: '✓', summary: 'Yes', data: { decision: 'yes' } } })
-  const registration = registerPlugin(storage)
-  assert.ok(storage.get(`answer.${id}`, null))
-  storage.remove(`card.${id}`)
-  const m = await mount(result, { registration })
-  assert.match(m.container.textContent, /Your answer/)
+test('drafts and answers are isolated by session, including inactive views', async () => {
+  const storage = makeStorage(), registration = registerPlugin(storage)
+  const result = toolResult({ type: 'form', fields: [{ name: 'bio', label: 'Bio', kind: 'text' }] })
+  const a = await mount(result, { registration, sessionId: 'branch-a' })
+  const same = await mount(result, { registration, sessionId: 'branch-a' })
+  const b = await mount(result, { registration, sessionId: 'branch-b' })
+  const inactive = await mount(result, { registration, sessionId: null })
+  await type(a.container.querySelector('input'), 'draft A')
+  assert.equal(same.container.querySelector('input').value, 'draft A')
+  assert.equal(b.container.querySelector('input').value, '')
+  assert.equal(inactive.container.querySelector('input').value, '')
+  const size = storage.map.size
+  await type(inactive.container.querySelector('input'), 'inactive')
+  assert.equal(storage.map.size, size)
+  await click(buttonByText(a.container, 'Submit'))
+  assert.match(same.container.textContent, /Your answer/)
+  assert.equal(b.container.querySelector('input').disabled, false)
+  assert.equal(inactive.container.querySelector('input').disabled, false)
+  await type(b.container.querySelector('input'), 'draft B')
+  await click(buttonByText(b.container, 'Submit'))
+  assert.equal(lastReply().sessionId, 'branch-b')
+  await a.unmount(); await same.unmount(); await b.unmount(); await inactive.unmount()
+})
+
+test('German form budget counts the serialized reply and flags oversized fields', async () => {
+  const fields = Array.from({ length: 5 }, (_, i) => ({ name: `f${i}`, label: `Feld ${i}`, kind: 'textarea' }))
+  const m = await mount(toolResult({ type: 'form', lang: 'de', fields }))
+  const inputs = [...m.container.querySelectorAll('textarea')]
+  for (const input of inputs.slice(0, 4)) await type(input, '"'.repeat(500))
+  assert.match(m.container.textContent, /Noch .* Zeichen/)
+  assert.match(m.container.textContent, /Bitte kürzen/)
+  assert.equal(buttonByText(m.container, 'Absenden').disabled, true)
+  await type(inputs[0], 'kurz')
+  assert.equal(buttonByText(m.container, 'Absenden').disabled, false)
   await m.unmount()
 })
 

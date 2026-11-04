@@ -321,3 +321,18 @@ def test_unknown_type_and_garbage_never_raise():
                  {"type": "quiz", "questions": None}, {"type": "form", "fields": [{"kind": "number"}]}):
         out = render_text(junk)
         assert isinstance(out, str) and out.strip()
+
+
+def test_schedule_offsets_are_shown_in_the_card_timezone():
+    from hui_cards.schema import validate_card
+    from hui_cards.fallback import render_text
+    card, errors, _ = validate_card({"type": "schedule", "timezone": "Europe/Vienna",
+                                     "slots": [{"start": "2026-11-12T14:00Z", "end": "2026-11-12T15:00Z"},
+                                               {"start": "2026-11-12T16:00"}]})
+    assert not errors
+    text = render_text(card)
+    assert "1. Thu 12 Nov 2026, 15:00–16:00" in text  # 14:00 UTC = 15:00 in Vienna, like the Desktop card
+    assert "UTC" not in text
+    card, _, _ = validate_card({"type": "schedule", "timezone": "Mars/Base", "slots": [{"start": "2026-11-12T14:00Z"}]})
+    text = render_text(card)
+    assert "14:00 UTC" in text and text.endswith("Reply with 1 to take it.")

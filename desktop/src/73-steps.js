@@ -10,7 +10,6 @@ function StepsCard({ card, sessionId, display, lang }) {
     previous.current = index
   }, [index])
   const move = next => {
-    if (ans.locked) return
     setIndex(next)
     ans.saveDraft({ index: next })
   }
@@ -18,10 +17,7 @@ function StepsCard({ card, sessionId, display, lang }) {
   const progressText = t(lang, 'stepOf', { n: index + 1, total: card.steps.length })
   return jsx(Shell, {
     card, display, labelId, title: card.title,
-    children: ans.locked ? jsx('ol', {
-      style: { margin: 0, paddingLeft: 22 },
-      children: card.steps.map((s, i) => jsx('li', { children: s.title }, i))
-    }) : [
+    children: [
       jsx('span', { className: 'huic-sub', children: progressText }),
       jsx('div', {
         className: 'huic-progress', role: 'progressbar', 'aria-label': progressText,
@@ -33,11 +29,11 @@ function StepsCard({ card, sessionId, display, lang }) {
       step.command ? jsx(CodeBlock, { code: step.command, lang }) : null,
       step.image ? jsx(CardImage, { src: step.image }, index) : null
     ],
-    footer: ans.showActions ? jsx(Footer, { children: jsxs(Fragment, { children: [
-      jsx(Btn, { variant: 'ghost', onClick: () => ans.submit({ stuck: index + 1 }), children: t(lang, 'stuck') }),
+    footer: (ans.showActions || ans.answered) ? jsx(Footer, { children: jsxs(Fragment, { children: [
+      ans.showActions ? jsx(Btn, { variant: 'ghost', onClick: () => ans.submit({ stuck: index + 1 }), children: t(lang, 'stuck') }) : null,
       jsx(Btn, { disabled: index === 0, onClick: () => move(index - 1), children: t(lang, 'back') }),
       index === card.steps.length - 1
-        ? jsx(Btn, { variant: 'primary', onClick: () => ans.submit({ completed: true }), children: card.finishLabel || t(lang, 'finish') })
+        ? (ans.showActions ? jsx(Btn, { variant: 'primary', onClick: () => ans.submit({ completed: true }), children: card.finishLabel || t(lang, 'finish') }) : null)
         : jsx(Btn, { variant: 'primary', onClick: () => move(index + 1), children: t(lang, 'next') })
     ] }) }) : null,
     after: ans.status

@@ -207,12 +207,14 @@ test('steps: one step at a time, navigation, saved position, completion and lock
   assert.equal(buttonByText(again.container, 'Next'), undefined)
   await click(buttonByText(again.container, 'All set'))
   assertReply(result, '✓ Done with all 3 steps', { completed: true, steps: 3 })
-  assert.equal(again.container.querySelector('.huic-foot'), null)
-  assert.deepEqual([...again.container.querySelectorAll('li')].map(el => el.textContent), ['Install', 'Start', 'Verify'])
+  assert.equal(again.container.querySelector('h4').textContent, 'Verify')
+  assert.equal(buttonByText(again.container, 'All set'), undefined)
+  await click(buttonByText(again.container, 'Back'))
+  assert.equal(again.container.querySelector('h4').textContent, 'Start')
   await again.unmount()
   const sent = await render(t, result, { registration })
-  assert.equal(sent.container.querySelectorAll('li').length, 3)
-  assert.equal(sent.container.querySelector('button'), null)
+  assert.equal(sent.container.querySelector('h4').textContent, 'Start')
+  assert.ok(buttonByText(sent.container, 'Next'))
 })
 
 test('steps: Stuck here reports the current 1-based step and title', async t => {
@@ -221,8 +223,15 @@ test('steps: Stuck here reports the current 1-based step and title', async t => 
   await click(buttonByText(container, 'Next'))
   await click(buttonByText(container, 'Stuck here'))
   assertReply(result, '⚠ Stuck at step 2: Start', { stuck: 2, title: 'Start' })
-  assert.equal(container.querySelector('.huic-foot'), null)
+  assert.equal(container.querySelector('h4').textContent, 'Start')
+  assert.match(container.textContent, /Start the service/ )
+  assert.equal(buttonByText(container, 'Stuck here'), undefined)
   assert.match(container.textContent, /Your answer: Stuck at step 2: Start/)
+  await click(buttonByText(container, 'Back'))
+  assert.equal(container.querySelector('pre').textContent, 'npm install')
+  assert.ok(buttonByText(container, 'Copy'))
+  await click(buttonByText(container, 'Next'))
+  assert.equal(container.querySelector('h4').textContent, 'Start')
 })
 
 test('quiz: checking reveals feedback, saves progress, scores and restores the locked answer', async t => {
@@ -271,12 +280,3 @@ test('quiz: checking reveals feedback, saves progress, scores and restores the l
   assert.equal(sent.container.querySelector('.huic-foot'), null)
 })
 
-test('phase-2 cards hide their footer while offline', async t => {
-  host.state.gateway.set('connecting')
-  for (const card of [rating, slider, schedule, steps, quiz]) {
-    const m = await render(t, toolResult(card))
-    assert.equal(m.container.querySelector('.huic-foot'), null, card.type)
-    assert.match(m.container.textContent, /not connected/)
-    await m.unmount()
-  }
-})

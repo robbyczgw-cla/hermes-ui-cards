@@ -13,22 +13,29 @@ USAGE = "Usage: /cards · /cards types · /cards demo <type>"
 
 def _status(surface: str) -> str:
     on = bool(setting("enabled", True))
-    where = ("Hermes Desktop: cards show as interactive cards." if surface == "desktop"
-             else "This chat gets the text version of each card (numbered options).")
+    if surface == "desktop":
+        where = ("Hermes Desktop/Webapp: cards are drawn by the plugin's Desktop half. If a card shows up "
+                 "as a .md file instead, turn the Desktop half on in Capabilities → Plugins (it is off by "
+                 "default) and reload.")
+    else:
+        where = "This chat gets the text version of each card (numbered options)."
     lines = [
         f"HUI+ Cards {VERSION}: cards are {'on' if on else 'off (text only)'}.",
         where,
         "Types: " + ", ".join(CARD_TYPES) + ".",
-        "Try it: /cards demo checklist, or ask \"Show me the hui_present demo for compare\".",
+        "Try it: send \"Show me the hui_present demo for checklist\" as a message (any type works), "
+        "or /cards demo <type> for the text version.",
         "Settings: Settings → Plugins → hermes-ui-cards (cards on/off, compact, accent colour).",
     ]
     return "\n".join(lines)
 
 
-def handle_cards(raw_args: str = "", **_kwargs) -> str:
+def handle_cards(raw_args: str = "", platform: str = "", session_id: str = "", **_kwargs) -> str:
     args = (raw_args or "").split()
+    platform = str(platform or "").lower()
+    surface = "desktop" if platform == "desktop" else current_surface(session_id)
     if not args or args[0] in ("help", "status"):
-        return _status(current_surface()) + "\n" + USAGE
+        return _status(surface) + "\n" + USAGE
     if args[0] == "types":
         return "\n".join(f"{t}: {s['summary']}" for t, s in SCHEMA["cards"].items())
     if args[0] == "demo":
@@ -37,7 +44,9 @@ def handle_cards(raw_args: str = "", **_kwargs) -> str:
         if raw is None:
             return f"Unknown card type \"{kind}\". Types: {', '.join(DEMOS)}."
         card, _errors, _warnings = validate_card(raw)
-        hint = (f"\n\nTo see it as an interactive card in Hermes Desktop, ask: "
-                f"\"Show me the hui_present demo for {kind}\".")
-        return render_text(card) + hint
+        ask = f"\"Show me the hui_present demo for {kind}\""
+        if surface == "desktop":
+            return (f"Commands can't draw cards. Send {ask} as a message to get it as an interactive card. "
+                    f"Its text version:\n\n" + render_text(card))
+        return render_text(card) + f"\n\nIn Hermes Desktop or the Webapp, send {ask} to get it as an interactive card."
     return USAGE

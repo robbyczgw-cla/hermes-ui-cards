@@ -25,6 +25,7 @@ def isolated(tmp_path, monkeypatch):
     tool.configure(None)
     tool._pending.clear()
     tool._turn_platform.clear()
+    tool._turn_cards.clear()
     yield tmp_path
 
 
@@ -35,7 +36,7 @@ def run(args, surface, session_id="s1"):
 def test_desktop_returns_media_card_and_writes_markdown_copy(isolated):
     out = run({"card": CHOICE}, "desktop")
     assert out["ok"] is True and out["type"] == "choice"
-    assert out["cardId"].startswith("trip-") and len(out["cardId"]) == len("trip-") + 6
+    assert out["cardId"].startswith("trip-") and len(out["cardId"]) == len("trip-") + 10
     assert out["card"]["cardId"] == out["cardId"]
     assert [o["id"] for o in out["card"]["options"]] == ["o1", "o2"]
     assert out["display"] == {"compact": False, "accent": "app"}
@@ -170,8 +171,8 @@ def test_media_tag_quotes_paths_with_spaces(tmp_path):
 
 def test_old_card_files_are_pruned(monkeypatch):
     monkeypatch.setattr(tool, "MAX_CARD_FILES", 3)
-    for _ in range(5):
-        run({"card": CHOICE}, "desktop")
+    for i in range(5):
+        run({"card": {**CHOICE, "question": f"Where to, {i}?"}}, "desktop")
     assert len(list(tool.cards_dir().glob("*.md"))) == 3
 
 
@@ -188,6 +189,9 @@ def test_cards_command():
     assert handle_cards("types").count("\n") == len(CARD_TYPES) - 1
     demo = handle_cards("demo compare")
     assert "Which laptop?" in demo and "hui_present demo for compare" in demo
+    on_desktop = handle_cards("demo compare", platform="desktop")
+    assert on_desktop.startswith("Commands can't draw cards. Send")
+    assert "Capabilities → Plugins" in handle_cards("", platform="desktop")
     assert handle_cards("demo nope").startswith("Unknown card type")
     assert handle_cards("bogus").startswith("Usage:")
 
@@ -233,3 +237,70 @@ def test_register_matches_the_manifest():
     assert manifest["requires_hermes"] == ">=0.22.6"
     assert set(manifest["config_schema"]) == {"enabled", "compact", "accent"}
     assert manifest["config_schema"]["accent"]["choices"] == tool.ACCENTS
+
+
+def test_same_card_twice_in_one_turn_is_one_card():
+    first = run({"card": CHOICE}, "desktop", session_id="s9")
+    again = run({"card": CHOICE}, "desktop", session_id="s9")
+    assert again["cardId"] == first["cardId"]
+    assert tool.take_pending("s9") == [first["media"]]  # one MEDIA line, not two
+    tool.on_turn_start(session_id="s9", platform="desktop")
+    assert run({"card": CHOICE}, "desktop", session_id="s9")["cardId"] != first["cardId"]  # next turn: new card
+
+
+def test_media_line_must_be_a_real_tag():
+    out = run({"card": CHOICE}, "desktop", session_id="m1")
+    path = out["media"][len("MEDIA:"):]
+    fixed = tool.ensure_media_lines(response_text=f"Card saved at {path}", session_id="m1")
+    assert fixed.endswith(out["media"])
+    run({"card": {**CHOICE, "question": "Other?"}}, "desktop", session_id="m2")
+    tag = tool._pending["m2"][0][1]
+    assert tool.ensure_media_lines(response_text=f'Here:\nMEDIA:"{tag[6:]}"', session_id="m2") is None
+    assert tool._has_media_line("MEDIA:/a/b.md", "/a/b.md")
+    assert not tool._has_media_line("MEDIA:/a/b.md.bak", "/a/b.md")
+
+
+def test_size_limit_counts_ids_and_defaults():
+    items = [{"text": "x" * 300, "note": "y" * 150} for _ in range(50)]
+    out = run({"card": {"type": "checklist", "items": items}}, "desktop")
+    assert "error" in out and "once ids and defaults are added" in out["error"]
+
+
+def _answer(card_id: str, **data) -> str:
+    return "✓ something\n[hui-card] " + json.dumps({"card": card_id, **data})
+
+
+def test_answer_context_names_the_card_and_the_confirmed_action():
+    card = {"type": "confirm", "title": "Delete old logs?", "action": "Delete 14 files in ~/logs",
+            "command": "find ~/logs -mtime +30 -delete"}
+    out = run({"card": card}, "desktop", session_id="c1")
+    ctx = tool.on_turn_start(session_id="c1", platform="desktop",
+                             user_message=_answer(out["cardId"], type="confirm", decision="yes"),
+                             conversation_history=[])["context"]
+    assert f'confirm card "Delete old logs?" ({out["cardId"]})' in ctx
+    assert "Delete 14 files in ~/logs" in ctx and "find ~/logs -mtime +30 -delete" in ctx
+    assert "other message" not in ctx
+
+
+def test_stale_confirm_answer_is_flagged():
+    card = {"type": "confirm", "title": "Delete?", "action": "Delete it"}
+    out = run({"card": card}, "desktop", session_id="c2")
+    answer = _answer(out["cardId"], type="confirm", decision="yes")
+    history = [
+        {"role": "user", "content": "clean up"},
+        {"role": "assistant", "content": "", "tool_calls": []},
+        {"role": "tool", "content": json.dumps(out)},
+        {"role": "assistant", "content": "Please confirm"},
+        {"role": "user", "content": "No, leave them"},
+        {"role": "assistant", "content": "OK"},
+        {"role": "user", "content": answer},
+    ]
+    ctx = tool.answer_context(answer, history)
+    assert "wrote 1 other message after this card" in ctx and "ask again before you act" in ctx
+
+
+def test_answer_context_ignores_unknown_or_hostile_ids():
+    assert tool.answer_context(_answer("../../etc/passwd"), []) is None
+    assert tool.answer_context(_answer("nope-000"), []) is None
+    assert tool.answer_context("just text", []) is None
+    assert tool.answer_context("[hui-card] {not json", []) is None
