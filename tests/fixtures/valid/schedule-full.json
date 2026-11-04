@@ -1,0 +1,19 @@
+{
+  "type": "schedule",
+  "id": "schedule-full",
+  "lang": "de-AT",
+  "title": "Meet",
+  "timezone": "Europe/Vienna",
+  "slots": [
+    {
+      "id": "morning",
+      "start": "2026-11-12T10:00:00.123456+01:00",
+      "end": "2026-11-12T10:30:00.123456+01:00",
+      "label": "Morning",
+      "note": "At office",
+      "unavailable": false
+    }
+  ],
+  "multiple": true,
+  "noneLabel": "No suitable time"
+}

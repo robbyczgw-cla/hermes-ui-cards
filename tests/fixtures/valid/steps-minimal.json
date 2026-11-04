@@ -1,0 +1,11 @@
+{
+  "type": "steps",
+  "steps": [
+    {
+      "title": "First"
+    },
+    {
+      "title": "Next"
+    }
+  ]
+}

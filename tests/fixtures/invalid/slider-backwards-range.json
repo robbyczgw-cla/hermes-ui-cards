@@ -1,0 +1,6 @@
+{
+  "type": "slider",
+  "question": "Budget?",
+  "min": 3,
+  "max": 2.5
+}

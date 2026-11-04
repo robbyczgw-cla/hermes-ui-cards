@@ -1,0 +1,12 @@
+{
+  "type": "form",
+  "fields": [
+    {
+      "name": "value",
+      "label": "Value",
+      "kind": "text",
+      "maxLength": " 20 ",
+      "required": "FALSE"
+    }
+  ]
+}

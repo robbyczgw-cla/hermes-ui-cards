@@ -1,0 +1,5 @@
+{
+  "type": "confirm",
+  "title": "Proceed?",
+  "action": "Run the action"
+}

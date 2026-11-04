@@ -1,0 +1,8 @@
+{
+  "type": "choice",
+  "question": "Pick one",
+  "options": [
+    "A",
+    false
+  ]
+}

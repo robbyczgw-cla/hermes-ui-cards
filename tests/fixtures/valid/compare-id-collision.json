@@ -1,0 +1,12 @@
+{
+  "type": "compare",
+  "columns": [
+    {
+      "title": "A"
+    },
+    {
+      "title": "B",
+      "id": "c1"
+    }
+  ]
+}

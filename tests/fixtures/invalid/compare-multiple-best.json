@@ -1,0 +1,13 @@
+{
+  "type": "compare",
+  "columns": [
+    {
+      "title": "A",
+      "best": true
+    },
+    {
+      "title": "B",
+      "best": true
+    }
+  ]
+}

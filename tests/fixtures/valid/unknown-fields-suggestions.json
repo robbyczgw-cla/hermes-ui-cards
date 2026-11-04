@@ -1,0 +1,17 @@
+{
+  "type": "choice",
+  "question": "Pick one",
+  "options": [
+    {
+      "label": "A"
+    },
+    {
+      "label": "B"
+    }
+  ],
+  "submit_label": "Go",
+  "queston": "Typo",
+  "multiple_typo": true,
+  "unrelated_field": "Ignored",
+  "__proto__": "Ignored"
+}

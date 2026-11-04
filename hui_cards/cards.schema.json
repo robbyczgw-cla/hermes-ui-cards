@@ -1,0 +1,327 @@
+{
+  "$comment": "Single source of truth for card shapes. Read by hui_cards/schema.py (validation in the tool) and by scripts/build.py, which embeds it in desktop/plugin.js and generates desktop/cards.d.ts. Subset of JSON Schema plus x-rules (cross-field checks implemented in both validators).",
+  "version": 1,
+  "limits": {
+    "maxCardBytes": 24000,
+    "maxReplyChars": 4000
+  },
+  "common": {
+    "type": "object",
+    "properties": {
+      "type": { "type": "string", "description": "Card type." },
+      "id": {
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$",
+        "description": "Short slug you choose, e.g. \"trip-style\". Optional."
+      },
+      "lang": {
+        "type": "string",
+        "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$",
+        "description": "Language of the card text (\"en\", \"de\"). Sets the language of buttons and hints. Optional."
+      }
+    }
+  },
+  "definitions": {
+    "image": {
+      "type": "string",
+      "format": "https-url",
+      "maxLength": 2000,
+      "description": "https image URL that came from a tool or the user. Never invent one."
+    },
+    "icon": { "type": "string", "maxLength": 8, "format": "no-space", "description": "One emoji." },
+    "shortText": { "type": "string", "minLength": 1, "maxLength": 80 },
+    "text": { "type": "string", "minLength": 1, "maxLength": 300 },
+    "longText": { "type": "string", "minLength": 1, "maxLength": 1200 },
+    "label": { "type": "string", "minLength": 1, "maxLength": 40 },
+    "itemId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$" }
+  },
+  "cards": {
+    "choice": {
+      "phase": 1,
+      "summary": "Let the user pick one or more of 2-6 options.",
+      "type": "object",
+      "required": ["question", "options"],
+      "properties": {
+        "question": { "$ref": "text" },
+        "options": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 6,
+          "items": {
+            "type": "object",
+            "required": ["label"],
+            "properties": {
+              "id": { "$ref": "itemId" },
+              "label": { "$ref": "shortText" },
+              "description": { "$ref": "text" },
+              "icon": { "$ref": "icon" },
+              "image": { "$ref": "image" }
+            }
+          }
+        },
+        "multiple": { "type": "boolean", "default": false, "description": "Allow several picks." },
+        "min": { "type": "integer", "minimum": 1, "maximum": 6, "description": "Fewest picks (multiple only)." },
+        "max": { "type": "integer", "minimum": 1, "maximum": 6, "description": "Most picks (multiple only)." },
+        "allowOther": { "type": "boolean", "default": false, "description": "Add a free-text \"Other\" field." },
+        "submitLabel": { "$ref": "label" }
+      },
+      "x-rules": ["uniqueOptionIds", "minMaxPicks"]
+    },
+    "checklist": {
+      "phase": 1,
+      "summary": "Items the user ticks off; the ticks are kept when the chat is reopened. \"Done\" reports checked and open items.",
+      "type": "object",
+      "required": ["items"],
+      "properties": {
+        "title": { "$ref": "shortText" },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {
+            "type": "object",
+            "required": ["text"],
+            "properties": {
+              "id": { "$ref": "itemId" },
+              "text": { "$ref": "text" },
+              "note": { "$ref": "text" },
+              "category": { "type": "string", "minLength": 1, "maxLength": 40, "description": "Groups items under a heading." },
+              "checked": { "type": "boolean", "default": false }
+            }
+          }
+        },
+        "doneLabel": { "$ref": "label" }
+      },
+      "x-rules": ["uniqueItemIds"]
+    },
+    "compare": {
+      "phase": 1,
+      "summary": "2-4 candidates side by side with aligned attribute rows, one may be marked best; each column has a pick button.",
+      "type": "object",
+      "required": ["columns"],
+      "properties": {
+        "title": { "$ref": "shortText" },
+        "columns": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 4,
+          "items": {
+            "type": "object",
+            "required": ["title"],
+            "properties": {
+              "id": { "$ref": "itemId" },
+              "title": { "$ref": "shortText" },
+              "subtitle": { "$ref": "text" },
+              "badge": { "type": "string", "minLength": 1, "maxLength": 24 },
+              "image": { "$ref": "image" },
+              "best": { "type": "boolean", "default": false, "description": "Your recommendation (at most one column)." },
+              "pros": { "type": "array", "maxItems": 5, "items": { "$ref": "text" } },
+              "cons": { "type": "array", "maxItems": 5, "items": { "$ref": "text" } }
+            }
+          }
+        },
+        "rows": {
+          "type": "array",
+          "maxItems": 12,
+          "description": "Attribute rows; values[i] belongs to columns[i].",
+          "items": {
+            "type": "object",
+            "required": ["label", "values"],
+            "properties": {
+              "label": { "$ref": "shortText" },
+              "values": {
+                "type": "array",
+                "items": { "type": ["string", "number", "boolean", "null"], "maxLength": 120 }
+              }
+            }
+          }
+        },
+        "selectLabel": { "$ref": "label" }
+      },
+      "x-rules": ["uniqueColumnIds", "rowsMatchColumns", "singleBest"]
+    },
+    "form": {
+      "phase": 1,
+      "summary": "Fields the user fills in (text, number, date, select, toggle) with required fields and checks.",
+      "type": "object",
+      "required": ["fields"],
+      "properties": {
+        "title": { "$ref": "shortText" },
+        "description": { "$ref": "text" },
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 12,
+          "items": {
+            "type": "object",
+            "required": ["name", "label", "kind"],
+            "properties": {
+              "name": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]{0,39}$" },
+              "label": { "$ref": "shortText" },
+              "kind": { "type": "string", "enum": ["text", "textarea", "number", "date", "time", "email", "select", "toggle"] },
+              "required": { "type": "boolean", "default": false },
+              "placeholder": { "type": "string", "maxLength": 80 },
+              "help": { "$ref": "text" },
+              "default": { "type": ["string", "number", "boolean"], "maxLength": 1000 },
+              "min": { "type": "number", "description": "number: smallest value." },
+              "max": { "type": "number", "description": "number: largest value." },
+              "step": { "type": "number", "minimum": 0 },
+              "unit": { "type": "string", "maxLength": 12 },
+              "maxLength": { "type": "integer", "minimum": 1, "maximum": 2000 },
+              "options": { "type": "array", "minItems": 2, "maxItems": 20, "items": { "$ref": "shortText" }, "description": "select: the choices." }
+            }
+          }
+        },
+        "submitLabel": { "$ref": "label" }
+      },
+      "x-rules": ["uniqueFieldNames", "fieldKindRules"]
+    },
+    "confirm": {
+      "phase": 1,
+      "summary": "Ask before you act: one action with reason and risk; the user answers Yes, No or Change.",
+      "type": "object",
+      "required": ["title", "action"],
+      "properties": {
+        "title": { "$ref": "shortText" },
+        "action": { "$ref": "text", "description": "What exactly will happen." },
+        "reason": { "$ref": "text" },
+        "risk": {
+          "type": "object",
+          "required": ["level"],
+          "properties": {
+            "level": { "type": "string", "enum": ["low", "medium", "high"] },
+            "text": { "$ref": "text" }
+          }
+        },
+        "command": { "type": "string", "minLength": 1, "maxLength": 2000, "description": "Command or code shown monospace." },
+        "details": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "required": ["label", "value"],
+            "properties": { "label": { "$ref": "shortText" }, "value": { "$ref": "text" } }
+          }
+        },
+        "confirmLabel": { "$ref": "label" },
+        "cancelLabel": { "$ref": "label" },
+        "allowChange": { "type": "boolean", "default": true, "description": "Offer \"Change\" with a text field." }
+      },
+      "x-rules": []
+    },
+    "rating": {
+      "phase": 2,
+      "summary": "Ask for a rating on a scale (stars or numbers), optional comment.",
+      "type": "object",
+      "required": ["question"],
+      "properties": {
+        "question": { "$ref": "text" },
+        "scale": { "type": "integer", "minimum": 3, "maximum": 10, "default": 5 },
+        "style": { "type": "string", "enum": ["stars", "numbers"], "default": "stars" },
+        "lowLabel": { "type": "string", "maxLength": 30 },
+        "highLabel": { "type": "string", "maxLength": 30 },
+        "comment": { "type": "boolean", "default": false, "description": "Add an optional comment field." }
+      },
+      "x-rules": []
+    },
+    "slider": {
+      "phase": 2,
+      "summary": "Ask for one number in a range (budget, duration, level).",
+      "type": "object",
+      "required": ["question", "min", "max"],
+      "properties": {
+        "question": { "$ref": "text" },
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "step": { "type": "number", "minimum": 0 },
+        "default": { "type": "number" },
+        "unit": { "type": "string", "maxLength": 12 },
+        "minLabel": { "type": "string", "maxLength": 30 },
+        "maxLabel": { "type": "string", "maxLength": 30 },
+        "submitLabel": { "$ref": "label" }
+      },
+      "x-rules": ["sliderRange"]
+    },
+    "schedule": {
+      "phase": 2,
+      "summary": "Offer time slots to pick from (meetings, appointments).",
+      "type": "object",
+      "required": ["slots"],
+      "properties": {
+        "title": { "$ref": "shortText" },
+        "timezone": { "type": "string", "maxLength": 64, "description": "IANA zone, e.g. \"Europe/Vienna\"." },
+        "slots": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "required": ["start"],
+            "properties": {
+              "id": { "$ref": "itemId" },
+              "start": { "type": "string", "format": "datetime", "description": "ISO 8601, e.g. 2026-11-12T14:00" },
+              "end": { "type": "string", "format": "datetime" },
+              "label": { "$ref": "shortText" },
+              "note": { "$ref": "text" },
+              "unavailable": { "type": "boolean", "default": false }
+            }
+          }
+        },
+        "multiple": { "type": "boolean", "default": false },
+        "noneLabel": { "$ref": "label", "description": "Button for \"none of these fit\"." }
+      },
+      "x-rules": ["uniqueSlotIds", "slotOrder"]
+    },
+    "steps": {
+      "phase": 2,
+      "summary": "A guided walkthrough, one step at a time with Back/Next; the user reports done or where they got stuck.",
+      "type": "object",
+      "required": ["steps"],
+      "properties": {
+        "title": { "$ref": "shortText" },
+        "steps": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 12,
+          "items": {
+            "type": "object",
+            "required": ["title"],
+            "properties": {
+              "title": { "$ref": "shortText" },
+              "body": { "$ref": "longText" },
+              "command": { "type": "string", "minLength": 1, "maxLength": 1000 },
+              "image": { "$ref": "image" }
+            }
+          }
+        },
+        "finishLabel": { "$ref": "label" }
+      },
+      "x-rules": []
+    },
+    "quiz": {
+      "phase": 2,
+      "summary": "Multiple-choice questions with feedback per answer; the score is sent back.",
+      "type": "object",
+      "required": ["questions"],
+      "properties": {
+        "title": { "$ref": "shortText" },
+        "questions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 10,
+          "items": {
+            "type": "object",
+            "required": ["question", "options", "answer"],
+            "properties": {
+              "question": { "$ref": "text" },
+              "options": { "type": "array", "minItems": 2, "maxItems": 6, "items": { "$ref": "shortText" } },
+              "answer": { "type": "integer", "minimum": 0, "description": "0-based index of the correct option." },
+              "explanation": { "$ref": "text" }
+            }
+          }
+        }
+      },
+      "x-rules": ["quizAnswers"]
+    }
+  }
+}

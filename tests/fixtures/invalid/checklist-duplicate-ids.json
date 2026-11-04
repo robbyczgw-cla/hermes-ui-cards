@@ -1,0 +1,13 @@
+{
+  "type": "checklist",
+  "items": [
+    {
+      "text": "A",
+      "id": "dup"
+    },
+    {
+      "text": "B",
+      "id": "dup"
+    }
+  ]
+}

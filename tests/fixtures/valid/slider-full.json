@@ -1,0 +1,14 @@
+{
+  "type": "slider",
+  "id": "slider-full",
+  "lang": "de-AT",
+  "question": "Budget?",
+  "min": -2.5,
+  "max": 10.5,
+  "step": 0.5,
+  "default": 3,
+  "unit": "€",
+  "minLabel": "Less",
+  "maxLabel": "More",
+  "submitLabel": "Save"
+}

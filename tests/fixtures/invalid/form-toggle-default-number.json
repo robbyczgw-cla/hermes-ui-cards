@@ -1,0 +1,11 @@
+{
+  "type": "form",
+  "fields": [
+    {
+      "name": "value",
+      "label": "Value",
+      "kind": "toggle",
+      "default": 1
+    }
+  ]
+}

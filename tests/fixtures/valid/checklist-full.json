@@ -1,0 +1,16 @@
+{
+  "type": "checklist",
+  "id": "checklist-full",
+  "lang": "de-AT",
+  "title": "Packing",
+  "items": [
+    {
+      "id": "bag",
+      "text": "Pack bag",
+      "note": "Bring a towel",
+      "category": "Preparation",
+      "checked": true
+    }
+  ],
+  "doneLabel": "Packed"
+}

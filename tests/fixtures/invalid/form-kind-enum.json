@@ -1,0 +1,10 @@
+{
+  "type": "form",
+  "fields": [
+    {
+      "name": "value",
+      "label": "Value",
+      "kind": "slider"
+    }
+  ]
+}

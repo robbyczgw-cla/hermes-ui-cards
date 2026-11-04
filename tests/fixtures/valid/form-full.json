@@ -1,0 +1,70 @@
+{
+  "type": "form",
+  "id": "form-full",
+  "lang": "de-AT",
+  "title": "Profile",
+  "description": "About you",
+  "fields": [
+    {
+      "name": "bio",
+      "label": "Bio",
+      "kind": "textarea",
+      "required": true,
+      "placeholder": "Write something",
+      "help": "A short bio",
+      "default": "Hello",
+      "maxLength": 100
+    },
+    {
+      "name": "quantity",
+      "label": "Count",
+      "kind": "number",
+      "default": 2.5,
+      "min": 0,
+      "max": 10,
+      "step": 0.5,
+      "unit": "kg"
+    },
+    {
+      "name": "colour",
+      "label": "Colour",
+      "kind": "select",
+      "options": [
+        "Red",
+        "Blue"
+      ],
+      "default": "Red"
+    },
+    {
+      "name": "enabled",
+      "label": "Enabled",
+      "kind": "toggle",
+      "default": false
+    },
+    {
+      "name": "date",
+      "label": "Date",
+      "kind": "date",
+      "default": "2026-11-12"
+    },
+    {
+      "name": "time",
+      "label": "Time",
+      "kind": "time",
+      "default": "14:00"
+    },
+    {
+      "name": "email",
+      "label": "Email",
+      "kind": "email",
+      "default": "a@example.com"
+    },
+    {
+      "name": "text",
+      "label": "Text",
+      "kind": "text",
+      "default": "Anna"
+    }
+  ],
+  "submitLabel": "Save"
+}

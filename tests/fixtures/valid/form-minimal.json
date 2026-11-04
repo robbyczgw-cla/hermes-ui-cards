@@ -1,0 +1,10 @@
+{
+  "type": "form",
+  "fields": [
+    {
+      "name": "name",
+      "label": "Name",
+      "kind": "text"
+    }
+  ]
+}

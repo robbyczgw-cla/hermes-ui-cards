@@ -1,0 +1,11 @@
+{
+  "type": "rating",
+  "id": "rating-full",
+  "lang": "de-AT",
+  "question": "Rate this",
+  "scale": 10,
+  "style": "numbers",
+  "lowLabel": "Poor",
+  "highLabel": "Great",
+  "comment": true
+}

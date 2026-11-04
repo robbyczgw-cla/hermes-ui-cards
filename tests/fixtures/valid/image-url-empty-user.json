@@ -1,0 +1,13 @@
+{
+  "type": "choice",
+  "question": "Pick one",
+  "options": [
+    {
+      "label": "A",
+      "image": "https://@example.com/a"
+    },
+    {
+      "label": "B"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "type": "choice",
+  "question": "Pick one",
+  "options": [
+    {
+      "label": "A",
+      "id": "_bad"
+    },
+    {
+      "label": "B"
+    }
+  ]
+}

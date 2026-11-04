@@ -1,0 +1,13 @@
+{
+  "type": "choice",
+  "question": "Pick one",
+  "options": [
+    {
+      "label": "A",
+      "image": "https://[::ffff:192.0.2.1]/a"
+    },
+    {
+      "label": "B"
+    }
+  ]
+}

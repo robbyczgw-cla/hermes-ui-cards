@@ -1,0 +1,14 @@
+{
+  "type": "choice",
+  "question": "Pick one",
+  "options": [
+    {
+      "label": "A",
+      "descripton": "Typo",
+      "unrelated_field": 0
+    },
+    {
+      "label": "B"
+    }
+  ]
+}

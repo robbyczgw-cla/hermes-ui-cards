@@ -1,0 +1,27 @@
+{
+  "type": "choice",
+  "id": "choice-full",
+  "lang": "de-AT",
+  "question": "Choose activities",
+  "options": [
+    {
+      "id": "walk",
+      "label": "Walk",
+      "description": "In the park",
+      "icon": "🌳",
+      "image": "https://example.com/walk.jpg"
+    },
+    {
+      "id": "swim",
+      "label": "Swim",
+      "description": "At the pool",
+      "icon": "🏊",
+      "image": "https://example.com/swim.jpg"
+    }
+  ],
+  "multiple": true,
+  "min": 1,
+  "max": 2,
+  "allowOther": true,
+  "submitLabel": "Choose"
+}

@@ -1,0 +1,13 @@
+{
+  "type": "quiz",
+  "questions": [
+    {
+      "question": "One plus one?",
+      "options": [
+        "Two",
+        "Three"
+      ],
+      "answer": 0
+    }
+  ]
+}

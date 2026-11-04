@@ -1,0 +1,15 @@
+{
+  "type": "form",
+  "fields": [
+    {
+      "name": "same",
+      "label": "A",
+      "kind": "text"
+    },
+    {
+      "name": "same",
+      "label": "B",
+      "kind": "number"
+    }
+  ]
+}

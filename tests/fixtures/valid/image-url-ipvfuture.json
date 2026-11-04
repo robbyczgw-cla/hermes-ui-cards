@@ -1,0 +1,13 @@
+{
+  "type": "choice",
+  "question": "Q",
+  "options": [
+    {
+      "label": "A",
+      "image": "https://[v1.a]/x"
+    },
+    {
+      "label": "B"
+    }
+  ]
+}

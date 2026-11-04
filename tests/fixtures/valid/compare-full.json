@@ -1,0 +1,60 @@
+{
+  "type": "compare",
+  "id": "compare-full",
+  "lang": "de-AT",
+  "title": "Compare",
+  "columns": [
+    {
+      "id": "a",
+      "title": "A",
+      "subtitle": "First",
+      "badge": "Recommended",
+      "image": "https://example.com/a.png",
+      "best": true,
+      "pros": [
+        "Fast"
+      ],
+      "cons": [
+        "Cost"
+      ]
+    },
+    {
+      "id": "b",
+      "title": "B",
+      "subtitle": "Second",
+      "badge": "Alternative",
+      "image": "https://example.com/b.png",
+      "best": false,
+      "pros": [
+        "Cheap"
+      ],
+      "cons": [
+        "Slow"
+      ]
+    }
+  ],
+  "rows": [
+    {
+      "label": "Cost",
+      "values": [
+        2.5,
+        3
+      ]
+    },
+    {
+      "label": "Available",
+      "values": [
+        true,
+        null
+      ]
+    },
+    {
+      "label": "Note",
+      "values": [
+        "Great",
+        false
+      ]
+    }
+  ],
+  "selectLabel": "Pick"
+}

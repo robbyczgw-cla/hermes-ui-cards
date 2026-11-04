@@ -1,0 +1,26 @@
+{
+  "type": "quiz",
+  "id": "quiz-full",
+  "lang": "de-AT",
+  "title": "Math",
+  "questions": [
+    {
+      "question": "One plus one?",
+      "options": [
+        "Two",
+        "Three"
+      ],
+      "answer": 0,
+      "explanation": "One and one is two"
+    },
+    {
+      "question": "Two plus one?",
+      "options": [
+        "Two",
+        "Three"
+      ],
+      "answer": 1,
+      "explanation": "Two and one is three"
+    }
+  ]
+}

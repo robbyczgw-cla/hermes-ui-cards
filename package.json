@@ -1,0 +1,17 @@
+{
+  "name": "hermes-ui-cards",
+  "private": true,
+  "type": "module",
+  "description": "Desktop half tests and build for the hermes-ui-cards Hermes plugin",
+  "license": "MIT",
+  "scripts": {
+    "build": "python3 scripts/build.py",
+    "check": "python3 scripts/build.py --check",
+    "test": "node --import ./tests/desktop/register.mjs --test 'tests/desktop/*.test.mjs'"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  }
+}

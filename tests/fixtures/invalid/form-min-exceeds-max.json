@@ -1,0 +1,12 @@
+{
+  "type": "form",
+  "fields": [
+    {
+      "name": "value",
+      "label": "Value",
+      "kind": "number",
+      "min": 3,
+      "max": 2.5
+    }
+  ]
+}

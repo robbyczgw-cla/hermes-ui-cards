@@ -1,0 +1,13 @@
+{
+  "type": "choice",
+  "question": "Q",
+  "options": [
+    {
+      "label": "A",
+      "image": "https://prefix[::ffff:192.0.2.1]/x"
+    },
+    {
+      "label": "B"
+    }
+  ]
+}

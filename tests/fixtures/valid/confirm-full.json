@@ -1,0 +1,22 @@
+{
+  "type": "confirm",
+  "id": "confirm-full",
+  "lang": "de-AT",
+  "title": "Run?",
+  "action": "Run task",
+  "reason": "Needed now",
+  "risk": {
+    "level": "medium",
+    "text": "Takes a minute"
+  },
+  "command": "echo done",
+  "details": [
+    {
+      "label": "Time",
+      "value": "1 minute"
+    }
+  ],
+  "confirmLabel": "Run",
+  "cancelLabel": "Stop",
+  "allowChange": false
+}

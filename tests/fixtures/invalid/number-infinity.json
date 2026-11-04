@@ -1,0 +1,6 @@
+{
+  "type": "slider",
+  "question": "Q",
+  "min": 1e999,
+  "max": 10
+}

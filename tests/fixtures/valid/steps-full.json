@@ -1,0 +1,21 @@
+{
+  "type": "steps",
+  "id": "steps-full",
+  "lang": "de-AT",
+  "title": "Setup",
+  "steps": [
+    {
+      "title": "Install",
+      "body": "Install the tool",
+      "command": "npm install",
+      "image": "https://example.com/install.png"
+    },
+    {
+      "title": "Run",
+      "body": "Start it",
+      "command": "npm start",
+      "image": "https://example.com/run.png"
+    }
+  ],
+  "finishLabel": "Finished"
+}

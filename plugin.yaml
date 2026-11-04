@@ -1,0 +1,32 @@
+name: hermes-ui-cards
+version: 0.1.0
+manifest_version: 2
+description: Interactive answer cards in Hermes Desktop — choices, checklists, comparisons, forms and confirmations the user answers with a click
+author: robbyczgw-cla
+license: MIT
+homepage: https://github.com/robbyczgw-cla/hermes-ui-cards
+requires_hermes: ">=0.22.6"
+tags: [desktop, ui, cards]
+provides_tools:
+  - hui_present
+provides_hooks:
+  - pre_llm_call
+  - transform_llm_output
+requires_env: []
+config_schema:
+  enabled:
+    type: bool
+    default: true
+    label: Interactive cards
+    description: Off = Hermes Desktop also gets the plain-text version of each card.
+  compact:
+    type: bool
+    default: false
+    label: Compact cards
+    description: Less padding and smaller images, for narrow split views.
+  accent:
+    type: str
+    choices: [app, blue, green, orange, purple, red]
+    default: app
+    label: Accent colour
+    description: "app = the accent of your Desktop theme."

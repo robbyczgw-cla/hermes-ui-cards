@@ -1,0 +1,15 @@
+{
+  "type": "form",
+  "fields": [
+    {
+      "name": "value",
+      "label": "Value",
+      "kind": "text",
+      "options": [
+        "A",
+        "B"
+      ],
+      "default": "A"
+    }
+  ]
+}

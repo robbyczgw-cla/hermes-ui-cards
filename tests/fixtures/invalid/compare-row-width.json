@@ -1,0 +1,23 @@
+{
+  "type": "compare",
+  "columns": [
+    {
+      "title": "A"
+    },
+    {
+      "title": "B"
+    }
+  ],
+  "rows": [
+    {
+      "label": "Cost",
+      "values": [
+        1
+      ]
+    },
+    {
+      "label": "Time",
+      "values": []
+    }
+  ]
+}

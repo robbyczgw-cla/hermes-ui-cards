@@ -1,0 +1,202 @@
+import importlib.util
+import json
+import sys
+from pathlib import Path
+
+import pytest
+import yaml
+
+from hui_cards import tool
+from hui_cards.command import handle_cards
+from hui_cards.demos import DEMOS
+from hui_cards.schema import CARD_TYPES, validate_card
+
+ROOT = Path(__file__).resolve().parent.parent
+
+CHOICE = {"type": "choice", "id": "trip", "question": "Where to?",
+          "options": [{"label": "Lisbon"}, {"label": "Berlin"}]}
+
+
+@pytest.fixture(autouse=True)
+def isolated(tmp_path, monkeypatch):
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    for name in ("HERMES_PLATFORM", "HERMES_SESSION_PLATFORM", "HERMES_SESSION_SOURCE"):
+        monkeypatch.delenv(name, raising=False)
+    tool.configure(None)
+    tool._pending.clear()
+    yield tmp_path
+
+
+def run(args, surface, session_id="s1"):
+    return json.loads(tool.present(args, session_id=session_id, surface=surface))
+
+
+def test_desktop_returns_media_card_and_writes_markdown_copy(isolated):
+    out = run({"card": CHOICE}, "desktop")
+    assert out["ok"] is True and out["type"] == "choice"
+    assert out["cardId"].startswith("trip-") and len(out["cardId"]) == len("trip-") + 6
+    assert out["card"]["cardId"] == out["cardId"]
+    assert [o["id"] for o in out["card"]["options"]] == ["o1", "o2"]
+    assert out["display"] == {"compact": False, "accent": "app"}
+    assert out["media"].startswith("MEDIA:")
+    path = Path(out["media"][len("MEDIA:"):])
+    assert path.parent == isolated / "plugin-data" / "hermes-ui-cards" / "cards"
+    text = path.read_text(encoding="utf-8")
+    assert text.startswith("Where to?\n1. Lisbon\n2. Berlin\n")
+    assert out["media"] in out["next"]
+    assert "error" not in out  # Desktop treats a result with `error` as a failed call
+
+
+def test_text_surfaces_get_plain_text_and_no_file(isolated):
+    for surface in ("telegram", "cli", "tui", "discord", "api_server", ""):
+        out = run({"card": CHOICE}, surface)
+        assert "media" not in out and "card" not in out
+        assert out["text"].endswith("Reply with a number (1–2).")
+        assert out["surface"] == (surface or "text")
+    assert not (isolated / "plugin-data").exists()
+
+
+def test_cards_switched_off_gives_text_on_desktop_too():
+    tool.configure(lambda key, default: False if key == "enabled" else default)
+    out = run({"card": CHOICE}, "desktop")
+    assert "media" not in out and "text" in out
+
+
+def test_display_settings_are_sanitized():
+    tool.configure(lambda key, default: {"compact": True, "accent": "neon"}.get(key, default))
+    assert run({"card": CHOICE}, "desktop")["display"] == {"compact": True, "accent": "app"}
+
+
+def test_invalid_card_is_an_error_that_names_the_fields():
+    out = run({"card": {"type": "choice", "question": "Q", "options": [{"label": "only one"}]}}, "desktop")
+    assert out["error"].startswith("Card rejected (1 problem)")
+    assert out["problems"] == ["card.options: needs at least 2 items (got 1)"]
+    out = run({"card": {"type": "chioce"}}, "cli")
+    assert 'did you mean "choice"' in out["problems"][0]
+
+
+def test_warnings_are_passed_to_the_model():
+    out = run({"card": {**CHOICE, "allow_other": True}}, "desktop")
+    assert out["warnings"] == ['card.allow_other: unknown field, ignored (did you mean "allowOther"?)']
+
+
+def test_card_given_as_json_string():
+    assert run({"card": json.dumps(CHOICE)}, "cli")["ok"] is True
+
+
+@pytest.mark.parametrize("args", [None, [], "x", {}, {"card": None}, {"card": 3}, {"demo": "nope"}])
+def test_bad_arguments_never_raise(args):
+    out = json.loads(tool.handle_present(args))
+    assert "error" in out
+
+
+@pytest.mark.parametrize("card_type", CARD_TYPES)
+def test_every_type_has_a_valid_demo(card_type):
+    card, errors, warnings = validate_card(DEMOS[card_type])
+    assert errors == [] and warnings == []
+    out = run({"demo": card_type}, "desktop")
+    assert out["type"] == card_type
+
+
+def test_surface_detection(monkeypatch):
+    assert tool.current_surface() == ""
+    monkeypatch.setenv("HERMES_SESSION_SOURCE", "desktop")
+    assert tool.current_surface() == "desktop"
+    monkeypatch.setenv("HERMES_SESSION_SOURCE", "tui")
+    assert tool.current_surface() == "tui"
+    monkeypatch.setenv("HERMES_SESSION_PLATFORM", "telegram")
+    assert tool.current_surface() == "telegram"
+
+
+def test_media_line_safety_net():
+    out = run({"card": CHOICE}, "desktop", session_id="abc")
+    tag = out["media"]
+    # the model forgot the line → appended once
+    fixed = tool.ensure_media_lines(response_text="Pick one:", session_id="abc")
+    assert fixed == f"Pick one:\n\n{tag}"
+    assert tool.ensure_media_lines(response_text="Pick one:", session_id="abc") is None
+    # the model wrote it → unchanged
+    tag2 = run({"card": CHOICE}, "desktop", session_id="abc")["media"]
+    assert tool.ensure_media_lines(response_text=f"Here:\n{tag2}", session_id="abc") is None
+    # other sessions and text surfaces are left alone
+    run({"card": CHOICE}, "telegram", session_id="tg")
+    assert tool.ensure_media_lines(response_text="hi", session_id="tg") is None
+    assert tool.ensure_media_lines(response_text="hi", session_id="other") is None
+
+
+def test_unfinished_turn_does_not_leak_into_the_next():
+    run({"card": CHOICE}, "desktop", session_id="abc")
+    tool.on_turn_start(session_id="abc")
+    assert tool.ensure_media_lines(response_text="next turn", session_id="abc") is None
+
+
+def test_media_tag_quotes_paths_with_spaces(tmp_path):
+    assert tool.media_tag(Path("/a b/c.md")) == 'MEDIA:"/a b/c.md"'
+    assert tool.media_tag(Path("/a/c.md")) == "MEDIA:/a/c.md"
+
+
+def test_old_card_files_are_pruned(monkeypatch):
+    monkeypatch.setattr(tool, "MAX_CARD_FILES", 3)
+    for _ in range(5):
+        run({"card": CHOICE}, "desktop")
+    assert len(list(tool.cards_dir().glob("*.md"))) == 3
+
+
+def test_tool_description_stays_small():
+    schema = tool.tool_schema()
+    assert schema["name"] == "hui_present"
+    assert len(json.dumps(schema)) < 4500
+    for card_type in CARD_TYPES:
+        assert f"- {card_type}:" in schema["description"]
+
+
+def test_cards_command():
+    assert "Types: choice, checklist" in handle_cards("")
+    assert handle_cards("types").count("\n") == len(CARD_TYPES) - 1
+    demo = handle_cards("demo compare")
+    assert "Which laptop?" in demo and "hui_present demo for compare" in demo
+    assert handle_cards("demo nope").startswith("Unknown card type")
+    assert handle_cards("bogus").startswith("Usage:")
+
+
+def _load_plugin():
+    name = "hermes_plugins_test_hui_cards"
+    spec = importlib.util.spec_from_file_location(name, ROOT / "__init__.py",
+                                                  submodule_search_locations=[str(ROOT)])
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+class FakeCtx:
+    def __init__(self):
+        self.tools, self.hooks, self.commands, self.skills = [], [], [], []
+
+    def register_tool(self, **kw):
+        self.tools.append(kw)
+
+    def register_hook(self, name, fn, **kw):
+        self.hooks.append(name)
+
+    def register_command(self, name, handler, **kw):
+        self.commands.append(name)
+
+    def register_skill(self, name, path, **kw):
+        self.skills.append((name, Path(path)))
+
+    def get_config(self, key, default=None):
+        return default
+
+
+def test_register_matches_the_manifest():
+    manifest = yaml.safe_load((ROOT / "plugin.yaml").read_text(encoding="utf-8"))
+    ctx = FakeCtx()
+    _load_plugin().register(ctx)
+    assert [t["name"] for t in ctx.tools] == manifest["provides_tools"]
+    assert sorted(ctx.hooks) == sorted(manifest["provides_hooks"])
+    assert ctx.commands == ["cards"]
+    assert all(path.exists() for _, path in ctx.skills)
+    assert manifest["requires_hermes"] == ">=0.22.6"
+    assert set(manifest["config_schema"]) == {"enabled", "compact", "accent"}
+    assert manifest["config_schema"]["accent"]["choices"] == tool.ACCENTS

@@ -1,0 +1,18 @@
+{
+  "type": "choice",
+  "question": false,
+  "options": [
+    {
+      "icon": "a b",
+      "unknownTwo": 2,
+      "label": " "
+    },
+    {
+      "label": 1
+    }
+  ],
+  "unknownOne": 1,
+  "min": "wrong",
+  "allowOther": "TRUE",
+  "unknownThree": 3
+}
