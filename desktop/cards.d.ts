@@ -10,30 +10,6 @@ export interface CardCommon {
   lang?: string
 }
 
-/** Let the user pick one or more of 2-6 options. */
-export interface ChoiceCard extends CardCommon {
-  type: "choice"
-  question: string
-  options: Array<{
-    id?: string
-    label: string
-    description?: string
-    /** One emoji. */
-    icon?: string
-    /** https image URL that came from a tool or the user. Never invent one. */
-    image?: string
-  }>
-  /** Allow several picks. */
-  multiple?: boolean
-  /** Fewest picks (multiple only). */
-  min?: number
-  /** Most picks (multiple only). */
-  max?: number
-  /** Add a free-text "Other" field. */
-  allowOther?: boolean
-  submitLabel?: string
-}
-
 /** Items the user ticks off; the ticks are kept when the chat is reopened. "Done" reports checked and open items. */
 export interface ChecklistCard extends CardCommon {
   type: "checklist"
@@ -99,6 +75,20 @@ export interface FormCard extends CardCommon {
   submitLabel?: string
 }
 
+/** A guided walkthrough, one step at a time with Back/Next; the user reports done or where they got stuck. */
+export interface StepsCard extends CardCommon {
+  type: "steps"
+  title?: string
+  steps: Array<{
+    title: string
+    body?: string
+    command?: string
+    /** https image URL that came from a tool or the user. Never invent one. */
+    image?: string
+  }>
+  finishLabel?: string
+}
+
 /** Ask before you act: one action with reason and risk; the user answers Yes, No or Change. */
 export interface ConfirmCard extends CardCommon {
   type: "confirm"
@@ -120,6 +110,50 @@ export interface ConfirmCard extends CardCommon {
   cancelLabel?: string
   /** Offer "Change" with a text field. */
   allowChange?: boolean
+}
+
+/** Pick several of 2-6 options, or options that need a picture or a short text each. For one plain question with simple options use the built-in clarify tool instead. */
+export interface ChoiceCard extends CardCommon {
+  type: "choice"
+  question: string
+  options: Array<{
+    id?: string
+    label: string
+    description?: string
+    /** One emoji. */
+    icon?: string
+    /** https image URL that came from a tool or the user. Never invent one. */
+    image?: string
+  }>
+  /** Allow several picks. */
+  multiple?: boolean
+  /** Fewest picks (multiple only). */
+  min?: number
+  /** Most picks (multiple only). */
+  max?: number
+  /** Add a free-text "Other" field. */
+  allowOther?: boolean
+  submitLabel?: string
+}
+
+/** Offer time slots to pick from (meetings, appointments). */
+export interface ScheduleCard extends CardCommon {
+  type: "schedule"
+  title?: string
+  /** IANA zone, e.g. "Europe/Vienna". */
+  timezone?: string
+  slots: Array<{
+    id?: string
+    /** ISO 8601, e.g. 2026-11-12T14:00 */
+    start: string
+    end?: string
+    label?: string
+    note?: string
+    unavailable?: boolean
+  }>
+  multiple?: boolean
+  /** Button for "none of these fit". */
+  noneLabel?: string
 }
 
 /** Ask for a rating on a scale (stars or numbers), optional comment. */
@@ -148,40 +182,6 @@ export interface SliderCard extends CardCommon {
   submitLabel?: string
 }
 
-/** Offer time slots to pick from (meetings, appointments). */
-export interface ScheduleCard extends CardCommon {
-  type: "schedule"
-  title?: string
-  /** IANA zone, e.g. "Europe/Vienna". */
-  timezone?: string
-  slots: Array<{
-    id?: string
-    /** ISO 8601, e.g. 2026-11-12T14:00 */
-    start: string
-    end?: string
-    label?: string
-    note?: string
-    unavailable?: boolean
-  }>
-  multiple?: boolean
-  /** Button for "none of these fit". */
-  noneLabel?: string
-}
-
-/** A guided walkthrough, one step at a time with Back/Next; the user reports done or where they got stuck. */
-export interface StepsCard extends CardCommon {
-  type: "steps"
-  title?: string
-  steps: Array<{
-    title: string
-    body?: string
-    command?: string
-    /** https image URL that came from a tool or the user. Never invent one. */
-    image?: string
-  }>
-  finishLabel?: string
-}
-
 /** Multiple-choice questions with feedback per answer; the score is sent back. */
 export interface QuizCard extends CardCommon {
   type: "quiz"
@@ -196,13 +196,13 @@ export interface QuizCard extends CardCommon {
 }
 
 export type Card =
-  | ChoiceCard
   | ChecklistCard
   | CompareCard
   | FormCard
+  | StepsCard
   | ConfirmCard
+  | ChoiceCard
+  | ScheduleCard
   | RatingCard
   | SliderCard
-  | ScheduleCard
-  | StepsCard
   | QuizCard

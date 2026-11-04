@@ -4,7 +4,7 @@ import * as sdk from '@hermes/plugin-sdk'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Fragment, jsx, jsxs } from 'react/jsx-runtime'
 
-const SCHEMA = {"$comment":"Single source of truth for card shapes. Read by hui_cards/schema.py (validation in the tool) and by scripts/build.py, which embeds it in desktop/plugin.js and generates desktop/cards.d.ts. Subset of JSON Schema plus x-rules (cross-field checks implemented in both validators).","version":1,"limits":{"maxCardBytes":24000,"maxReplyChars":4000},"common":{"type":"object","properties":{"type":{"type":"string","description":"Card type."},"id":{"type":"string","pattern":"^[a-z0-9][a-z0-9_-]{0,39}$","description":"Short slug you choose, e.g. \"trip-style\". Optional."},"lang":{"type":"string","pattern":"^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$","description":"Language of the card text (\"en\", \"de\"). Sets the language of buttons and hints. Optional."}}},"definitions":{"image":{"type":"string","format":"https-url","maxLength":2000,"description":"https image URL that came from a tool or the user. Never invent one."},"icon":{"type":"string","maxLength":8,"format":"no-space","description":"One emoji."},"shortText":{"type":"string","minLength":1,"maxLength":80},"text":{"type":"string","minLength":1,"maxLength":300},"longText":{"type":"string","minLength":1,"maxLength":1200},"label":{"type":"string","minLength":1,"maxLength":40},"itemId":{"type":"string","pattern":"^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$"}},"cards":{"choice":{"phase":1,"summary":"Let the user pick one or more of 2-6 options.","type":"object","required":["question","options"],"properties":{"question":{"$ref":"text"},"options":{"type":"array","minItems":2,"maxItems":6,"items":{"type":"object","required":["label"],"properties":{"id":{"$ref":"itemId"},"label":{"$ref":"shortText"},"description":{"$ref":"text"},"icon":{"$ref":"icon"},"image":{"$ref":"image"}}}},"multiple":{"type":"boolean","default":false,"description":"Allow several picks."},"min":{"type":"integer","minimum":1,"maximum":6,"description":"Fewest picks (multiple only)."},"max":{"type":"integer","minimum":1,"maximum":6,"description":"Most picks (multiple only)."},"allowOther":{"type":"boolean","default":false,"description":"Add a free-text \"Other\" field."},"submitLabel":{"$ref":"label"}},"x-rules":["uniqueOptionIds","minMaxPicks"]},"checklist":{"phase":1,"summary":"Items the user ticks off; the ticks are kept when the chat is reopened. \"Done\" reports checked and open items.","type":"object","required":["items"],"properties":{"title":{"$ref":"shortText"},"items":{"type":"array","minItems":1,"maxItems":50,"items":{"type":"object","required":["text"],"properties":{"id":{"$ref":"itemId"},"text":{"$ref":"text"},"note":{"$ref":"text"},"category":{"type":"string","minLength":1,"maxLength":40,"description":"Groups items under a heading."},"checked":{"type":"boolean","default":false}}}},"doneLabel":{"$ref":"label"}},"x-rules":["uniqueItemIds"]},"compare":{"phase":1,"summary":"2-4 candidates side by side with aligned attribute rows, one may be marked best; each column has a pick button.","type":"object","required":["columns"],"properties":{"title":{"$ref":"shortText"},"columns":{"type":"array","minItems":2,"maxItems":4,"items":{"type":"object","required":["title"],"properties":{"id":{"$ref":"itemId"},"title":{"$ref":"shortText"},"subtitle":{"$ref":"text"},"badge":{"type":"string","minLength":1,"maxLength":24},"image":{"$ref":"image"},"best":{"type":"boolean","default":false,"description":"Your recommendation (at most one column)."},"pros":{"type":"array","maxItems":5,"items":{"$ref":"text"}},"cons":{"type":"array","maxItems":5,"items":{"$ref":"text"}}}}},"rows":{"type":"array","maxItems":12,"description":"Attribute rows; values[i] belongs to columns[i].","items":{"type":"object","required":["label","values"],"properties":{"label":{"$ref":"shortText"},"values":{"type":"array","items":{"type":["string","number","boolean","null"],"maxLength":120}}}}},"selectLabel":{"$ref":"label"}},"x-rules":["uniqueColumnIds","rowsMatchColumns","singleBest"]},"form":{"phase":1,"summary":"Fields the user fills in (text, number, date, select, toggle) with required fields and checks.","type":"object","required":["fields"],"properties":{"title":{"$ref":"shortText"},"description":{"$ref":"text"},"fields":{"type":"array","minItems":1,"maxItems":12,"items":{"type":"object","required":["name","label","kind"],"properties":{"name":{"type":"string","pattern":"^[A-Za-z][A-Za-z0-9_]{0,39}$"},"label":{"$ref":"shortText"},"kind":{"type":"string","enum":["text","textarea","number","date","time","email","select","toggle"]},"required":{"type":"boolean","default":false},"placeholder":{"type":"string","maxLength":80},"help":{"$ref":"text"},"default":{"type":["string","number","boolean"],"maxLength":1000},"min":{"type":"number","description":"number: smallest value."},"max":{"type":"number","description":"number: largest value."},"step":{"type":"number","minimum":0},"unit":{"type":"string","maxLength":12},"maxLength":{"type":"integer","minimum":1,"maximum":2000},"options":{"type":"array","minItems":2,"maxItems":20,"items":{"$ref":"shortText"},"description":"select: the choices."}}}},"submitLabel":{"$ref":"label"}},"x-rules":["uniqueFieldNames","fieldKindRules"]},"confirm":{"phase":1,"summary":"Ask before you act: one action with reason and risk; the user answers Yes, No or Change.","type":"object","required":["title","action"],"properties":{"title":{"$ref":"shortText"},"action":{"$ref":"text","description":"What exactly will happen."},"reason":{"$ref":"text"},"risk":{"type":"object","required":["level"],"properties":{"level":{"type":"string","enum":["low","medium","high"]},"text":{"$ref":"text"}}},"command":{"type":"string","minLength":1,"maxLength":2000,"description":"Command or code shown monospace."},"details":{"type":"array","maxItems":8,"items":{"type":"object","required":["label","value"],"properties":{"label":{"$ref":"shortText"},"value":{"$ref":"text"}}}},"confirmLabel":{"$ref":"label"},"cancelLabel":{"$ref":"label"},"allowChange":{"type":"boolean","default":true,"description":"Offer \"Change\" with a text field."}},"x-rules":[]},"rating":{"phase":2,"summary":"Ask for a rating on a scale (stars or numbers), optional comment.","type":"object","required":["question"],"properties":{"question":{"$ref":"text"},"scale":{"type":"integer","minimum":3,"maximum":10,"default":5},"style":{"type":"string","enum":["stars","numbers"],"default":"stars"},"lowLabel":{"type":"string","maxLength":30},"highLabel":{"type":"string","maxLength":30},"comment":{"type":"boolean","default":false,"description":"Add an optional comment field."}},"x-rules":[]},"slider":{"phase":2,"summary":"Ask for one number in a range (budget, duration, level).","type":"object","required":["question","min","max"],"properties":{"question":{"$ref":"text"},"min":{"type":"number"},"max":{"type":"number"},"step":{"type":"number","minimum":0},"default":{"type":"number"},"unit":{"type":"string","maxLength":12},"minLabel":{"type":"string","maxLength":30},"maxLabel":{"type":"string","maxLength":30},"submitLabel":{"$ref":"label"}},"x-rules":["sliderRange"]},"schedule":{"phase":2,"summary":"Offer time slots to pick from (meetings, appointments).","type":"object","required":["slots"],"properties":{"title":{"$ref":"shortText"},"timezone":{"type":"string","maxLength":64,"description":"IANA zone, e.g. \"Europe/Vienna\"."},"slots":{"type":"array","minItems":1,"maxItems":20,"items":{"type":"object","required":["start"],"properties":{"id":{"$ref":"itemId"},"start":{"type":"string","format":"datetime","description":"ISO 8601, e.g. 2026-11-12T14:00"},"end":{"type":"string","format":"datetime"},"label":{"$ref":"shortText"},"note":{"$ref":"text"},"unavailable":{"type":"boolean","default":false}}}},"multiple":{"type":"boolean","default":false},"noneLabel":{"$ref":"label","description":"Button for \"none of these fit\"."}},"x-rules":["uniqueSlotIds","slotOrder"]},"steps":{"phase":2,"summary":"A guided walkthrough, one step at a time with Back/Next; the user reports done or where they got stuck.","type":"object","required":["steps"],"properties":{"title":{"$ref":"shortText"},"steps":{"type":"array","minItems":2,"maxItems":12,"items":{"type":"object","required":["title"],"properties":{"title":{"$ref":"shortText"},"body":{"$ref":"longText"},"command":{"type":"string","minLength":1,"maxLength":1000},"image":{"$ref":"image"}}}},"finishLabel":{"$ref":"label"}},"x-rules":[]},"quiz":{"phase":2,"summary":"Multiple-choice questions with feedback per answer; the score is sent back.","type":"object","required":["questions"],"properties":{"title":{"$ref":"shortText"},"questions":{"type":"array","minItems":1,"maxItems":10,"items":{"type":"object","required":["question","options","answer"],"properties":{"question":{"$ref":"text"},"options":{"type":"array","minItems":2,"maxItems":6,"items":{"$ref":"shortText"}},"answer":{"type":"integer","minimum":0,"description":"0-based index of the correct option."},"explanation":{"$ref":"text"}}}}},"x-rules":["quizAnswers"]}}}
+const SCHEMA = {"$comment":"Single source of truth for card shapes. Read by hui_cards/schema.py (validation in the tool) and by scripts/build.py, which embeds it in desktop/plugin.js and generates desktop/cards.d.ts. Subset of JSON Schema plus x-rules (cross-field checks implemented in both validators).","version":1,"limits":{"maxCardBytes":24000,"maxReplyChars":4000},"common":{"type":"object","properties":{"type":{"type":"string","description":"Card type."},"id":{"type":"string","pattern":"^[a-z0-9][a-z0-9_-]{0,39}$","description":"Short slug you choose, e.g. \"trip-style\". Optional."},"lang":{"type":"string","pattern":"^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$","description":"Language of the card text (\"en\", \"de\"). Sets the language of buttons and hints. Optional."}}},"definitions":{"image":{"type":"string","format":"https-url","maxLength":2000,"description":"https image URL that came from a tool or the user. Never invent one."},"icon":{"type":"string","maxLength":8,"format":"no-space","description":"One emoji."},"shortText":{"type":"string","minLength":1,"maxLength":80},"text":{"type":"string","minLength":1,"maxLength":300},"longText":{"type":"string","minLength":1,"maxLength":1200},"label":{"type":"string","minLength":1,"maxLength":40},"itemId":{"type":"string","pattern":"^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$"}},"cards":{"checklist":{"phase":1,"summary":"Items the user ticks off; the ticks are kept when the chat is reopened. \"Done\" reports checked and open items.","type":"object","required":["items"],"properties":{"title":{"$ref":"shortText"},"items":{"type":"array","minItems":1,"maxItems":50,"items":{"type":"object","required":["text"],"properties":{"id":{"$ref":"itemId"},"text":{"$ref":"text"},"note":{"$ref":"text"},"category":{"type":"string","minLength":1,"maxLength":40,"description":"Groups items under a heading."},"checked":{"type":"boolean","default":false}}}},"doneLabel":{"$ref":"label"}},"x-rules":["uniqueItemIds"]},"compare":{"phase":1,"summary":"2-4 candidates side by side with aligned attribute rows, one may be marked best; each column has a pick button.","type":"object","required":["columns"],"properties":{"title":{"$ref":"shortText"},"columns":{"type":"array","minItems":2,"maxItems":4,"items":{"type":"object","required":["title"],"properties":{"id":{"$ref":"itemId"},"title":{"$ref":"shortText"},"subtitle":{"$ref":"text"},"badge":{"type":"string","minLength":1,"maxLength":24},"image":{"$ref":"image"},"best":{"type":"boolean","default":false,"description":"Your recommendation (at most one column)."},"pros":{"type":"array","maxItems":5,"items":{"$ref":"text"}},"cons":{"type":"array","maxItems":5,"items":{"$ref":"text"}}}}},"rows":{"type":"array","maxItems":12,"description":"Attribute rows; values[i] belongs to columns[i].","items":{"type":"object","required":["label","values"],"properties":{"label":{"$ref":"shortText"},"values":{"type":"array","items":{"type":["string","number","boolean","null"],"maxLength":120}}}}},"selectLabel":{"$ref":"label"}},"x-rules":["uniqueColumnIds","rowsMatchColumns","singleBest"]},"form":{"phase":1,"summary":"Fields the user fills in (text, number, date, select, toggle) with required fields and checks.","type":"object","required":["fields"],"properties":{"title":{"$ref":"shortText"},"description":{"$ref":"text"},"fields":{"type":"array","minItems":1,"maxItems":12,"items":{"type":"object","required":["name","label","kind"],"properties":{"name":{"type":"string","pattern":"^[A-Za-z][A-Za-z0-9_]{0,39}$"},"label":{"$ref":"shortText"},"kind":{"type":"string","enum":["text","textarea","number","date","time","email","select","toggle"]},"required":{"type":"boolean","default":false},"placeholder":{"type":"string","maxLength":80},"help":{"$ref":"text"},"default":{"type":["string","number","boolean"],"maxLength":1000},"min":{"type":"number","description":"number: smallest value."},"max":{"type":"number","description":"number: largest value."},"step":{"type":"number","minimum":0},"unit":{"type":"string","maxLength":12},"maxLength":{"type":"integer","minimum":1,"maximum":2000},"options":{"type":"array","minItems":2,"maxItems":20,"items":{"$ref":"shortText"},"description":"select: the choices."}}}},"submitLabel":{"$ref":"label"}},"x-rules":["uniqueFieldNames","fieldKindRules"]},"steps":{"phase":2,"summary":"A guided walkthrough, one step at a time with Back/Next; the user reports done or where they got stuck.","type":"object","required":["steps"],"properties":{"title":{"$ref":"shortText"},"steps":{"type":"array","minItems":2,"maxItems":12,"items":{"type":"object","required":["title"],"properties":{"title":{"$ref":"shortText"},"body":{"$ref":"longText"},"command":{"type":"string","minLength":1,"maxLength":1000},"image":{"$ref":"image"}}}},"finishLabel":{"$ref":"label"}},"x-rules":[]},"confirm":{"phase":1,"summary":"Ask before you act: one action with reason and risk; the user answers Yes, No or Change.","type":"object","required":["title","action"],"properties":{"title":{"$ref":"shortText"},"action":{"$ref":"text","description":"What exactly will happen."},"reason":{"$ref":"text"},"risk":{"type":"object","required":["level"],"properties":{"level":{"type":"string","enum":["low","medium","high"]},"text":{"$ref":"text"}}},"command":{"type":"string","minLength":1,"maxLength":2000,"description":"Command or code shown monospace."},"details":{"type":"array","maxItems":8,"items":{"type":"object","required":["label","value"],"properties":{"label":{"$ref":"shortText"},"value":{"$ref":"text"}}}},"confirmLabel":{"$ref":"label"},"cancelLabel":{"$ref":"label"},"allowChange":{"type":"boolean","default":true,"description":"Offer \"Change\" with a text field."}},"x-rules":[]},"choice":{"phase":1,"summary":"Pick several of 2-6 options, or options that need a picture or a short text each. For one plain question with simple options use the built-in clarify tool instead.","type":"object","required":["question","options"],"properties":{"question":{"$ref":"text"},"options":{"type":"array","minItems":2,"maxItems":6,"items":{"type":"object","required":["label"],"properties":{"id":{"$ref":"itemId"},"label":{"$ref":"shortText"},"description":{"$ref":"text"},"icon":{"$ref":"icon"},"image":{"$ref":"image"}}}},"multiple":{"type":"boolean","default":false,"description":"Allow several picks."},"min":{"type":"integer","minimum":1,"maximum":6,"description":"Fewest picks (multiple only)."},"max":{"type":"integer","minimum":1,"maximum":6,"description":"Most picks (multiple only)."},"allowOther":{"type":"boolean","default":false,"description":"Add a free-text \"Other\" field."},"submitLabel":{"$ref":"label"}},"x-rules":["uniqueOptionIds","minMaxPicks"]},"schedule":{"phase":2,"summary":"Offer time slots to pick from (meetings, appointments).","type":"object","required":["slots"],"properties":{"title":{"$ref":"shortText"},"timezone":{"type":"string","maxLength":64,"description":"IANA zone, e.g. \"Europe/Vienna\"."},"slots":{"type":"array","minItems":1,"maxItems":20,"items":{"type":"object","required":["start"],"properties":{"id":{"$ref":"itemId"},"start":{"type":"string","format":"datetime","description":"ISO 8601, e.g. 2026-11-12T14:00"},"end":{"type":"string","format":"datetime"},"label":{"$ref":"shortText"},"note":{"$ref":"text"},"unavailable":{"type":"boolean","default":false}}}},"multiple":{"type":"boolean","default":false},"noneLabel":{"$ref":"label","description":"Button for \"none of these fit\"."}},"x-rules":["uniqueSlotIds","slotOrder"]},"rating":{"phase":2,"summary":"Ask for a rating on a scale (stars or numbers), optional comment.","type":"object","required":["question"],"properties":{"question":{"$ref":"text"},"scale":{"type":"integer","minimum":3,"maximum":10,"default":5},"style":{"type":"string","enum":["stars","numbers"],"default":"stars"},"lowLabel":{"type":"string","maxLength":30},"highLabel":{"type":"string","maxLength":30},"comment":{"type":"boolean","default":false,"description":"Add an optional comment field."}},"x-rules":[]},"slider":{"phase":2,"summary":"Ask for one number in a range (budget, duration, level).","type":"object","required":["question","min","max"],"properties":{"question":{"$ref":"text"},"min":{"type":"number"},"max":{"type":"number"},"step":{"type":"number","minimum":0},"default":{"type":"number"},"unit":{"type":"string","maxLength":12},"minLabel":{"type":"string","maxLength":30},"maxLabel":{"type":"string","maxLength":30},"submitLabel":{"$ref":"label"}},"x-rules":["sliderRange"]},"quiz":{"phase":2,"summary":"Multiple-choice questions with feedback per answer; the score is sent back.","type":"object","required":["questions"],"properties":{"title":{"$ref":"shortText"},"questions":{"type":"array","minItems":1,"maxItems":10,"items":{"type":"object","required":["question","options","answer"],"properties":{"question":{"$ref":"text"},"options":{"type":"array","minItems":2,"maxItems":6,"items":{"$ref":"shortText"}},"answer":{"type":"integer","minimum":0,"description":"0-based index of the correct option."},"explanation":{"$ref":"text"}}}}},"x-rules":["quizAnswers"]}}}
 
 // ── 10-validate.js ──
 // Port of hui_cards/schema.py. Keep traversal and message order in sync.
@@ -335,6 +335,7 @@ const STRINGS = {
     answered: 'Your answer',
     inactive: 'This chat is no longer active. Open it to answer.',
     offline: 'Hermes is not connected right now.',
+    oversize: 'Your answer is too long to send. Please shorten it.',
     retry: 'Try again',
     riskLow: 'Low risk',
     riskMedium: 'Medium risk',
@@ -410,6 +411,7 @@ const STRINGS = {
     answered: 'Deine Antwort',
     inactive: 'Dieser Chat ist nicht mehr aktiv. Öffne ihn, um zu antworten.',
     offline: 'Hermes ist gerade nicht verbunden.',
+    oversize: 'Deine Antwort ist zu lang. Bitte kürze sie.',
     retry: 'Nochmal versuchen',
     riskLow: 'Geringes Risiko',
     riskMedium: 'Mittleres Risiko',
@@ -498,6 +500,7 @@ function oneLine(value) {
 function clip(value, max = SUMMARY_ITEM_MAX) {
   const s = oneLine(value)
   const chars = [...s]
+  if (max <= 0) return ''
   return chars.length > max ? chars.slice(0, max - 1).join('') + '…' : s
 }
 
@@ -521,37 +524,32 @@ function validTimeZone(zone) {
   }
 }
 
-// Naive ISO times are wall-clock times in the card's zone: show them as written.
-// Times with an offset are converted into the card's zone (or the local one).
+// A naive timestamp is a wall-clock value, independent of the machine's zone.
+function slotDate(value) {
+  if (!isNaiveIso(value)) return new Date(value)
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?$/.exec(value)
+  if (!m) return new Date(NaN)
+  const date = new Date(0)
+  date.setUTCFullYear(+m[1], +m[2] - 1, +m[3])
+  date.setUTCHours(+m[4], +m[5], +(m[6] || 0), 0)
+  return date
+}
+function slotZone(value, card) {
+  return isNaiveIso(value) ? 'UTC' : validTimeZone(card && card.timezone)
+}
+function slotDay(value, card) {
+  return new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: slotZone(value, card) }).format(slotDate(value))
+}
 function formatSlot(slot, card, lang) {
   const locale = lang === 'de' ? 'de-DE' : 'en-GB'
-  const zone = validTimeZone(card && card.timezone)
-  const opts = start => ({
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    ...(isNaiveIso(start) ? {} : zone ? { timeZone: zone } : {})
-  })
-  const timeOpts = start => ({
-    hour: '2-digit',
-    minute: '2-digit',
-    ...(isNaiveIso(start) ? {} : zone ? { timeZone: zone } : {})
-  })
-  const start = new Date(slot.start)
-  if (Number.isNaN(start.getTime())) return oneLine(slot.label || slot.start)
-  let text = new Intl.DateTimeFormat(locale, opts(slot.start)).format(start)
-  if (slot.end) {
-    const end = new Date(slot.end)
-    if (!Number.isNaN(end.getTime())) {
-      const sameDay = start.toDateString() === end.toDateString()
-      const endText = sameDay
-        ? new Intl.DateTimeFormat(locale, timeOpts(slot.end)).format(end)
-        : new Intl.DateTimeFormat(locale, opts(slot.end)).format(end)
-      text += '–' + endText
-    }
-  }
+  const format = (value, day) => new Intl.DateTimeFormat(locale, {
+    ...(day ? { weekday: 'short', day: 'numeric', month: 'short' } : {}),
+    hour: '2-digit', minute: '2-digit', timeZone: slotZone(value, card)
+  }).format(slotDate(value))
+  if (Number.isNaN(slotDate(slot.start).getTime())) return oneLine(slot.label || slot.start)
+  let text = format(slot.start, true)
+  if (slot.end && !Number.isNaN(slotDate(slot.end).getTime()))
+    text += '–' + format(slot.end, slotDay(slot.start, card) !== slotDay(slot.end, card))
   return text
 }
 
@@ -584,6 +582,8 @@ function buildReply(card, answer, lang) {
     case 'checklist': {
       const done = card.items.filter(i => answer.checked.includes(i.id))
       const open = card.items.filter(i => !answer.checked.includes(i.id))
+      data.done_ids = done.map(i => i.id)
+      data.open_ids = open.map(i => i.id)
       data.done = done.map(i => i.text)
       data.open = open.map(i => i.text)
       summary = open.length
@@ -686,41 +686,24 @@ function buildReply(card, answer, lang) {
       throw new Error(`no reply for card type ${card.type}`)
   }
 
-  return fitReply(mark, summary, data)
+  let reply = fitReply(mark, summary, data)
+  if (card.type === 'checklist' && !reply.fits) {
+    delete data.done
+    delete data.open
+    data.done_count = data.done_ids.length
+    data.open_count = data.open_ids.length
+    reply = fitReply(mark, summary, data)
+  }
+  return reply
 }
 
-// Keep the message under the cap: shorten line 1 first, then the longest strings in the data.
+// Preserve the machine payload; only the human-readable summary may be shortened.
 function fitReply(mark, summary, data) {
-  const render = (s, d) => `${mark} ${s}\n${REPLY_TAG} ${JSON.stringify(d)}`
-  let text = render(summary, data)
-  if (text.length > MAX_REPLY) {
-    summary = clip(summary, 200)
-    text = render(summary, data)
-  }
-  let guard = 0
-  while (text.length > MAX_REPLY && guard++ < 200) {
-    const longest = longestString(data)
-    if (!longest || longest.value.length <= 20) break
-    const keep = Math.max(20, longest.value.length - (text.length - MAX_REPLY) - 1)
-    longest.set([...longest.value].slice(0, keep).join('') + '…')
-    text = render(summary, data)
-  }
-  return { mark, summary, data, text }
-}
-
-function longestString(root) {
-  let best = null
-  const walk = (node, set) => {
-    if (typeof node === 'string') {
-      if (!best || node.length > best.value.length) best = { value: node, set }
-    } else if (Array.isArray(node)) {
-      node.forEach((v, i) => walk(v, x => (node[i] = x)))
-    } else if (node && typeof node === 'object') {
-      for (const k of Object.keys(node)) walk(node[k], x => (node[k] = x))
-    }
-  }
-  walk(root, null)
-  return best && best.set ? best : null
+  const suffix = `\n${REPLY_TAG} ${JSON.stringify(data)}`
+  const available = MAX_REPLY - [...`${mark} ${suffix}`].length
+  summary = clip(summary, Math.max(0, available))
+  const text = `${mark} ${summary}${suffix}`
+  return { mark, summary, data, text, fits: [...text].length <= MAX_REPLY }
 }
 
 // ── 40-store.js ──
@@ -729,6 +712,7 @@ function longestString(root) {
 // scoped, on this computer), keyed by cardId; the oldest cards are dropped beyond a cap.
 
 const STORE_CAP = 300
+const ANSWER_CAP = 5000
 const memoryStorage = () => {
   const map = new Map()
   return {
@@ -743,16 +727,39 @@ const cardListeners = new Map()
 
 function useStorage(storage) {
   cardStorage = storage || memoryStorage()
+  // Upgrade answers written by older versions before their draft records can be evicted.
+  const ids = cardStorage.get('index', [])
+  if (Array.isArray(ids)) for (const id of ids) {
+    const record = cardStorage.get(`card.${id}`, null)
+    if (record && record.answer) {
+      if (!cardStorage.get(`answer.${id}`, null)) saveAnswer(id, record.answer)
+      const { answer, ...draft } = record
+      cardStorage.set(`card.${id}`, draft)
+    }
+  }
 }
 
 function readCard(cardId) {
   const value = cardStorage.get(`card.${cardId}`, null)
-  return value && typeof value === 'object' ? value : {}
+  const answer = cardStorage.get(`answer.${cardId}`, null)
+  return { ...(value && typeof value === 'object' ? value : {}), ...(answer ? { answer } : {}) }
+}
+
+function saveAnswer(cardId, answer) {
+  cardStorage.set(`answer.${cardId}`, answer)
+  const existing = cardStorage.get('answerIndex', [])
+  const answers = Array.isArray(existing) ? existing.filter(id => id !== cardId) : []
+  answers.push(cardId)
+  while (answers.length > ANSWER_CAP) cardStorage.remove(`answer.${answers.shift()}`)
+  cardStorage.set('answerIndex', answers)
 }
 
 function writeCard(cardId, patch) {
   const next = { ...readCard(cardId), ...patch, touched: Date.now() }
-  cardStorage.set(`card.${cardId}`, next)
+  if (patch.answer) saveAnswer(cardId, patch.answer)
+  // Answer tombstones are stored separately so draft eviction cannot remove them.
+  const { answer, ...draftRecord } = next
+  cardStorage.set(`card.${cardId}`, draftRecord)
   const index = cardStorage.get('index', [])
   const list = Array.isArray(index) ? index.filter(id => id !== cardId) : []
   list.push(cardId)
@@ -799,7 +806,8 @@ const ACCENT_VARS = {
 
 const CARD_CSS = `
 .huic{--huic-accent:var(--ui-accent);--huic-pad:14px;container-type:inline-size;box-sizing:border-box;width:100%;max-width:680px;margin:6px 0;border:1px solid var(--ui-stroke-tertiary);border-radius:12px;background:var(--ui-chat-surface-background,transparent);color:var(--ui-text-primary);font-size:13px;line-height:1.45;overflow:hidden;text-align:left}
-.huic *{box-sizing:border-box}
+.huic *{box-sizing:border-box;overflow-wrap:anywhere}
+.huic-body>*{min-width:0}
 .huic.huic-compact{--huic-pad:10px;font-size:12.5px}
 .huic :focus-visible{outline:2px solid var(--huic-accent);outline-offset:2px}
 .huic-head{padding:var(--huic-pad) var(--huic-pad) 2px}
@@ -871,19 +879,22 @@ function Style() {
   return jsx('style', { children: CARD_CSS })
 }
 
+function limitText(value, max) { return [...value].slice(0, max).join('') }
+
 function cx(...names) {
   return names.filter(Boolean).join(' ')
 }
 
 // Buttons use our own styles so the accent setting applies and nothing depends on
 // app class names (Tailwind classes only exist for what the app itself uses).
-function Btn({ variant = 'secondary', onClick, disabled, children, label, type = 'button', autoFocus }) {
+function Btn({ variant = 'secondary', onClick, disabled, children, label, type = 'button', autoFocus, ref }) {
   return jsx('button', {
     type,
     className: cx('huic-btn', variant !== 'secondary' && `huic-btn-${variant}`),
     onClick,
     disabled,
     autoFocus,
+    ref,
     'aria-label': label,
     children
   })
@@ -936,10 +947,12 @@ function Footer({ hint, children }) {
   })
 }
 
-function AnsweredBar({ lang, record }) {
+function AnsweredBar({ lang, record, focus }) {
+  const ref = useRef(null)
+  useEffect(() => { if (focus) ref.current?.focus() }, [focus])
   return jsxs('div', {
     className: 'huic-answer',
-    role: 'status',
+    role: 'status', ref, tabIndex: -1,
     children: [
       jsx('span', { 'aria-hidden': true, children: record.mark || '✓' }),
       jsxs('span', {
@@ -995,6 +1008,7 @@ function useCardAnswer(card, sessionId, lang) {
   const gateway = sdk.useValue ? sdk.useValue(sdk.host.state.gateway) : 'open'
   const [problem, setProblem] = useState(null) // null | 'inactive' | 'offline'
   const sending = useRef(false)
+  const [focusAnswer, setFocusAnswer] = useState(false)
 
   const answered = Boolean(record.answer)
   const offline = typeof gateway === 'string' && gateway !== 'open'
@@ -1009,6 +1023,7 @@ function useCardAnswer(card, sessionId, lang) {
       sending.current = true
       try {
         const reply = buildReply(card, answer, lang)
+        if (!reply.fits) { setProblem('oversize'); return false }
         // Fail closed: without the card's own session there is no safe place to send.
         const ok = sessionId ? sdk.host.composer.submit(sessionId, reply.text) === true : false
         if (!ok) {
@@ -1017,8 +1032,9 @@ function useCardAnswer(card, sessionId, lang) {
         }
         setProblem(null)
         writeCard(card.cardId, {
-          answer: { mark: reply.mark, summary: reply.summary, data: reply.data, at: Date.now() }
+          answer: { mark: reply.mark, summary: reply.summary, data: reply.data, selection: answer, at: Date.now() }
         })
+        setFocusAnswer(true)
         return true
       } finally {
         sending.current = false
@@ -1032,12 +1048,14 @@ function useCardAnswer(card, sessionId, lang) {
 
   const locked = answered
   const status = answered
-    ? jsx(AnsweredBar, { lang, record: record.answer })
-    : problem === 'inactive'
+    ? jsx(AnsweredBar, { lang, record: record.answer, focus: focusAnswer })
+    : !sessionId || problem === 'inactive'
       ? jsx(NoticeBar, {
           text: t(lang, 'inactive'),
           action: jsx(Btn, { variant: 'ghost', onClick: () => setProblem(null), children: t(lang, 'retry') })
         })
+      : problem === 'oversize'
+        ? jsx(NoticeBar, { text: t(lang, 'oversize') })
       : offline || problem === 'offline'
         ? jsx(NoticeBar, { text: t(lang, 'offline') })
         : null
@@ -1048,9 +1066,9 @@ function useCardAnswer(card, sessionId, lang) {
     answer: record.answer,
     answered,
     locked,
-    canSend: !answered && !offline && problem !== 'inactive',
+    canSend: Boolean(sessionId) && !answered && !offline && problem !== 'inactive',
     // No dead buttons: actions disappear while the card can't send (answered, chat gone, offline).
-    showActions: !answered && !offline && problem !== 'inactive',
+    showActions: Boolean(sessionId) && !answered && !offline && problem !== 'inactive',
     submit,
     saveDraft,
     status
@@ -1127,9 +1145,11 @@ function ChoiceCard({ card, sessionId, display, lang }) {
   const labelId = useId()
   const ans = useCardAnswer(card, sessionId, lang)
   const sent = ans.answer && ans.answer.data
-  const [selected, setSelected] = useState(() => (sent ? sent.selected || [] : []))
+  const [picked, setSelected] = useState(() => (sent ? sent.selected || [] : []))
+  const selected = sent ? sent.selected || [] : picked
   const [other, setOther] = useState(() => (sent && sent.other) || '')
-  const [otherOn, setOtherOn] = useState(() => Boolean(sent && sent.other))
+  const [localOtherOn, setOtherOn] = useState(() => Boolean(sent && sent.other))
+  const otherOn = sent ? Boolean(sent.other) : localOtherOn
   const otherRef = useRef(null)
 
   const options = card.allowOther
@@ -1192,10 +1212,10 @@ function ChoiceCard({ card, sessionId, display, lang }) {
           ref: otherRef,
           className: 'huic-input',
           value: other,
-          maxLength: 300,
+          maxLength: 600,
           placeholder: t(lang, 'otherPlaceholder'),
           'aria-label': t(lang, 'other'),
-          onChange: e => setOther(e.target.value),
+          onChange: e => setOther(limitText(e.target.value, 300)),
           onKeyDown: e => {
             if (e.key === 'Enter') {
               e.preventDefault()
@@ -1251,21 +1271,19 @@ function ChecklistCard({ card, sessionId, display, lang }) {
   const ans = useCardAnswer(card, sessionId, lang)
   const initial = () => {
     if (ans.answer && ans.answer.data) {
-      const done = new Set(ans.answer.data.done || [])
-      return card.items.filter(i => done.has(i.text)).map(i => i.id)
+      return ans.answer.selection?.checked || ans.answer.data.done_ids || ans.draft?.checked || []
     }
     if (ans.draft && Array.isArray(ans.draft.checked)) return ans.draft.checked
     return card.items.filter(i => i.checked).map(i => i.id)
   }
-  const [checked, setChecked] = useState(initial)
+  const [localChecked, setChecked] = useState(initial)
+  const checked = ans.answer ? initial() : ans.draft?.checked || localChecked
 
   const toggle = id => {
     if (ans.locked) return
-    setChecked(prev => {
-      const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-      ans.saveDraft({ checked: next })
-      return next
-    })
+    const next = checked.includes(id) ? checked.filter(x => x !== id) : [...checked, id]
+    setChecked(next)
+    ans.saveDraft({ checked: next })
   }
 
   const total = card.items.length
@@ -1491,7 +1509,7 @@ function checkField(field, raw, lang) {
     return null
   }
   if (field.kind === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return t(lang, 'errEmail')
-  const max = field.maxLength || TEXT_MAX[field.kind]
+  const max = TEXT_MAX[field.kind] ? Math.min(field.maxLength || Infinity, TEXT_MAX[field.kind]) : field.maxLength
   if (max && [...value].length > max) return t(lang, 'errTooLong', { max })
   return null
 }
@@ -1559,8 +1577,8 @@ function FormField({ field, value, error, disabled, lang, onChange, baseId }) {
       className: 'huic-input',
       value,
       placeholder: field.placeholder,
-      maxLength: field.maxLength || TEXT_MAX.textarea,
-      onChange: e => onChange(e.target.value)
+      maxLength: Math.min(field.maxLength || Infinity, TEXT_MAX.textarea) * 2,
+      onChange: e => onChange(limitText(e.target.value, Math.min(field.maxLength || Infinity, TEXT_MAX.textarea)))
     })
   } else {
     const type = { number: 'number', date: 'date', time: 'time', email: 'email' }[field.kind] || 'text'
@@ -1577,8 +1595,8 @@ function FormField({ field, value, error, disabled, lang, onChange, baseId }) {
           max: field.kind === 'number' ? field.max : undefined,
           step: field.kind === 'number' ? field.step ?? 'any' : undefined,
           inputMode: field.kind === 'number' ? 'decimal' : undefined,
-          maxLength: type === 'text' || type === 'email' ? field.maxLength || TEXT_MAX[field.kind] : undefined,
-          onChange: e => onChange(e.target.value)
+          maxLength: type === 'text' || type === 'email' ? Math.min(field.maxLength || Infinity, TEXT_MAX[field.kind]) * 2 : undefined,
+          onChange: e => onChange(TEXT_MAX[field.kind] ? limitText(e.target.value, Math.min(field.maxLength || Infinity, TEXT_MAX[field.kind])) : e.target.value)
         }),
         field.unit ? jsx('span', { className: 'huic-help', children: field.unit }) : null
       ]
@@ -1610,7 +1628,7 @@ function FormCard({ card, sessionId, display, lang }) {
   const labelId = useId()
   const baseId = useId()
   const ans = useCardAnswer(card, sessionId, lang)
-  const [values, setValues] = useState(() => {
+  const [localValues, setValues] = useState(() => {
     const base = initialFormValues(card)
     if (ans.answer && ans.answer.data && ans.answer.data.values) {
       for (const [k, v] of Object.entries(ans.answer.data.values)) base[k] = typeof v === 'boolean' ? v : v === null ? '' : String(v)
@@ -1619,6 +1637,7 @@ function FormCard({ card, sessionId, display, lang }) {
     }
     return base
   })
+  const values = ans.answer?.data?.values || ans.draft?.values || localValues
   const [tried, setTried] = useState(false)
   const [focusTick, setFocusTick] = useState(0)
   const formRef = useRef(null)
@@ -1638,12 +1657,11 @@ function FormCard({ card, sessionId, display, lang }) {
     if (el && el.focus) el.focus()
   }, [focusTick])
 
-  const change = name => value =>
-    setValues(prev => {
-      const next = { ...prev, [name]: value }
-      ans.saveDraft({ values: next })
-      return next
-    })
+  const change = name => value => {
+    const next = { ...values, [name]: value }
+    setValues(next)
+    ans.saveDraft({ values: next })
+  }
 
   const onSubmit = event => {
     event.preventDefault()
@@ -1669,7 +1687,7 @@ function FormCard({ card, sessionId, display, lang }) {
           FormField,
           {
             field,
-            value: values[field.name],
+            value: values[field.name] ?? '',
             error: tried ? errors[field.name] : null,
             disabled: ans.locked,
             lang,
@@ -1713,9 +1731,13 @@ function ConfirmCard({ card, sessionId, display, lang }) {
   const [changing, setChanging] = useState(false)
   const [change, setChange] = useState('')
   const changeRef = useRef(null)
+  const changeButtonRef = useRef(null)
+  const wasChanging = useRef(false)
 
   useEffect(() => {
     if (changing && changeRef.current) changeRef.current.focus()
+    else if (wasChanging.current) changeButtonRef.current?.focus()
+    wasChanging.current = changing
   }, [changing])
 
   const risk = card.risk
@@ -1757,10 +1779,10 @@ function ConfirmCard({ card, sessionId, display, lang }) {
             ref: changeRef,
             className: 'huic-input',
             value: change,
-            maxLength: 1000,
+            maxLength: 2000,
             placeholder: t(lang, 'changePlaceholder'),
             'aria-label': t(lang, 'changePlaceholder'),
-            onChange: e => setChange(e.target.value),
+            onChange: e => setChange(limitText(e.target.value, 1000)),
             onKeyDown: e => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && change.trim()) {
                 e.preventDefault()
@@ -1791,7 +1813,7 @@ function ConfirmCard({ card, sessionId, display, lang }) {
       ]
     : [
         card.allowChange !== false
-          ? jsx(Btn, { variant: 'ghost', onClick: () => setChanging(true), children: t(lang, 'change') }, 'change')
+          ? jsx(Btn, { ref: changeButtonRef, variant: 'ghost', onClick: () => setChanging(true), children: t(lang, 'change') }, 'change')
           : null,
         jsx(Btn, { variant: 'secondary', onClick: () => ans.submit({ decision: 'no' }), children: card.cancelLabel || t(lang, 'no') }, 'no'),
         jsx(
@@ -1812,6 +1834,294 @@ function ConfirmCard({ card, sessionId, display, lang }) {
     title: card.title,
     children: body,
     footer: ans.showActions ? jsx(Footer, { children: buttons }) : null,
+    after: ans.status
+  })
+}
+
+// ── 70-rating.js ──
+// rating: a keyboard-operable radio scale, with an optional comment.
+function RatingCard({ card, sessionId, display, lang }) {
+  const labelId = useId()
+  const ans = useCardAnswer(card, sessionId, lang)
+  const sent = ans.answer && ans.answer.data
+  const [picked, setPicked] = useState(null)
+  const [comment, setComment] = useState('')
+  const value = sent ? sent.value : picked
+  const scale = card.scale ?? 5
+  const roving = useRovingFocus(scale)
+  const choose = n => { if (!ans.locked) setPicked(n) }
+
+  return jsx(Shell, {
+    card, display, labelId, title: card.question,
+    children: [
+      jsx('div', {
+        role: 'radiogroup', 'aria-labelledby': labelId,
+        style: { display: 'grid', gridTemplateColumns: `repeat(${scale},minmax(0,1fr))`, gap: 3 },
+        children: Array.from({ length: scale }, (_, i) => jsx('button', {
+          type: 'button', role: 'radio', className: 'huic-opt',
+          'aria-label': t(lang, 'rate', { n: i + 1, max: scale }),
+          'aria-checked': value === i + 1,
+          disabled: ans.locked, tabIndex: i === (value ? value - 1 : 0) ? 0 : -1,
+          ref: el => (roving.refs.current[i] = el),
+          onKeyDown: roving.onKeyDown(i, next => choose(next + 1)),
+          onClick: () => choose(i + 1),
+          style: {
+            padding: '8px 0', justifyContent: 'center', minWidth: 0,
+            fontSize: card.style === 'numbers' ? 14 : 20,
+            color: value >= i + 1 ? 'var(--huic-accent)' : 'var(--ui-text-tertiary)'
+          },
+          children: card.style === 'numbers' ? i + 1 : '★'
+        }, i + 1))
+      }),
+      card.lowLabel || card.highLabel ? jsxs('div', {
+        className: 'huic-sub', style: { display: 'flex', justifyContent: 'space-between', gap: 12 },
+        children: [jsx('span', { children: card.lowLabel }), jsx('span', { style: { textAlign: 'right' }, children: card.highLabel })]
+      }) : null,
+      card.comment ? jsxs('label', {
+        className: 'huic-field',
+        children: [
+          jsx('span', { className: 'huic-label', children: t(lang, 'comment') }),
+          jsx('textarea', {
+            className: 'huic-input', disabled: ans.locked, maxLength: 2000,
+            value: sent ? sent.comment || '' : comment, onChange: e => setComment(limitText(e.target.value, 1000))
+          })
+        ]
+      }) : null
+    ],
+    footer: ans.showActions ? jsx(Footer, {
+      children: jsx(Btn, { variant: 'primary', disabled: value === null,
+        onClick: () => { if (value !== null) ans.submit({ value, comment }) }, children: t(lang, 'send') })
+    }) : null,
+    after: ans.status
+  })
+}
+
+// ── 71-slider.js ──
+// Snap relative to min, just like the native range input, without float noise.
+function sliderInitialValue(card) {
+  if (card.default !== undefined) return card.default
+  const step = card.step || 1
+  const value = card.min + Math.round(((card.max - card.min) / 2) / step) * step
+  return Number(Math.min(card.max, Math.max(card.min, value)).toPrecision(12))
+}
+
+function SliderCard({ card, sessionId, display, lang }) {
+  const labelId = useId()
+  const ans = useCardAnswer(card, sessionId, lang)
+  const [draftValue, setValue] = useState(() => ans.draft?.value ?? sliderInitialValue(card))
+  const value = ans.answer ? ans.answer.data.value : (ans.draft?.value ?? draftValue)
+  const valueText = card.unit ? `${value} ${card.unit}` : String(value)
+  const change = e => {
+    if (ans.locked) return
+    const next = Number(e.target.value)
+    setValue(next)
+    ans.saveDraft({ value: next })
+  }
+  return jsx(Shell, {
+    card, display, labelId, title: card.question,
+    children: [
+      jsx('output', { 'aria-live': 'polite', style: { fontSize: 28, fontWeight: 600, textAlign: 'center' }, children: valueText }),
+      jsx('input', {
+        type: 'range', min: card.min, max: card.max, step: card.step || 1, value,
+        disabled: ans.locked, 'aria-labelledby': labelId, 'aria-valuetext': valueText,
+        onChange: change, style: { width: '100%', margin: '8px 0', accentColor: 'var(--huic-accent)' }
+      }),
+      jsxs('div', {
+        className: 'huic-sub', style: { display: 'flex', justifyContent: 'space-between', gap: 12 },
+        children: [jsx('span', { children: card.minLabel || String(card.min) }), jsx('span', { style: { textAlign: 'right' }, children: card.maxLabel || String(card.max) })]
+      })
+    ],
+    footer: ans.showActions ? jsx(Footer, { children: jsx(Btn, {
+      variant: 'primary', onClick: () => ans.submit({ value }), children: card.submitLabel || t(lang, 'send')
+    }) }) : null,
+    after: ans.status
+  })
+}
+
+// ── 72-schedule.js ──
+// Group in the same wall-clock zone used by formatSlot (naive times stay local).
+function scheduleDays(card, lang) {
+  const groups = new Map()
+  for (const slot of card.slots) {
+    const zone = slotZone(slot.start, card)
+    const day = new Intl.DateTimeFormat(lang === 'de' ? 'de-DE' : 'en-GB', {
+      weekday: 'long', year: 'numeric', month: 'short', day: 'numeric', ...(zone ? { timeZone: zone } : {})
+    }).format(slotDate(slot.start))
+    if (!groups.has(day)) groups.set(day, [])
+    groups.get(day).push(slot)
+  }
+  return [...groups].map(([day, slots]) => ({ day, slots }))
+}
+
+function ScheduleCard({ card, sessionId, display, lang }) {
+  const labelId = useId()
+  const ans = useCardAnswer(card, sessionId, lang)
+  const [picked, setPicked] = useState([])
+  const sent = ans.answer && ans.answer.data
+  const selected = sent ? (sent.selected || []).map(s => s.id) : picked
+  const available = card.slots.filter(s => !s.unavailable)
+  const roving = useRovingFocus(available.length)
+  const focusIndex = Math.max(0, available.findIndex(s => selected.includes(s.id)))
+  const toggle = slot => {
+    if (ans.locked || slot.unavailable) return
+    setPicked(card.multiple ? (selected.includes(slot.id) ? selected.filter(id => id !== slot.id) : [...selected, slot.id]) : [slot.id])
+  }
+  const groups = scheduleDays(card, lang)
+  return jsx(Shell, {
+    card, display, labelId, title: card.title, subtitle: card.timezone,
+    children: jsx('div', {
+      role: card.multiple ? 'group' : 'radiogroup',
+      'aria-labelledby': card.title ? labelId : undefined, 'aria-label': card.title ? undefined : t(lang, 'pick'),
+      style: { display: 'flex', flexDirection: 'column', gap: 8 },
+      children: groups.map(group => jsxs('div', {
+        style: { display: 'flex', flexDirection: 'column', gap: 6 },
+        children: [
+          groups.length > 1 ? jsx('h4', { className: 'huic-label', style: { margin: '4px 0' }, children: group.day }) : null,
+          group.slots.map(slot => {
+            const index = available.findIndex(s => s.id === slot.id)
+            return jsx(OptionTile, {
+              option: { label: formatSlot(slot, card, lang), description: [slot.label, slot.note, slot.unavailable ? t(lang, 'unavailable') : null].filter(Boolean).join(' · ') },
+              checked: selected.includes(slot.id), multiple: Boolean(card.multiple), disabled: ans.locked || slot.unavailable,
+              tabIndex: slot.unavailable ? -1 : card.multiple || index === focusIndex ? 0 : -1,
+              refCb: el => { if (index >= 0) roving.refs.current[index] = el },
+              onKeyDown: card.multiple || slot.unavailable ? undefined : roving.onKeyDown(index, next => toggle(available[next])),
+              onToggle: () => toggle(slot)
+            }, slot.id)
+          })
+        ]
+      }, group.day))
+    }),
+    footer: ans.showActions ? jsx(Footer, {
+      children: jsxs(Fragment, { children: [
+        card.noneLabel ? jsx(Btn, { variant: 'ghost', onClick: () => ans.submit({ none: true }), children: card.noneLabel }) : null,
+        jsx(Btn, { variant: 'primary', disabled: !selected.length,
+          onClick: () => { if (selected.length) ans.submit({ selected }) }, children: t(lang, 'send') })
+      ] })
+    }) : null,
+    after: ans.status
+  })
+}
+
+// ── 73-steps.js ──
+function StepsCard({ card, sessionId, display, lang }) {
+  const labelId = useId()
+  const ans = useCardAnswer(card, sessionId, lang)
+  const [localIndex, setIndex] = useState(() => Math.max(0, Math.min(card.steps.length - 1, ans.draft?.index ?? 0)))
+  const index = ans.draft?.index ?? localIndex
+  const headingRef = useRef(null)
+  const previous = useRef(index)
+  useEffect(() => {
+    if (previous.current !== index) headingRef.current?.focus()
+    previous.current = index
+  }, [index])
+  const move = next => {
+    if (ans.locked) return
+    setIndex(next)
+    ans.saveDraft({ index: next })
+  }
+  const step = card.steps[index]
+  const progressText = t(lang, 'stepOf', { n: index + 1, total: card.steps.length })
+  return jsx(Shell, {
+    card, display, labelId, title: card.title,
+    children: ans.locked ? jsx('ol', {
+      style: { margin: 0, paddingLeft: 22 },
+      children: card.steps.map((s, i) => jsx('li', { children: s.title }, i))
+    }) : [
+      jsx('span', { className: 'huic-sub', children: progressText }),
+      jsx('div', {
+        className: 'huic-progress', role: 'progressbar', 'aria-label': progressText,
+        'aria-valuemin': 0, 'aria-valuemax': card.steps.length, 'aria-valuenow': index + 1,
+        children: jsx('span', { style: { width: `${((index + 1) / card.steps.length) * 100}%` } })
+      }),
+      jsx('h4', { ref: headingRef, tabIndex: -1, className: 'huic-title', children: step.title }),
+      step.body ? jsx('p', { style: { margin: 0, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }, children: step.body }) : null,
+      step.command ? jsx(CodeBlock, { code: step.command, lang }) : null,
+      step.image ? jsx(CardImage, { src: step.image }, index) : null
+    ],
+    footer: ans.showActions ? jsx(Footer, { children: jsxs(Fragment, { children: [
+      jsx(Btn, { variant: 'ghost', onClick: () => ans.submit({ stuck: index + 1 }), children: t(lang, 'stuck') }),
+      jsx(Btn, { disabled: index === 0, onClick: () => move(index - 1), children: t(lang, 'back') }),
+      index === card.steps.length - 1
+        ? jsx(Btn, { variant: 'primary', onClick: () => ans.submit({ completed: true }), children: card.finishLabel || t(lang, 'finish') })
+        : jsx(Btn, { variant: 'primary', onClick: () => move(index + 1), children: t(lang, 'next') })
+    ] }) }) : null,
+    after: ans.status
+  })
+}
+
+// ── 74-quiz.js ──
+// One question at a time; checking locks that choice before revealing feedback.
+function QuizCard({ card, sessionId, display, lang }) {
+  const labelId = useId()
+  const questionId = useId()
+  const ans = useCardAnswer(card, sessionId, lang)
+  const sent = ans.answer && ans.answer.data
+  const [progress, setProgress] = useState(() => ({
+    index: sent ? card.questions.length - 1 : Math.max(0, Math.min(card.questions.length - 1, ans.draft?.index ?? 0)),
+    chosen: sent ? sent.answers.map(a => a.chosen) : card.questions.map((_, i) => ans.draft?.chosen?.[i] ?? null),
+    checked: card.questions.map((_, i) => Boolean(sent || ans.draft?.checked?.[i]))
+  }))
+  const visible = sent ? { index: progress.index, chosen: sent.answers.map(a => a.chosen), checked: card.questions.map(() => true) } : (ans.draft || progress)
+  const { index, chosen, checked } = visible
+  const q = card.questions[index]
+  const headingRef = useRef(null)
+  const previous = useRef(index)
+  useEffect(() => {
+    if (previous.current !== index) headingRef.current?.focus()
+    previous.current = index
+  }, [index])
+  const update = change => {
+    if (ans.locked) return
+    const next = { ...visible, ...change }
+    setProgress(next)
+    ans.saveDraft(next)
+  }
+  const pick = option => {
+    if (checked[index] || ans.locked) return
+    update({ chosen: chosen.map((v, i) => i === index ? option : v) })
+  }
+  const roving = useRovingFocus(q.options.length)
+  const allChecked = checked.every(Boolean)
+  const score = chosen.filter((v, i) => v === card.questions[i].answer).length
+  const locked = ans.locked || checked[index]
+  return jsx(Shell, {
+    card, display, labelId, title: card.title,
+    subtitle: `${index + 1} / ${card.questions.length}`,
+    children: [
+      jsx('h4', { id: questionId, ref: headingRef, tabIndex: -1, className: 'huic-title', children: q.question }),
+      jsx('div', {
+        role: 'radiogroup', 'aria-labelledby': questionId,
+        style: { display: 'flex', flexDirection: 'column', gap: 6 },
+        children: q.options.map((option, i) => jsx(OptionTile, {
+          option: { label: option }, checked: chosen[index] === i, multiple: false, disabled: locked,
+          tabIndex: i === (chosen[index] ?? 0) ? 0 : -1,
+          refCb: el => (roving.refs.current[i] = el),
+          onKeyDown: roving.onKeyDown(i, pick), onToggle: () => pick(i)
+        }, `${index}-${i}`))
+      }),
+      checked[index] ? jsxs('div', {
+        role: 'status', className: 'huic-field',
+        children: [
+          jsx('b', { children: t(lang, chosen[index] === q.answer ? 'correct' : 'wrong') }),
+          q.explanation ? jsx('p', { style: { margin: 0 }, children: q.explanation }) : null
+        ]
+      }) : null,
+      allChecked && index === card.questions.length - 1 ? jsx('p', {
+        className: 'huic-title', role: 'status', children: t(lang, 'score', { score, total: card.questions.length })
+      }) : null
+    ],
+    footer: ans.showActions ? jsx(Footer, { children: jsxs(Fragment, { children: [
+      index > 0 ? jsx(Btn, { onClick: () => update({ index: index - 1 }), children: t(lang, 'back') }) : null,
+      !checked[index] ? jsx(Btn, {
+        variant: 'primary', disabled: chosen[index] === null,
+        onClick: () => { if (chosen[index] !== null) update({ checked: checked.map((v, i) => i === index ? true : v) }) },
+        children: t(lang, 'check')
+      }) : index < card.questions.length - 1 ? jsx(Btn, {
+        variant: 'primary', onClick: () => update({ index: index + 1 }), children: t(lang, 'next')
+      }) : jsx(Btn, {
+        variant: 'primary', disabled: !allChecked, onClick: () => { if (allChecked) ans.submit({ chosen }) }, children: t(lang, 'sendScore')
+      })
+    ] }) }) : null,
     after: ans.status
   })
 }
@@ -1882,7 +2192,12 @@ Object.assign(CARD_COMPONENTS, {
   checklist: ChecklistCard,
   compare: CompareCard,
   form: FormCard,
-  confirm: ConfirmCard
+  confirm: ConfirmCard,
+  rating: RatingCard,
+  slider: SliderCard,
+  schedule: ScheduleCard,
+  steps: StepsCard,
+  quiz: QuizCard
 })
 
 let pluginCtx = null
@@ -1911,7 +2226,7 @@ const plugin = {
           keywords: ['cards', 'hui', 'demo', 'example'],
           run: () => {
             const sessionId = sdk.host.state.focusedSessionId && sdk.host.state.focusedSessionId.get()
-            const sent = sdk.host.composer.submit(sessionId || null, DEMO_PROMPT.replace('{type}', 'choice'))
+            const sent = sdk.host.composer.submit(sessionId || null, DEMO_PROMPT.replace('{type}', 'checklist'))
             if (!sent) sdk.host.notify({ kind: 'info', message: 'Open a chat first, then run this again.' })
           }
         }

@@ -130,10 +130,22 @@ def take_pending(session_id: str) -> list[str]:
     return [tag for ts, tag in entries if now - ts <= PENDING_TTL_S]
 
 
-def on_turn_start(session_id: str = "", **_kwargs):
-    """pre_llm_call: a new turn starts; forget MEDIA lines of a turn that never finished."""
+DESKTOP_HINT = (
+    "[hermes-ui-cards] When the user has to tick off a list, compare 2-4 options, fill in several details, "
+    "follow steps or approve an action with consequences, show an interactive card with the hui_present tool "
+    "(through tool_call if it is deferred). Plain answers and simple either-or questions stay text or clarify."
+)
+
+
+def on_turn_start(session_id: str = "", platform: str = "", **_kwargs):
+    """pre_llm_call: forget MEDIA lines of a turn that never finished, and on Desktop remind the
+    model that cards exist (Hermes defers plugin tools behind tool_search, so the model would
+    otherwise only see the tool's name). The hint is ephemeral: it is not stored in the session."""
     with _pending_lock:
         _pending.pop(session_id or "", None)
+    surface = "desktop" if str(platform or "").lower() == "desktop" else current_surface()
+    if surface == "desktop" and bool(setting("enabled", True)):
+        return {"context": DESKTOP_HINT}
     return None
 
 
@@ -272,10 +284,12 @@ def _signature(ctype: str, spec: dict) -> str:
 
 def tool_description() -> str:
     lines = [
-        "Show an interactive card the user answers with a click (Hermes Desktop) or by typing (CLI, "
-        "Telegram and other chats get a text version automatically). Use it when the next step needs a "
+        "Interactive cards: checklist, compare, form, steps, confirm. "
+        "The user answers with a click in Hermes Desktop or by typing elsewhere (CLI, Telegram and other chats "
+        "get a text version automatically). Use it when the next step needs a "
         "decision or input from the user: pick between options, tick off a list, compare candidates, fill "
-        "in details, approve an action. Not for plain answers, facts or explanations: write those as text.",
+        "in details, follow a guided walkthrough, approve an action. Not for plain answers, facts or explanations: "
+        "write those as text. A single question with a few plain options is the built-in clarify tool's job.",
         "One card per call. After the call, follow the `next` field of the result and end your turn; the "
         "answer comes back as the user's next message with a '[hui-card] {json}' line.",
         "Card types (`?` = optional, strings unless noted, [2-6] = item count; limits are checked and errors name the field):",

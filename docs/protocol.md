@@ -49,7 +49,7 @@ A click on the card sends one message to the same chat, exactly as if the user h
 | Type | Answer fields | Line 1 (English / German) |
 |---|---|---|
 | choice | `selected: [optionId]`, `labels: [label]`, `other?: string` | `✓ Chose: A, B` / `✓ Gewählt: A, B` |
-| checklist | `done: [text]`, `open: [text]` | `✓ Checklist done: 3 of 5 checked. Still open: X, Y` / `✓ Checkliste fertig: 3 von 5 erledigt. Offen: X, Y` |
+| checklist | `done_ids: [itemId]`, `open_ids: [itemId]`, `done: [text]`, `open: [text]` | `✓ Checklist done: 3 of 5 checked. Still open: X, Y` / `✓ Checkliste fertig: 3 von 5 erledigt. Offen: X, Y` |
 | compare | `selected: columnId`, `label` | `✓ Picked: Pixel 10` / `✓ Gewählt: Pixel 10` |
 | form | `values: {name: value}` | `✓ Form sent: Name: Anna, Date: 2026-11-12` / `✓ Formular gesendet: …` |
 | confirm | `decision: "yes" \| "no" \| "change"`, `change?: string` | `✓ Yes, go ahead: <title>` · `✗ No, don't: <title>` · `✎ Change: <text>` / `✓ Ja, mach das: …` · `✗ Nein, lieber nicht: …` · `✎ Ändern: …` |
@@ -59,13 +59,22 @@ A click on the card sends one message to the same chat, exactly as if the user h
 | steps | `completed: true, steps: n` or `stuck: stepNumber, title` | `✓ Done with all 5 steps` · `⚠ Stuck at step 3: <title>` / `✓ Alle 5 Schritte erledigt` · `⚠ Hänge bei Schritt 3: <title>` |
 | quiz | `score`, `total`, `answers: [{q, chosen, correct}]` | `✓ Quiz: 4 of 5 correct` / `✓ Quiz: 4 von 5 richtig` |
 
-A message is capped at 4000 characters; long form values are shortened in line 1 only.
+A message is capped at 4000 Unicode code points, including JSON escaping. Only the
+human-readable first line may be shortened; machine-readable values are never truncated.
+Checklist replies include both item IDs and the corresponding texts in card order. If
+the complete reply would exceed the cap, the reply omits `done` and `open` and instead
+includes `done_count` and `open_count` alongside `done_ids` and `open_ids`. The model
+can look up those IDs in the tool result. If another answer exceeds the cap, the card
+asks the user to shorten it or select fewer items before sending. Text fields accept at
+most 300 code points, email 200, textarea 1000, Other 300, and Change and rating comment
+1000 each; a smaller card-specified field limit still applies.
 
 ## 3. After the answer
 
 - The card shows the answer it sent and can't be sent again (no double sends).
 - Checklist ticks and the answered state are kept in the Desktop's plugin storage, keyed by
   `cardId`, so they survive reopening the chat or restarting the app (on that computer).
+  Up to 300 recent drafts and 5000 recent answered records are retained independently.
 - If the card's chat has no open composer (an old or closed session), the card says
   "This chat is no longer active" instead of showing a dead button.
 - Text surfaces have no state: the user simply replies with a number or words, and the model

@@ -10,20 +10,23 @@ approve. Everything else stays text. Most replies are not cards.
 
 ## Use a card when
 
-- **The next step depends on a choice** between a few concrete options → `choice`
-  (2–6 options, `multiple: true` when several fit, `allowOther: true` when your list may miss theirs).
 - **You hand over a list to work through** (packing, shopping, release steps) → `checklist`.
   The ticks are saved, so the user can come back later.
 - **The user weighs 2–4 candidates** → `compare` with aligned `rows`, at most one `best: true`
   (your recommendation, only if you have a reason).
 - **You need several details at once** (booking, a bug report, settings) → `form`.
   Mark only what you really need as `required`.
+- **The user follows instructions step by step** (setup, repair, a how-to) → `steps`, one step at a
+  time; they tell you when they are done or where they got stuck.
 - **You are about to do something with consequences** (delete, send, buy, overwrite) → `confirm`
   with the exact `action`, the `reason`, a `risk` level and the `command` if there is one.
   A Yes on the card is the user's message, not an approval bypass: Hermes still asks for its own
   approval when a command needs it.
-- Also: `rating` (feedback), `slider` (one number in a range), `schedule` (time slots),
-  `steps` (guided walkthrough), `quiz` (practice questions).
+- **Several picks, or options that need a picture or a short text each** → `choice`
+  (`multiple: true`, `image`, `description`). One plain question with a few simple options is
+  what the built-in `clarify` tool does: use `clarify` for that, not a card.
+- Also: `schedule` (time slots), `rating` (feedback), `slider` (one number in a range),
+  `quiz` (practice questions).
 
 ## Don't use a card when
 
@@ -52,9 +55,9 @@ user types a number or words: map them to the options you sent.
 
 ## Examples
 
-**Card.** User: "Plan a weekend away in November, help me decide."
-→ `choice` "What are you in the mood for?" with City trip / Hiking / Spa, `allowOther: true`.
-After `✓ Chose: Spa`: suggest three spa destinations (a `compare` if they want to weigh them).
+**Card.** User: "I want a new e-bike, around €3,000. Which one?"
+→ `compare` with three models, rows for range, weight, motor and price, `best: true` on the one you
+would pick and why in its `subtitle`. After `✓ Picked: …`: where to test-ride or buy it.
 
 **Card.** User: "Clean up my old log files."
 → Check first what would be deleted, then `confirm` with title "Delete 14 old log files?",
@@ -69,6 +72,9 @@ the exact `command`. Run it only after `✓ Yes, go ahead`.
 
 **No card.** User: "Rename the variable to `count`."
 → Just do it. One obvious action needs no confirmation card.
+
+**No card, clarify.** You need to know "Python or TypeScript?" before you start.
+→ The built-in `clarify` tool. A card adds nothing to a plain either-or question.
 
 ## Rules
 

@@ -3,6 +3,7 @@
 // scoped, on this computer), keyed by cardId; the oldest cards are dropped beyond a cap.
 
 const STORE_CAP = 300
+const ANSWER_CAP = 5000
 const memoryStorage = () => {
   const map = new Map()
   return {
@@ -17,16 +18,39 @@ const cardListeners = new Map()
 
 function useStorage(storage) {
   cardStorage = storage || memoryStorage()
+  // Upgrade answers written by older versions before their draft records can be evicted.
+  const ids = cardStorage.get('index', [])
+  if (Array.isArray(ids)) for (const id of ids) {
+    const record = cardStorage.get(`card.${id}`, null)
+    if (record && record.answer) {
+      if (!cardStorage.get(`answer.${id}`, null)) saveAnswer(id, record.answer)
+      const { answer, ...draft } = record
+      cardStorage.set(`card.${id}`, draft)
+    }
+  }
 }
 
 function readCard(cardId) {
   const value = cardStorage.get(`card.${cardId}`, null)
-  return value && typeof value === 'object' ? value : {}
+  const answer = cardStorage.get(`answer.${cardId}`, null)
+  return { ...(value && typeof value === 'object' ? value : {}), ...(answer ? { answer } : {}) }
+}
+
+function saveAnswer(cardId, answer) {
+  cardStorage.set(`answer.${cardId}`, answer)
+  const existing = cardStorage.get('answerIndex', [])
+  const answers = Array.isArray(existing) ? existing.filter(id => id !== cardId) : []
+  answers.push(cardId)
+  while (answers.length > ANSWER_CAP) cardStorage.remove(`answer.${answers.shift()}`)
+  cardStorage.set('answerIndex', answers)
 }
 
 function writeCard(cardId, patch) {
   const next = { ...readCard(cardId), ...patch, touched: Date.now() }
-  cardStorage.set(`card.${cardId}`, next)
+  if (patch.answer) saveAnswer(cardId, patch.answer)
+  // Answer tombstones are stored separately so draft eviction cannot remove them.
+  const { answer, ...draftRecord } = next
+  cardStorage.set(`card.${cardId}`, draftRecord)
   const index = cardStorage.get('index', [])
   const list = Array.isArray(index) ? index.filter(id => id !== cardId) : []
   list.push(cardId)

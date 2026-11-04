@@ -103,7 +103,7 @@ test('a chat that is no longer active shows a notice instead of a dead button', 
 test('no session id: fail closed, nothing is sent anywhere', async () => {
   const { container, unmount } = await mount(toolResult(choiceCard), { sessionId: null })
   await click(container.querySelectorAll('[role="radio"]')[0])
-  await click(buttonByText(container, 'Send'))
+  assert.equal(buttonByText(container, 'Send'), undefined)
   assert.equal(testHost.submissions.length, 0)
   assert.match(container.textContent, /no longer active/)
   await unmount()

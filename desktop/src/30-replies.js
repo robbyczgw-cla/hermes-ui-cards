@@ -12,6 +12,7 @@ function oneLine(value) {
 function clip(value, max = SUMMARY_ITEM_MAX) {
   const s = oneLine(value)
   const chars = [...s]
+  if (max <= 0) return ''
   return chars.length > max ? chars.slice(0, max - 1).join('') + '…' : s
 }
 
@@ -35,37 +36,32 @@ function validTimeZone(zone) {
   }
 }
 
-// Naive ISO times are wall-clock times in the card's zone: show them as written.
-// Times with an offset are converted into the card's zone (or the local one).
+// A naive timestamp is a wall-clock value, independent of the machine's zone.
+function slotDate(value) {
+  if (!isNaiveIso(value)) return new Date(value)
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?$/.exec(value)
+  if (!m) return new Date(NaN)
+  const date = new Date(0)
+  date.setUTCFullYear(+m[1], +m[2] - 1, +m[3])
+  date.setUTCHours(+m[4], +m[5], +(m[6] || 0), 0)
+  return date
+}
+function slotZone(value, card) {
+  return isNaiveIso(value) ? 'UTC' : validTimeZone(card && card.timezone)
+}
+function slotDay(value, card) {
+  return new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: slotZone(value, card) }).format(slotDate(value))
+}
 function formatSlot(slot, card, lang) {
   const locale = lang === 'de' ? 'de-DE' : 'en-GB'
-  const zone = validTimeZone(card && card.timezone)
-  const opts = start => ({
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    ...(isNaiveIso(start) ? {} : zone ? { timeZone: zone } : {})
-  })
-  const timeOpts = start => ({
-    hour: '2-digit',
-    minute: '2-digit',
-    ...(isNaiveIso(start) ? {} : zone ? { timeZone: zone } : {})
-  })
-  const start = new Date(slot.start)
-  if (Number.isNaN(start.getTime())) return oneLine(slot.label || slot.start)
-  let text = new Intl.DateTimeFormat(locale, opts(slot.start)).format(start)
-  if (slot.end) {
-    const end = new Date(slot.end)
-    if (!Number.isNaN(end.getTime())) {
-      const sameDay = start.toDateString() === end.toDateString()
-      const endText = sameDay
-        ? new Intl.DateTimeFormat(locale, timeOpts(slot.end)).format(end)
-        : new Intl.DateTimeFormat(locale, opts(slot.end)).format(end)
-      text += '–' + endText
-    }
-  }
+  const format = (value, day) => new Intl.DateTimeFormat(locale, {
+    ...(day ? { weekday: 'short', day: 'numeric', month: 'short' } : {}),
+    hour: '2-digit', minute: '2-digit', timeZone: slotZone(value, card)
+  }).format(slotDate(value))
+  if (Number.isNaN(slotDate(slot.start).getTime())) return oneLine(slot.label || slot.start)
+  let text = format(slot.start, true)
+  if (slot.end && !Number.isNaN(slotDate(slot.end).getTime()))
+    text += '–' + format(slot.end, slotDay(slot.start, card) !== slotDay(slot.end, card))
   return text
 }
 
@@ -98,6 +94,8 @@ function buildReply(card, answer, lang) {
     case 'checklist': {
       const done = card.items.filter(i => answer.checked.includes(i.id))
       const open = card.items.filter(i => !answer.checked.includes(i.id))
+      data.done_ids = done.map(i => i.id)
+      data.open_ids = open.map(i => i.id)
       data.done = done.map(i => i.text)
       data.open = open.map(i => i.text)
       summary = open.length
@@ -200,39 +198,22 @@ function buildReply(card, answer, lang) {
       throw new Error(`no reply for card type ${card.type}`)
   }
 
-  return fitReply(mark, summary, data)
+  let reply = fitReply(mark, summary, data)
+  if (card.type === 'checklist' && !reply.fits) {
+    delete data.done
+    delete data.open
+    data.done_count = data.done_ids.length
+    data.open_count = data.open_ids.length
+    reply = fitReply(mark, summary, data)
+  }
+  return reply
 }
 
-// Keep the message under the cap: shorten line 1 first, then the longest strings in the data.
+// Preserve the machine payload; only the human-readable summary may be shortened.
 function fitReply(mark, summary, data) {
-  const render = (s, d) => `${mark} ${s}\n${REPLY_TAG} ${JSON.stringify(d)}`
-  let text = render(summary, data)
-  if (text.length > MAX_REPLY) {
-    summary = clip(summary, 200)
-    text = render(summary, data)
-  }
-  let guard = 0
-  while (text.length > MAX_REPLY && guard++ < 200) {
-    const longest = longestString(data)
-    if (!longest || longest.value.length <= 20) break
-    const keep = Math.max(20, longest.value.length - (text.length - MAX_REPLY) - 1)
-    longest.set([...longest.value].slice(0, keep).join('') + '…')
-    text = render(summary, data)
-  }
-  return { mark, summary, data, text }
-}
-
-function longestString(root) {
-  let best = null
-  const walk = (node, set) => {
-    if (typeof node === 'string') {
-      if (!best || node.length > best.value.length) best = { value: node, set }
-    } else if (Array.isArray(node)) {
-      node.forEach((v, i) => walk(v, x => (node[i] = x)))
-    } else if (node && typeof node === 'object') {
-      for (const k of Object.keys(node)) walk(node[k], x => (node[k] = x))
-    }
-  }
-  walk(root, null)
-  return best && best.set ? best : null
+  const suffix = `\n${REPLY_TAG} ${JSON.stringify(data)}`
+  const available = MAX_REPLY - [...`${mark} ${suffix}`].length
+  summary = clip(summary, Math.max(0, available))
+  const text = `${mark} ${summary}${suffix}`
+  return { mark, summary, data, text, fits: [...text].length <= MAX_REPLY }
 }

@@ -11,9 +11,13 @@ function ConfirmCard({ card, sessionId, display, lang }) {
   const [changing, setChanging] = useState(false)
   const [change, setChange] = useState('')
   const changeRef = useRef(null)
+  const changeButtonRef = useRef(null)
+  const wasChanging = useRef(false)
 
   useEffect(() => {
     if (changing && changeRef.current) changeRef.current.focus()
+    else if (wasChanging.current) changeButtonRef.current?.focus()
+    wasChanging.current = changing
   }, [changing])
 
   const risk = card.risk
@@ -55,10 +59,10 @@ function ConfirmCard({ card, sessionId, display, lang }) {
             ref: changeRef,
             className: 'huic-input',
             value: change,
-            maxLength: 1000,
+            maxLength: 2000,
             placeholder: t(lang, 'changePlaceholder'),
             'aria-label': t(lang, 'changePlaceholder'),
-            onChange: e => setChange(e.target.value),
+            onChange: e => setChange(limitText(e.target.value, 1000)),
             onKeyDown: e => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && change.trim()) {
                 e.preventDefault()
@@ -89,7 +93,7 @@ function ConfirmCard({ card, sessionId, display, lang }) {
       ]
     : [
         card.allowChange !== false
-          ? jsx(Btn, { variant: 'ghost', onClick: () => setChanging(true), children: t(lang, 'change') }, 'change')
+          ? jsx(Btn, { ref: changeButtonRef, variant: 'ghost', onClick: () => setChanging(true), children: t(lang, 'change') }, 'change')
           : null,
         jsx(Btn, { variant: 'secondary', onClick: () => ans.submit({ decision: 'no' }), children: card.cancelLabel || t(lang, 'no') }, 'no'),
         jsx(

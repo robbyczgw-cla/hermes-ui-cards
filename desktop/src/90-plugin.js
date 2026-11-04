@@ -7,7 +7,12 @@ Object.assign(CARD_COMPONENTS, {
   checklist: ChecklistCard,
   compare: CompareCard,
   form: FormCard,
-  confirm: ConfirmCard
+  confirm: ConfirmCard,
+  rating: RatingCard,
+  slider: SliderCard,
+  schedule: ScheduleCard,
+  steps: StepsCard,
+  quiz: QuizCard
 })
 
 let pluginCtx = null
@@ -36,7 +41,7 @@ const plugin = {
           keywords: ['cards', 'hui', 'demo', 'example'],
           run: () => {
             const sessionId = sdk.host.state.focusedSessionId && sdk.host.state.focusedSessionId.get()
-            const sent = sdk.host.composer.submit(sessionId || null, DEMO_PROMPT.replace('{type}', 'choice'))
+            const sent = sdk.host.composer.submit(sessionId || null, DEMO_PROMPT.replace('{type}', 'checklist'))
             if (!sent) sdk.host.notify({ kind: 'info', message: 'Open a chat first, then run this again.' })
           }
         }

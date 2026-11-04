@@ -25,7 +25,7 @@ function checkField(field, raw, lang) {
     return null
   }
   if (field.kind === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return t(lang, 'errEmail')
-  const max = field.maxLength || TEXT_MAX[field.kind]
+  const max = TEXT_MAX[field.kind] ? Math.min(field.maxLength || Infinity, TEXT_MAX[field.kind]) : field.maxLength
   if (max && [...value].length > max) return t(lang, 'errTooLong', { max })
   return null
 }
@@ -93,8 +93,8 @@ function FormField({ field, value, error, disabled, lang, onChange, baseId }) {
       className: 'huic-input',
       value,
       placeholder: field.placeholder,
-      maxLength: field.maxLength || TEXT_MAX.textarea,
-      onChange: e => onChange(e.target.value)
+      maxLength: Math.min(field.maxLength || Infinity, TEXT_MAX.textarea) * 2,
+      onChange: e => onChange(limitText(e.target.value, Math.min(field.maxLength || Infinity, TEXT_MAX.textarea)))
     })
   } else {
     const type = { number: 'number', date: 'date', time: 'time', email: 'email' }[field.kind] || 'text'
@@ -111,8 +111,8 @@ function FormField({ field, value, error, disabled, lang, onChange, baseId }) {
           max: field.kind === 'number' ? field.max : undefined,
           step: field.kind === 'number' ? field.step ?? 'any' : undefined,
           inputMode: field.kind === 'number' ? 'decimal' : undefined,
-          maxLength: type === 'text' || type === 'email' ? field.maxLength || TEXT_MAX[field.kind] : undefined,
-          onChange: e => onChange(e.target.value)
+          maxLength: type === 'text' || type === 'email' ? Math.min(field.maxLength || Infinity, TEXT_MAX[field.kind]) * 2 : undefined,
+          onChange: e => onChange(TEXT_MAX[field.kind] ? limitText(e.target.value, Math.min(field.maxLength || Infinity, TEXT_MAX[field.kind])) : e.target.value)
         }),
         field.unit ? jsx('span', { className: 'huic-help', children: field.unit }) : null
       ]
@@ -144,7 +144,7 @@ function FormCard({ card, sessionId, display, lang }) {
   const labelId = useId()
   const baseId = useId()
   const ans = useCardAnswer(card, sessionId, lang)
-  const [values, setValues] = useState(() => {
+  const [localValues, setValues] = useState(() => {
     const base = initialFormValues(card)
     if (ans.answer && ans.answer.data && ans.answer.data.values) {
       for (const [k, v] of Object.entries(ans.answer.data.values)) base[k] = typeof v === 'boolean' ? v : v === null ? '' : String(v)
@@ -153,6 +153,7 @@ function FormCard({ card, sessionId, display, lang }) {
     }
     return base
   })
+  const values = ans.answer?.data?.values || ans.draft?.values || localValues
   const [tried, setTried] = useState(false)
   const [focusTick, setFocusTick] = useState(0)
   const formRef = useRef(null)
@@ -172,12 +173,11 @@ function FormCard({ card, sessionId, display, lang }) {
     if (el && el.focus) el.focus()
   }, [focusTick])
 
-  const change = name => value =>
-    setValues(prev => {
-      const next = { ...prev, [name]: value }
-      ans.saveDraft({ values: next })
-      return next
-    })
+  const change = name => value => {
+    const next = { ...values, [name]: value }
+    setValues(next)
+    ans.saveDraft({ values: next })
+  }
 
   const onSubmit = event => {
     event.preventDefault()
@@ -203,7 +203,7 @@ function FormCard({ card, sessionId, display, lang }) {
           FormField,
           {
             field,
-            value: values[field.name],
+            value: values[field.name] ?? '',
             error: tried ? errors[field.name] : null,
             disabled: ans.locked,
             lang,

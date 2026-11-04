@@ -12,7 +12,8 @@ const ACCENT_VARS = {
 
 const CARD_CSS = `
 .huic{--huic-accent:var(--ui-accent);--huic-pad:14px;container-type:inline-size;box-sizing:border-box;width:100%;max-width:680px;margin:6px 0;border:1px solid var(--ui-stroke-tertiary);border-radius:12px;background:var(--ui-chat-surface-background,transparent);color:var(--ui-text-primary);font-size:13px;line-height:1.45;overflow:hidden;text-align:left}
-.huic *{box-sizing:border-box}
+.huic *{box-sizing:border-box;overflow-wrap:anywhere}
+.huic-body>*{min-width:0}
 .huic.huic-compact{--huic-pad:10px;font-size:12.5px}
 .huic :focus-visible{outline:2px solid var(--huic-accent);outline-offset:2px}
 .huic-head{padding:var(--huic-pad) var(--huic-pad) 2px}
@@ -84,19 +85,22 @@ function Style() {
   return jsx('style', { children: CARD_CSS })
 }
 
+function limitText(value, max) { return [...value].slice(0, max).join('') }
+
 function cx(...names) {
   return names.filter(Boolean).join(' ')
 }
 
 // Buttons use our own styles so the accent setting applies and nothing depends on
 // app class names (Tailwind classes only exist for what the app itself uses).
-function Btn({ variant = 'secondary', onClick, disabled, children, label, type = 'button', autoFocus }) {
+function Btn({ variant = 'secondary', onClick, disabled, children, label, type = 'button', autoFocus, ref }) {
   return jsx('button', {
     type,
     className: cx('huic-btn', variant !== 'secondary' && `huic-btn-${variant}`),
     onClick,
     disabled,
     autoFocus,
+    ref,
     'aria-label': label,
     children
   })
@@ -149,10 +153,12 @@ function Footer({ hint, children }) {
   })
 }
 
-function AnsweredBar({ lang, record }) {
+function AnsweredBar({ lang, record, focus }) {
+  const ref = useRef(null)
+  useEffect(() => { if (focus) ref.current?.focus() }, [focus])
   return jsxs('div', {
     className: 'huic-answer',
-    role: 'status',
+    role: 'status', ref, tabIndex: -1,
     children: [
       jsx('span', { 'aria-hidden': true, children: record.mark || '✓' }),
       jsxs('span', {

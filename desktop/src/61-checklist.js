@@ -22,21 +22,19 @@ function ChecklistCard({ card, sessionId, display, lang }) {
   const ans = useCardAnswer(card, sessionId, lang)
   const initial = () => {
     if (ans.answer && ans.answer.data) {
-      const done = new Set(ans.answer.data.done || [])
-      return card.items.filter(i => done.has(i.text)).map(i => i.id)
+      return ans.answer.selection?.checked || ans.answer.data.done_ids || ans.draft?.checked || []
     }
     if (ans.draft && Array.isArray(ans.draft.checked)) return ans.draft.checked
     return card.items.filter(i => i.checked).map(i => i.id)
   }
-  const [checked, setChecked] = useState(initial)
+  const [localChecked, setChecked] = useState(initial)
+  const checked = ans.answer ? initial() : ans.draft?.checked || localChecked
 
   const toggle = id => {
     if (ans.locked) return
-    setChecked(prev => {
-      const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-      ans.saveDraft({ checked: next })
-      return next
-    })
+    const next = checked.includes(id) ? checked.filter(x => x !== id) : [...checked, id]
+    setChecked(next)
+    ans.saveDraft({ checked: next })
   }
 
   const total = card.items.length

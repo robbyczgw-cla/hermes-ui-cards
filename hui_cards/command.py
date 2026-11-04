@@ -19,7 +19,7 @@ def _status(surface: str) -> str:
         f"HUI+ Cards {VERSION}: cards are {'on' if on else 'off (text only)'}.",
         where,
         "Types: " + ", ".join(CARD_TYPES) + ".",
-        "Try it: /cards demo choice, or ask \"Show me the hui_present demo for compare\".",
+        "Try it: /cards demo checklist, or ask \"Show me the hui_present demo for compare\".",
         "Settings: Settings → Plugins → hermes-ui-cards (cards on/off, compact, accent colour).",
     ]
     return "\n".join(lines)
@@ -32,7 +32,7 @@ def handle_cards(raw_args: str = "", **_kwargs) -> str:
     if args[0] == "types":
         return "\n".join(f"{t}: {s['summary']}" for t, s in SCHEMA["cards"].items())
     if args[0] == "demo":
-        kind = args[1] if len(args) > 1 else "choice"
+        kind = args[1] if len(args) > 1 else "checklist"
         raw = demo_card(kind)
         if raw is None:
             return f"Unknown card type \"{kind}\". Types: {', '.join(DEMOS)}."

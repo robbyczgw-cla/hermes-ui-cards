@@ -67,9 +67,11 @@ function ChoiceCard({ card, sessionId, display, lang }) {
   const labelId = useId()
   const ans = useCardAnswer(card, sessionId, lang)
   const sent = ans.answer && ans.answer.data
-  const [selected, setSelected] = useState(() => (sent ? sent.selected || [] : []))
+  const [picked, setSelected] = useState(() => (sent ? sent.selected || [] : []))
+  const selected = sent ? sent.selected || [] : picked
   const [other, setOther] = useState(() => (sent && sent.other) || '')
-  const [otherOn, setOtherOn] = useState(() => Boolean(sent && sent.other))
+  const [localOtherOn, setOtherOn] = useState(() => Boolean(sent && sent.other))
+  const otherOn = sent ? Boolean(sent.other) : localOtherOn
   const otherRef = useRef(null)
 
   const options = card.allowOther
@@ -132,10 +134,10 @@ function ChoiceCard({ card, sessionId, display, lang }) {
           ref: otherRef,
           className: 'huic-input',
           value: other,
-          maxLength: 300,
+          maxLength: 600,
           placeholder: t(lang, 'otherPlaceholder'),
           'aria-label': t(lang, 'other'),
-          onChange: e => setOther(e.target.value),
+          onChange: e => setOther(limitText(e.target.value, 300)),
           onKeyDown: e => {
             if (e.key === 'Enter') {
               e.preventDefault()

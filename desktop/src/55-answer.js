@@ -5,6 +5,7 @@ function useCardAnswer(card, sessionId, lang) {
   const gateway = sdk.useValue ? sdk.useValue(sdk.host.state.gateway) : 'open'
   const [problem, setProblem] = useState(null) // null | 'inactive' | 'offline'
   const sending = useRef(false)
+  const [focusAnswer, setFocusAnswer] = useState(false)
 
   const answered = Boolean(record.answer)
   const offline = typeof gateway === 'string' && gateway !== 'open'
@@ -19,6 +20,7 @@ function useCardAnswer(card, sessionId, lang) {
       sending.current = true
       try {
         const reply = buildReply(card, answer, lang)
+        if (!reply.fits) { setProblem('oversize'); return false }
         // Fail closed: without the card's own session there is no safe place to send.
         const ok = sessionId ? sdk.host.composer.submit(sessionId, reply.text) === true : false
         if (!ok) {
@@ -27,8 +29,9 @@ function useCardAnswer(card, sessionId, lang) {
         }
         setProblem(null)
         writeCard(card.cardId, {
-          answer: { mark: reply.mark, summary: reply.summary, data: reply.data, at: Date.now() }
+          answer: { mark: reply.mark, summary: reply.summary, data: reply.data, selection: answer, at: Date.now() }
         })
+        setFocusAnswer(true)
         return true
       } finally {
         sending.current = false
@@ -42,12 +45,14 @@ function useCardAnswer(card, sessionId, lang) {
 
   const locked = answered
   const status = answered
-    ? jsx(AnsweredBar, { lang, record: record.answer })
-    : problem === 'inactive'
+    ? jsx(AnsweredBar, { lang, record: record.answer, focus: focusAnswer })
+    : !sessionId || problem === 'inactive'
       ? jsx(NoticeBar, {
           text: t(lang, 'inactive'),
           action: jsx(Btn, { variant: 'ghost', onClick: () => setProblem(null), children: t(lang, 'retry') })
         })
+      : problem === 'oversize'
+        ? jsx(NoticeBar, { text: t(lang, 'oversize') })
       : offline || problem === 'offline'
         ? jsx(NoticeBar, { text: t(lang, 'offline') })
         : null
@@ -58,9 +63,9 @@ function useCardAnswer(card, sessionId, lang) {
     answer: record.answer,
     answered,
     locked,
-    canSend: !answered && !offline && problem !== 'inactive',
+    canSend: Boolean(sessionId) && !answered && !offline && problem !== 'inactive',
     // No dead buttons: actions disappear while the card can't send (answered, chat gone, offline).
-    showActions: !answered && !offline && problem !== 'inactive',
+    showActions: Boolean(sessionId) && !answered && !offline && problem !== 'inactive',
     submit,
     saveDraft,
     status

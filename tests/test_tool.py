@@ -124,6 +124,22 @@ def test_media_line_safety_net():
     assert tool.ensure_media_lines(response_text="hi", session_id="other") is None
 
 
+def test_turn_start_hint_only_on_desktop(monkeypatch):
+    assert tool.on_turn_start(session_id="a", platform="desktop") == {"context": tool.DESKTOP_HINT}
+    assert tool.on_turn_start(session_id="a", platform="telegram") is None
+    assert tool.on_turn_start(session_id="a", platform="cli") is None
+    monkeypatch.setenv("HERMES_SESSION_SOURCE", "desktop")
+    assert tool.on_turn_start(session_id="a", platform="") == {"context": tool.DESKTOP_HINT}
+    tool.configure(lambda key, default: False if key == "enabled" else default)
+    assert tool.on_turn_start(session_id="a", platform="desktop") is None
+    assert len(tool.DESKTOP_HINT) < 400
+
+
+def test_first_sentence_fits_the_tool_search_listing():
+    first = tool.tool_description().split(". ")[0] + "."
+    assert len(first) <= 60, first
+
+
 def test_unfinished_turn_does_not_leak_into_the_next():
     run({"card": CHOICE}, "desktop", session_id="abc")
     tool.on_turn_start(session_id="abc")
@@ -151,7 +167,7 @@ def test_tool_description_stays_small():
 
 
 def test_cards_command():
-    assert "Types: choice, checklist" in handle_cards("")
+    assert "Types: checklist, compare, form, steps, confirm, choice" in handle_cards("")
     assert handle_cards("types").count("\n") == len(CARD_TYPES) - 1
     demo = handle_cards("demo compare")
     assert "Which laptop?" in demo and "hui_present demo for compare" in demo
