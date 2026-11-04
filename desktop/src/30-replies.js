@@ -176,6 +176,7 @@ function buildReply(card, answer, lang) {
         mark = '⚠'
         data.stuck = answer.stuck
         data.title = card.steps[answer.stuck - 1].title
+        if (answer.note && String(answer.note).trim()) data.note = String(answer.note).trim()
         summary = t(L, 'rStuck', { n: answer.stuck, x: clip(data.title) })
       } else {
         data.completed = true

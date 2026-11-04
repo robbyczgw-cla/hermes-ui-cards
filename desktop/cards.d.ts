@@ -40,13 +40,21 @@ export interface CompareCard extends CardCommon {
     best?: boolean
     pros?: Array<string>
     cons?: Array<string>
+    source?: {
+      label: string
+      /** HTTPS source URL; never invent one. */
+      url: string
+    }
   }>
   /** Attribute rows; values[i] belongs to columns[i]. */
   rows?: Array<{
     label: string
     values: Array<string | number | boolean | null>
+    sources?: Array<string | null>
+    best?: number
   }>
   selectLabel?: string
+  asOf?: string
 }
 
 /** Fields the user fills in (text, number, date, select, toggle) with required fields and checks. */
@@ -124,6 +132,7 @@ export interface ChoiceCard extends CardCommon {
     icon?: string
     /** https image URL that came from a tool or the user. Never invent one. */
     image?: string
+    badge?: string
   }>
   /** Allow several picks. */
   multiple?: boolean

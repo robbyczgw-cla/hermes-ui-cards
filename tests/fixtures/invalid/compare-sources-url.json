@@ -1,0 +1,30 @@
+{
+  "type": "compare",
+  "asOf": "8 Nov 2026",
+  "columns": [
+    {
+      "title": "A",
+      "source": {
+        "label": "Shop",
+        "url": "https://retailer.at/a"
+      }
+    },
+    {
+      "title": "B"
+    }
+  ],
+  "rows": [
+    {
+      "label": "Price",
+      "values": [
+        "€1",
+        "€2"
+      ],
+      "sources": [
+        "http://shop.at",
+        null
+      ],
+      "best": 0
+    }
+  ]
+}

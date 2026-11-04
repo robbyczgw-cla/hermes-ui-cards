@@ -13,6 +13,8 @@ own text stays as the model wrote it.
 """
 from __future__ import annotations
 
+from urllib.parse import urlsplit
+
 import datetime
 import re
 
@@ -210,13 +212,19 @@ def _compare(card: dict, L: _L) -> list[str]:
             lines.append("   " + L["recommended"])
         if col.get("subtitle"):
             lines.append("   " + _one(col["subtitle"]))
+        if col.get("source"):
+            lines.append("   " + _one(col["source"].get("label", "")) + " [" + (urlsplit(col["source"]["url"]).hostname or "") + "]")
         for row in rows:
             values = row.get("values") or []
-            lines.append(f"   {_one(row.get('label', ''))}: " + (_cell(values[i], L) if i < len(values) else "–"))
+            sources = row.get("sources") or []
+            source = " [" + (urlsplit(sources[i]).hostname or "") + "]" if i < len(sources) and sources[i] else ""
+            lines.append(f"   {_one(row.get('label', ''))}: " + (_cell(values[i], L) if i < len(values) else "–") + source)
         lines += [f"   + {_one(p)}" for p in col.get("pros") or []]
         lines += [f"   – {_one(c)}" for c in col.get("cons") or []]
     if lines and lines[0] == "":
         lines.pop(0)
+    if card.get("asOf"):
+        lines.append(L("Prices checked ", "Preise geprüft ") + _one(card["asOf"]))
     n = len(columns)
     return lines + [L(f"Reply with the number of your pick (1–{n}).", f"Antworte mit der Nummer deiner Wahl (1–{n}).")]
 

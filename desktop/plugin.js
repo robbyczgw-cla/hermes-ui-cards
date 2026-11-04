@@ -4,7 +4,7 @@ import * as sdk from '@hermes/plugin-sdk'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Fragment, jsx, jsxs } from 'react/jsx-runtime'
 
-const SCHEMA = {"$comment":"Single source of truth for card shapes. Read by hui_cards/schema.py (validation in the tool) and by scripts/build.py, which embeds it in desktop/plugin.js and generates desktop/cards.d.ts. Subset of JSON Schema plus x-rules (cross-field checks implemented in both validators).","version":1,"limits":{"maxCardBytes":24000,"maxReplyChars":4000},"common":{"type":"object","properties":{"type":{"type":"string","description":"Card type."},"id":{"type":"string","pattern":"^[a-z0-9][a-z0-9_-]{0,39}$","description":"Short slug you choose, e.g. \"trip-style\". Optional."},"lang":{"type":"string","pattern":"^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$","description":"Language of the card text (\"en\", \"de\"). Sets the language of buttons and hints. Optional."}}},"definitions":{"image":{"type":"string","format":"https-url","maxLength":2000,"description":"https image URL that came from a tool or the user. Never invent one."},"icon":{"type":"string","maxLength":8,"format":"no-space","description":"One emoji."},"shortText":{"type":"string","minLength":1,"maxLength":80},"text":{"type":"string","minLength":1,"maxLength":300},"longText":{"type":"string","minLength":1,"maxLength":1200},"label":{"type":"string","minLength":1,"maxLength":40},"itemId":{"type":"string","pattern":"^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$"}},"cards":{"checklist":{"phase":1,"summary":"Items the user ticks off; the ticks are kept when the chat is reopened. \"Done\" reports checked and open items.","type":"object","required":["items"],"properties":{"title":{"$ref":"shortText"},"items":{"type":"array","minItems":1,"maxItems":50,"items":{"type":"object","required":["text"],"properties":{"id":{"$ref":"itemId"},"text":{"$ref":"text"},"note":{"$ref":"text"},"category":{"type":"string","minLength":1,"maxLength":40,"description":"Groups items under a heading."},"checked":{"type":"boolean","default":false}}}},"doneLabel":{"$ref":"label"}},"x-rules":["uniqueItemIds"]},"compare":{"phase":1,"summary":"2-4 candidates side by side with aligned attribute rows, one may be marked best; each column has a pick button.","type":"object","required":["columns"],"properties":{"title":{"$ref":"shortText"},"columns":{"type":"array","minItems":2,"maxItems":4,"items":{"type":"object","required":["title"],"properties":{"id":{"$ref":"itemId"},"title":{"$ref":"shortText"},"subtitle":{"$ref":"text"},"badge":{"type":"string","minLength":1,"maxLength":24},"image":{"$ref":"image"},"best":{"type":"boolean","default":false,"description":"Your recommendation (at most one column)."},"pros":{"type":"array","maxItems":5,"items":{"$ref":"text"}},"cons":{"type":"array","maxItems":5,"items":{"$ref":"text"}}}}},"rows":{"type":"array","maxItems":12,"description":"Attribute rows; values[i] belongs to columns[i].","items":{"type":"object","required":["label","values"],"properties":{"label":{"$ref":"shortText"},"values":{"type":"array","items":{"type":["string","number","boolean","null"],"maxLength":120}}}}},"selectLabel":{"$ref":"label"}},"x-rules":["uniqueColumnIds","rowsMatchColumns","singleBest"]},"form":{"phase":1,"summary":"Fields the user fills in (text, number, date, select, toggle) with required fields and checks.","type":"object","required":["fields"],"properties":{"title":{"$ref":"shortText"},"description":{"$ref":"text"},"fields":{"type":"array","minItems":1,"maxItems":12,"items":{"type":"object","required":["name","label","kind"],"properties":{"name":{"type":"string","pattern":"^[A-Za-z][A-Za-z0-9_]{0,39}$"},"label":{"$ref":"shortText"},"kind":{"type":"string","enum":["text","textarea","number","date","time","email","select","toggle"]},"required":{"type":"boolean","default":false},"placeholder":{"type":"string","maxLength":80},"help":{"$ref":"text"},"default":{"type":["string","number","boolean"],"maxLength":1000},"min":{"type":"number","description":"number: smallest value."},"max":{"type":"number","description":"number: largest value."},"step":{"type":"number","minimum":0},"unit":{"type":"string","maxLength":12},"maxLength":{"type":"integer","minimum":1,"maximum":2000},"options":{"type":"array","minItems":2,"maxItems":20,"items":{"$ref":"shortText"},"description":"select: the choices."}}}},"submitLabel":{"$ref":"label"}},"x-rules":["uniqueFieldNames","fieldKindRules"]},"steps":{"phase":2,"summary":"A guided walkthrough, one step at a time with Back/Next; the user reports done or where they got stuck.","type":"object","required":["steps"],"properties":{"title":{"$ref":"shortText"},"steps":{"type":"array","minItems":2,"maxItems":12,"items":{"type":"object","required":["title"],"properties":{"title":{"$ref":"shortText"},"body":{"$ref":"longText"},"command":{"type":"string","minLength":1,"maxLength":1000},"image":{"$ref":"image"}}}},"finishLabel":{"$ref":"label"}},"x-rules":[]},"confirm":{"phase":1,"summary":"Ask before you act: one action with reason and risk; the user answers Yes, No or Change.","type":"object","required":["title","action"],"properties":{"title":{"$ref":"shortText"},"action":{"$ref":"text","description":"What exactly will happen."},"reason":{"$ref":"text"},"risk":{"type":"object","required":["level"],"properties":{"level":{"type":"string","enum":["low","medium","high"]},"text":{"$ref":"text"}}},"command":{"type":"string","minLength":1,"maxLength":2000,"description":"Command or code shown monospace."},"details":{"type":"array","maxItems":8,"items":{"type":"object","required":["label","value"],"properties":{"label":{"$ref":"shortText"},"value":{"$ref":"text"}}}},"confirmLabel":{"$ref":"label"},"cancelLabel":{"$ref":"label"},"allowChange":{"type":"boolean","default":true,"description":"Offer \"Change\" with a text field."}},"x-rules":[]},"choice":{"phase":1,"summary":"Pick several of 2-6 options, or options that need a picture or a short text each. For one plain question with simple options use the built-in clarify tool instead.","type":"object","required":["question","options"],"properties":{"question":{"$ref":"text"},"options":{"type":"array","minItems":2,"maxItems":6,"items":{"type":"object","required":["label"],"properties":{"id":{"$ref":"itemId"},"label":{"$ref":"shortText"},"description":{"$ref":"text"},"icon":{"$ref":"icon"},"image":{"$ref":"image"}}}},"multiple":{"type":"boolean","default":false,"description":"Allow several picks."},"min":{"type":"integer","minimum":1,"maximum":6,"description":"Fewest picks (multiple only)."},"max":{"type":"integer","minimum":1,"maximum":6,"description":"Most picks (multiple only)."},"allowOther":{"type":"boolean","default":false,"description":"Add a free-text \"Other\" field."},"submitLabel":{"$ref":"label"}},"x-rules":["uniqueOptionIds","minMaxPicks"]},"schedule":{"phase":2,"summary":"Offer time slots to pick from (meetings, appointments).","type":"object","required":["slots"],"properties":{"title":{"$ref":"shortText"},"timezone":{"type":"string","maxLength":64,"description":"IANA zone, e.g. \"Europe/Vienna\"."},"slots":{"type":"array","minItems":1,"maxItems":20,"items":{"type":"object","required":["start"],"properties":{"id":{"$ref":"itemId"},"start":{"type":"string","format":"datetime","description":"ISO 8601, e.g. 2026-11-12T14:00"},"end":{"type":"string","format":"datetime"},"label":{"$ref":"shortText"},"note":{"$ref":"text"},"unavailable":{"type":"boolean","default":false}}}},"multiple":{"type":"boolean","default":false},"noneLabel":{"$ref":"label","description":"Button for \"none of these fit\"."}},"x-rules":["uniqueSlotIds","slotOrder"]},"rating":{"phase":2,"summary":"Ask for a rating on a scale (stars or numbers), optional comment.","type":"object","required":["question"],"properties":{"question":{"$ref":"text"},"scale":{"type":"integer","minimum":3,"maximum":10,"default":5},"style":{"type":"string","enum":["stars","numbers"],"default":"stars"},"lowLabel":{"type":"string","maxLength":30},"highLabel":{"type":"string","maxLength":30},"comment":{"type":"boolean","default":false,"description":"Add an optional comment field."}},"x-rules":[]},"slider":{"phase":2,"summary":"Ask for one number in a range (budget, duration, level).","type":"object","required":["question","min","max"],"properties":{"question":{"$ref":"text"},"min":{"type":"number"},"max":{"type":"number"},"step":{"type":"number","minimum":0},"default":{"type":"number"},"unit":{"type":"string","maxLength":12},"minLabel":{"type":"string","maxLength":30},"maxLabel":{"type":"string","maxLength":30},"submitLabel":{"$ref":"label"}},"x-rules":["sliderRange"]},"quiz":{"phase":2,"summary":"Multiple-choice questions with feedback per answer; the score is sent back.","type":"object","required":["questions"],"properties":{"title":{"$ref":"shortText"},"questions":{"type":"array","minItems":1,"maxItems":10,"items":{"type":"object","required":["question","options","answer"],"properties":{"question":{"$ref":"text"},"options":{"type":"array","minItems":2,"maxItems":6,"items":{"$ref":"shortText"}},"answer":{"type":"integer","minimum":0,"description":"0-based index of the correct option."},"explanation":{"$ref":"text"}}}}},"x-rules":["quizAnswers"]}}}
+const SCHEMA = {"$comment":"Single source of truth for card shapes. Read by hui_cards/schema.py (validation in the tool) and by scripts/build.py, which embeds it in desktop/plugin.js and generates desktop/cards.d.ts. Subset of JSON Schema plus x-rules (cross-field checks implemented in both validators).","version":1,"limits":{"maxCardBytes":24000,"maxReplyChars":4000},"common":{"type":"object","properties":{"type":{"type":"string","description":"Card type."},"id":{"type":"string","pattern":"^[a-z0-9][a-z0-9_-]{0,39}$","description":"Short slug you choose, e.g. \"trip-style\". Optional."},"lang":{"type":"string","pattern":"^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$","description":"Language of the card text (\"en\", \"de\"). Sets the language of buttons and hints. Optional."}}},"definitions":{"image":{"type":"string","format":"https-url","maxLength":2000,"description":"https image URL that came from a tool or the user. Never invent one."},"icon":{"type":"string","maxLength":8,"format":"no-space","description":"One emoji."},"shortText":{"type":"string","minLength":1,"maxLength":80},"text":{"type":"string","minLength":1,"maxLength":300},"longText":{"type":"string","minLength":1,"maxLength":1200},"label":{"type":"string","minLength":1,"maxLength":40},"itemId":{"type":"string","pattern":"^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$"}},"cards":{"checklist":{"phase":1,"summary":"Items the user ticks off; the ticks are kept when the chat is reopened. \"Done\" reports checked and open items.","type":"object","required":["items"],"properties":{"title":{"$ref":"shortText"},"items":{"type":"array","minItems":1,"maxItems":50,"items":{"type":"object","required":["text"],"properties":{"id":{"$ref":"itemId"},"text":{"$ref":"text"},"note":{"$ref":"text"},"category":{"type":"string","minLength":1,"maxLength":40,"description":"Groups items under a heading."},"checked":{"type":"boolean","default":false}}}},"doneLabel":{"$ref":"label"}},"x-rules":["uniqueItemIds"]},"compare":{"phase":1,"summary":"2-4 candidates side by side with aligned attribute rows, one may be marked best; each column has a pick button.","type":"object","required":["columns"],"properties":{"title":{"$ref":"shortText"},"columns":{"type":"array","minItems":2,"maxItems":4,"items":{"type":"object","required":["title"],"properties":{"id":{"$ref":"itemId"},"title":{"$ref":"shortText"},"subtitle":{"$ref":"text"},"badge":{"type":"string","minLength":1,"maxLength":24},"image":{"$ref":"image"},"best":{"type":"boolean","default":false,"description":"Your recommendation (at most one column)."},"pros":{"type":"array","maxItems":5,"items":{"$ref":"text"}},"cons":{"type":"array","maxItems":5,"items":{"$ref":"text"}},"source":{"type":"object","required":["label","url"],"properties":{"label":{"$ref":"label"},"url":{"$ref":"image","description":"HTTPS source URL; never invent one."}}}}}},"rows":{"type":"array","maxItems":12,"description":"Attribute rows; values[i] belongs to columns[i].","items":{"type":"object","required":["label","values"],"properties":{"label":{"$ref":"shortText"},"values":{"type":"array","items":{"type":["string","number","boolean","null"],"maxLength":120}},"sources":{"type":"array","items":{"type":["string","null"],"format":"https-url","maxLength":2000}},"best":{"type":"integer","minimum":0}}}},"selectLabel":{"$ref":"label"},"asOf":{"type":"string","maxLength":40}},"x-rules":["uniqueColumnIds","rowsMatchColumns","singleBest","rowSourcesMatchValues","rowBestInColumns"]},"form":{"phase":1,"summary":"Fields the user fills in (text, number, date, select, toggle) with required fields and checks.","type":"object","required":["fields"],"properties":{"title":{"$ref":"shortText"},"description":{"$ref":"text"},"fields":{"type":"array","minItems":1,"maxItems":12,"items":{"type":"object","required":["name","label","kind"],"properties":{"name":{"type":"string","pattern":"^[A-Za-z][A-Za-z0-9_]{0,39}$"},"label":{"$ref":"shortText"},"kind":{"type":"string","enum":["text","textarea","number","date","time","email","select","toggle"]},"required":{"type":"boolean","default":false},"placeholder":{"type":"string","maxLength":80},"help":{"$ref":"text"},"default":{"type":["string","number","boolean"],"maxLength":1000},"min":{"type":"number","description":"number: smallest value."},"max":{"type":"number","description":"number: largest value."},"step":{"type":"number","minimum":0},"unit":{"type":"string","maxLength":12},"maxLength":{"type":"integer","minimum":1,"maximum":2000},"options":{"type":"array","minItems":2,"maxItems":20,"items":{"$ref":"shortText"},"description":"select: the choices."}}}},"submitLabel":{"$ref":"label"}},"x-rules":["uniqueFieldNames","fieldKindRules"]},"steps":{"phase":2,"summary":"A guided walkthrough, one step at a time with Back/Next; the user reports done or where they got stuck.","type":"object","required":["steps"],"properties":{"title":{"$ref":"shortText"},"steps":{"type":"array","minItems":2,"maxItems":12,"items":{"type":"object","required":["title"],"properties":{"title":{"$ref":"shortText"},"body":{"$ref":"longText"},"command":{"type":"string","minLength":1,"maxLength":1000},"image":{"$ref":"image"}}}},"finishLabel":{"$ref":"label"}},"x-rules":[]},"confirm":{"phase":1,"summary":"Ask before you act: one action with reason and risk; the user answers Yes, No or Change.","type":"object","required":["title","action"],"properties":{"title":{"$ref":"shortText"},"action":{"$ref":"text","description":"What exactly will happen."},"reason":{"$ref":"text"},"risk":{"type":"object","required":["level"],"properties":{"level":{"type":"string","enum":["low","medium","high"]},"text":{"$ref":"text"}}},"command":{"type":"string","minLength":1,"maxLength":2000,"description":"Command or code shown monospace."},"details":{"type":"array","maxItems":8,"items":{"type":"object","required":["label","value"],"properties":{"label":{"$ref":"shortText"},"value":{"$ref":"text"}}}},"confirmLabel":{"$ref":"label"},"cancelLabel":{"$ref":"label"},"allowChange":{"type":"boolean","default":true,"description":"Offer \"Change\" with a text field."}},"x-rules":[]},"choice":{"phase":1,"summary":"Pick several of 2-6 options, or options that need a picture or a short text each. For one plain question with simple options use the built-in clarify tool instead.","type":"object","required":["question","options"],"properties":{"question":{"$ref":"text"},"options":{"type":"array","minItems":2,"maxItems":6,"items":{"type":"object","required":["label"],"properties":{"id":{"$ref":"itemId"},"label":{"$ref":"shortText"},"description":{"$ref":"text"},"icon":{"$ref":"icon"},"image":{"$ref":"image"},"badge":{"type":"string","minLength":1,"maxLength":24}}}},"multiple":{"type":"boolean","default":false,"description":"Allow several picks."},"min":{"type":"integer","minimum":1,"maximum":6,"description":"Fewest picks (multiple only)."},"max":{"type":"integer","minimum":1,"maximum":6,"description":"Most picks (multiple only)."},"allowOther":{"type":"boolean","default":false,"description":"Add a free-text \"Other\" field."},"submitLabel":{"$ref":"label"}},"x-rules":["uniqueOptionIds","minMaxPicks"]},"schedule":{"phase":2,"summary":"Offer time slots to pick from (meetings, appointments).","type":"object","required":["slots"],"properties":{"title":{"$ref":"shortText"},"timezone":{"type":"string","maxLength":64,"description":"IANA zone, e.g. \"Europe/Vienna\"."},"slots":{"type":"array","minItems":1,"maxItems":20,"items":{"type":"object","required":["start"],"properties":{"id":{"$ref":"itemId"},"start":{"type":"string","format":"datetime","description":"ISO 8601, e.g. 2026-11-12T14:00"},"end":{"type":"string","format":"datetime"},"label":{"$ref":"shortText"},"note":{"$ref":"text"},"unavailable":{"type":"boolean","default":false}}}},"multiple":{"type":"boolean","default":false},"noneLabel":{"$ref":"label","description":"Button for \"none of these fit\"."}},"x-rules":["uniqueSlotIds","slotOrder"]},"rating":{"phase":2,"summary":"Ask for a rating on a scale (stars or numbers), optional comment.","type":"object","required":["question"],"properties":{"question":{"$ref":"text"},"scale":{"type":"integer","minimum":3,"maximum":10,"default":5},"style":{"type":"string","enum":["stars","numbers"],"default":"stars"},"lowLabel":{"type":"string","maxLength":30},"highLabel":{"type":"string","maxLength":30},"comment":{"type":"boolean","default":false,"description":"Add an optional comment field."}},"x-rules":[]},"slider":{"phase":2,"summary":"Ask for one number in a range (budget, duration, level).","type":"object","required":["question","min","max"],"properties":{"question":{"$ref":"text"},"min":{"type":"number"},"max":{"type":"number"},"step":{"type":"number","minimum":0},"default":{"type":"number"},"unit":{"type":"string","maxLength":12},"minLabel":{"type":"string","maxLength":30},"maxLabel":{"type":"string","maxLength":30},"submitLabel":{"$ref":"label"}},"x-rules":["sliderRange"]},"quiz":{"phase":2,"summary":"Multiple-choice questions with feedback per answer; the score is sent back.","type":"object","required":["questions"],"properties":{"title":{"$ref":"shortText"},"questions":{"type":"array","minItems":1,"maxItems":10,"items":{"type":"object","required":["question","options","answer"],"properties":{"question":{"$ref":"text"},"options":{"type":"array","minItems":2,"maxItems":6,"items":{"$ref":"shortText"}},"answer":{"type":"integer","minimum":0,"description":"0-based index of the correct option."},"explanation":{"$ref":"text"}}}}},"x-rules":["quizAnswers"]}}}
 
 // ── 10-validate.js ──
 // Port of hui_cards/schema.py. Keep traversal and message order in sync.
@@ -227,6 +227,11 @@ const vc_validateCard = (() => {
     } else if (name === 'rowsMatchColumns') {
       const n = (card.columns || []).length
       for (const [i, row] of (card.rows || []).entries()) if ((row.values || []).length !== n) ctx.errors.push(`card.rows[${i}].values: needs ${n} values, one per column (got ${(row.values || []).length})`)
+    } else if (name === 'rowSourcesMatchValues') {
+      for (const [i, row] of (card.rows || []).entries()) if (row.sources && row.sources.length !== (row.values || []).length) ctx.errors.push(`card.rows[${i}].sources: needs ${(row.values || []).length} sources, one per value (got ${row.sources.length})`)
+    } else if (name === 'rowBestInColumns') {
+      const n = (card.columns || []).length
+      for (const [i, row] of (card.rows || []).entries()) if (row.best != null && row.best >= n) ctx.errors.push(`card.rows[${i}].best: ${row.best} is not a column index (0..${n - 1})`)
     } else if (name === 'singleBest') {
       const n = (card.columns || []).filter(c => c.best).length
       if (n > 1) ctx.errors.push(`card.columns: only one column may have best: true (got ${n})`)
@@ -668,6 +673,7 @@ function buildReply(card, answer, lang) {
         mark = '⚠'
         data.stuck = answer.stuck
         data.title = card.steps[answer.stuck - 1].title
+        if (answer.note && String(answer.note).trim()) data.note = String(answer.note).trim()
         summary = t(L, 'rStuck', { n: answer.stuck, x: clip(data.title) })
       } else {
         data.completed = true
@@ -868,6 +874,19 @@ textarea.huic-input{min-height:64px;resize:vertical}
   .huic-hint{flex-basis:100%}
 }
 @media (prefers-reduced-motion: reduce){.huic *{transition:none !important}}
+/* code + key-values */
+.huic .huic-code-block{position:relative;min-width:0;border-radius:8px;background:var(--ui-inline-code-background,var(--ui-bg-quaternary))}
+.huic .huic-code-block .huic-code{padding:38px 12px 12px;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;background:transparent;line-height:1.6}
+.huic .huic-copy{display:inline-flex;align-items:center;justify-content:center;gap:4px;min-width:26px;min-height:26px;padding:4px;border:1px solid transparent;border-radius:5px;background:transparent;color:var(--ui-text-tertiary);cursor:pointer;font:inherit;font-size:11px;line-height:1}
+.huic .huic-copy:hover{color:var(--ui-text-primary);background:var(--ui-control-hover-background);border-color:var(--ui-stroke-tertiary)}
+.huic .huic-copy svg{width:13px;height:13px;flex:none}
+.huic .huic-code-block>.huic-copy{position:absolute;right:6px;top:5px}
+.huic .huic-copy[data-copied="true"]{color:var(--ui-green,var(--ui-text-primary))}
+.huic .huic-kv dd{font-variant-numeric:tabular-nums}
+.huic .huic-kv-value{display:flex;align-items:center;gap:6px;min-width:0}
+.huic .huic-kv-value>span{min-width:0;flex:1}
+.huic .huic-kv-value>.huic-copy{flex:none}
+.huic .huic-kv-path{font-family:var(--font-mono,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:12px}
 `
 
 function Style() {
@@ -967,6 +986,11 @@ function NoticeBar({ text, action }) {
 
 function CopyButton({ text, lang }) {
   const [copied, setCopied] = useState(false)
+  const timer = useRef(null)
+  useEffect(() => {
+    setCopied(false)
+    return () => clearTimeout(timer.current)
+  }, [text])
   const copy = async () => {
     let ok = false
     try {
@@ -978,10 +1002,28 @@ function CopyButton({ text, lang }) {
     }
     if (ok) {
       setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+      clearTimeout(timer.current)
+      timer.current = setTimeout(() => setCopied(false), 1500)
     }
   }
-  return jsx(Btn, { variant: 'ghost', onClick: copy, children: copied ? t(lang, 'copied') : t(lang, 'copy') })
+  const label = t(lang, copied ? 'copied' : 'copy')
+  return jsxs('button', {
+    type: 'button', className: 'huic-copy', onClick: copy,
+    'aria-label': label, title: label, 'data-copied': copied,
+    children: [
+      jsx('svg', {
+        viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: 1.4,
+        'aria-hidden': true,
+        children: copied
+          ? jsx('path', { d: 'm3 8 3 3 7-7', strokeLinecap: 'round', strokeLinejoin: 'round' })
+          : jsxs(Fragment, { children: [
+              jsx('rect', { x: 5, y: 5, width: 8, height: 9, rx: 1.5 }),
+              jsx('path', { d: 'M10 3V2H2v9h1', strokeLinecap: 'round', strokeLinejoin: 'round' })
+            ] })
+      }),
+      jsx('span', { className: copied ? undefined : 'huic-sr', children: label })
+    ]
+  })
 }
 
 // Label/value pairs. The app's Markdown styles reach dl/dt/dd inside messages, so the
@@ -990,22 +1032,42 @@ const KV_ROW = { display: 'flex', gap: 12, justifyContent: 'space-between', alig
 const KV_DT = { margin: 0, padding: 0, float: 'none', fontWeight: 400, color: 'var(--ui-text-tertiary)', flex: 'none', maxWidth: '50%' }
 const KV_DD = { margin: 0, padding: 0, textAlign: 'right', minWidth: 0, overflowWrap: 'anywhere' }
 
-function KeyValues({ rows }) {
+function KeyValues({ rows, lang }) {
   return jsx('dl', {
     className: 'huic-kv',
     style: { margin: 0, padding: 0, display: 'block', alignSelf: 'stretch', width: '100%' },
-    children: rows.map((row, i) =>
-      jsxs('div', { style: KV_ROW, children: [jsx('dt', { style: KV_DT, children: row.label }), jsx('dd', { style: KV_DD, children: row.value })] }, i)
-    )
+    children: rows.map((row, i) => {
+      const value = String(row.value ?? '')
+      const stacked = [...value].length > 40
+      const path = /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(value)
+      const chars = [...value]
+      const shown = path && chars.length > 40 ? chars.slice(0, 18).join('') + '…' + chars.slice(-21).join('') : value
+      return jsxs('div', {
+        className: stacked ? 'huic-kv-stacked' : undefined,
+        style: { ...KV_ROW, ...(stacked ? { flexDirection: 'column', alignItems: 'stretch', gap: 3, padding: '7px 0' } : {}) },
+        children: [
+          jsx('dt', { style: { ...KV_DT, ...(stacked ? { maxWidth: '100%' } : {}) }, children: row.label }),
+          jsx('dd', {
+            style: { ...KV_DD, ...(stacked ? { textAlign: 'left' } : {}) },
+            children: path ? jsxs('span', {
+              className: 'huic-kv-value',
+              children: [
+                jsx('span', { className: 'huic-kv-path', title: value, 'aria-label': value, children: shown }),
+                jsx(CopyButton, { text: value, lang })
+              ]
+            }) : value
+          })
+        ]
+      }, i)
+    })
   })
 }
 
 function CodeBlock({ code, lang }) {
   return jsxs('div', {
-    className: 'huic-row',
-    style: { alignItems: 'flex-start' },
+    className: 'huic-code-block',
     children: [
-      jsx('pre', { className: 'huic-code', style: { flex: 1 }, children: code }),
+      jsx('pre', { className: 'huic-code', children: jsx('code', { children: code }) }),
       jsx(CopyButton, { text: code, lang })
     ]
   })
@@ -1081,6 +1143,60 @@ function useCardAnswer(card, sessionId, lang) {
 
 // ── 60-choice.js ──
 // choice: 2–6 options, single (radio group) or multiple (checkboxes), optional "Other".
+// Options carry number badges: digits pick, Enter sends (same helpers serve schedule and quiz).
+
+Object.assign(STRINGS.en, {
+  keyChoose: '{keys} choose · Enter send',
+  keyToggle: '{keys} toggle · Enter send',
+  keyCheck: '{keys} choose · Enter check',
+  keyNext: 'Enter next',
+  keySend: 'Enter send'
+})
+Object.assign(STRINGS.de, {
+  keyChoose: '{keys} wählen · Enter senden',
+  keyToggle: '{keys} umschalten · Enter senden',
+  keyCheck: '{keys} wählen · Enter prüfen',
+  keyNext: 'Enter weiter',
+  keySend: 'Enter senden'
+})
+
+const KEYS_CSS = `
+.huic .huic-num{flex:none;display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 4px;border-radius:50%;border:1px solid var(--ui-stroke-secondary);color:var(--ui-text-tertiary);font-size:11px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums;background:transparent}
+.huic .huic-num.huic-num-multi{border-radius:5px}
+.huic [aria-checked="true"] .huic-num,.huic [aria-checked="true"]>.huic-num{background:var(--huic-accent);border-color:var(--huic-accent);color:var(--ui-chat-surface-background,var(--ui-base,Canvas))}
+`
+
+// "1–3" for three options, "1" for one, capped at the nine digit keys.
+function keyRange(count) { return count <= 1 ? '1' : `1–${Math.min(count, 9)}` }
+
+function joinHints(...parts) { return parts.filter(Boolean).join(' · ') }
+
+// Digits 1–9 pick option n, Enter on an option is handed to onEnter(index). Never active
+// inside text fields. Put it on a wrapper around the options; keys bubble up from the tiles.
+function optionKeys({ count, onDigit, onEnter }) {
+  return event => {
+    if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return
+    const target = event.target
+    const tag = target && target.tagName
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+    if (/^[1-9]$/.test(event.key)) {
+      const index = Number(event.key) - 1
+      if (index < count && onDigit) {
+        event.preventDefault()
+        onDigit(index)
+      }
+    } else if (event.key === 'Enter' && onEnter) {
+      const tile = target && target.closest && target.closest('[data-index]')
+      if (!tile) return
+      event.preventDefault()
+      onEnter(Number(tile.getAttribute('data-index')))
+    }
+  }
+}
+
+function NumBadge({ n, multiple }) {
+  return jsx('span', { className: cx('huic-num', multiple && 'huic-num-multi'), 'aria-hidden': true, children: n })
+}
 
 const OTHER_ID = '__other'
 
@@ -1112,25 +1228,90 @@ function useRovingFocus(count) {
   return { refs, onKeyDown }
 }
 
-function OptionTile({ option, checked, multiple, disabled, onToggle, tabIndex, refCb, onKeyDown }) {
+const CHOICE_CSS = `
+.huic[data-card-type="choice"] .huic-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(172px,1fr));gap:10px;padding:2px}
+.huic[data-card-type="choice"] .huic-tile{position:relative;display:block;width:100%;aspect-ratio:4/3;padding:0;overflow:hidden;text-align:left;cursor:pointer;font:inherit;color:inherit;border-radius:11px;border:1px solid var(--ui-stroke-tertiary);background:var(--ui-bg-quaternary);transition:transform .14s,box-shadow .14s,border-color .14s}
+.huic[data-card-type="choice"] .huic-tile:hover:not([disabled]){border-color:var(--ui-stroke-secondary)}
+.huic[data-card-type="choice"] .huic-tile[aria-checked="true"]{border-color:var(--huic-accent);box-shadow:0 0 0 2px var(--huic-accent);transform:translateY(-2px)}
+.huic[data-card-type="choice"] .huic-tile[disabled]{cursor:default}
+.huic[data-card-type="choice"] .huic-tile[disabled]:not([aria-checked="true"]){opacity:.6}
+.huic[data-card-type="choice"] .huic-tile-media{position:absolute;inset:0;display:block}
+.huic[data-card-type="choice"] .huic-tile-media>img{display:block;width:100%;height:100%;object-fit:cover}
+.huic[data-card-type="choice"] .huic-tile-ph{position:absolute;inset:0 0 34% 0;display:grid;place-items:center;color:var(--ui-text-tertiary);font-size:34px;font-weight:600;letter-spacing:.02em}
+.huic[data-card-type="choice"] .huic-tile-cap{position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;gap:1px;padding:22px 10px 8px;background:linear-gradient(to top,color-mix(in srgb,var(--ui-chat-surface-background,var(--ui-base,Canvas)) 90%,transparent),color-mix(in srgb,var(--ui-chat-surface-background,var(--ui-base,Canvas)) 72%,transparent) 55%,transparent)}
+.huic[data-card-type="choice"] .huic-tile-label{font-weight:600;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.huic[data-card-type="choice"] .huic-tile-desc{color:var(--ui-text-secondary);font-size:12px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.huic[data-card-type="choice"] .huic-tile>.huic-num{position:absolute;top:8px;left:8px;background:color-mix(in srgb,var(--ui-chat-surface-background,var(--ui-base,Canvas)) 82%,transparent)}
+.huic[data-card-type="choice"] .huic-tile>.huic-badge{position:absolute;top:8px;right:8px;max-width:70%;overflow:hidden;text-overflow:ellipsis;background:color-mix(in srgb,var(--ui-chat-surface-background,var(--ui-base,Canvas)) 82%,transparent)}
+.huic[data-card-type="choice"] .huic-tile[aria-checked="true"]>.huic-num{background:var(--huic-accent);border-color:var(--huic-accent);color:var(--ui-chat-surface-background,var(--ui-base,Canvas))}
+.huic[data-card-type="choice"] .huic-opt-row{align-items:center}
+@container (max-width: 440px){.huic[data-card-type="choice"] .huic-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (prefers-reduced-motion: reduce){.huic[data-card-type="choice"] .huic-tile[aria-checked="true"]{transform:none}}
+`
+
+function optionInitials(label) {
+  const words = String(label || '').trim().split(/\s+/).filter(Boolean)
+  const letters = words.length > 1 ? [words[0], words[1]].map(w => [...w][0]) : [...(words[0] || '?')].slice(0, 2)
+  return letters.join('').toUpperCase()
+}
+
+// A tile whose picture failed or is missing keeps its shape: neutral block with icon or initials.
+function TileMedia({ option }) {
+  const [failed, setFailed] = useState(false)
+  const shown = option.image && !failed
+  return jsx('span', {
+    className: 'huic-tile-media',
+    'aria-hidden': true,
+    children: shown
+      ? jsx('img', { src: option.image, alt: '', loading: 'lazy', referrerPolicy: 'no-referrer', onError: () => setFailed(true) })
+      : jsx('span', { className: 'huic-tile-ph', children: option.icon || optionInitials(option.label) })
+  })
+}
+
+function ImageTile({ option, num, checked, multiple, disabled, onToggle, tabIndex, refCb, onKeyDown, index }) {
   return jsxs('button', {
     type: 'button',
     role: multiple ? 'checkbox' : 'radio',
     'aria-checked': checked ? 'true' : 'false',
-    className: 'huic-opt',
-    disabled,
-    tabIndex,
-    ref: refCb,
-    onKeyDown,
-    onClick: onToggle,
-    style: option.image ? { flexDirection: 'column' } : undefined,
+    className: 'huic-tile',
+    'data-index': index,
+    disabled, tabIndex, ref: refCb, onKeyDown, onClick: onToggle,
+    title: [option.label, option.description].filter(Boolean).join(' – '),
     children: [
-      option.image ? jsx(CardImage, { src: option.image }) : null,
+      jsx(TileMedia, { option }),
+      num ? jsx(NumBadge, { n: num, multiple }) : null,
+      option.badge ? jsx('span', { className: 'huic-badge', children: option.badge }) : null,
       jsxs('span', {
-        className: 'huic-row',
+        className: 'huic-tile-cap',
+        children: [
+          jsx('span', { className: 'huic-tile-label', children: option.label }),
+          option.description ? jsx('span', { className: 'huic-tile-desc', children: option.description }) : null
+        ]
+      })
+    ]
+  })
+}
+
+// state: 'correct' | 'wrong' (quiz feedback) paints the row and swaps the number for ✓ / ✗.
+function OptionTile({ option, num, checked, multiple, disabled, ariaDisabled, onToggle, tabIndex, refCb, onKeyDown, index, state }) {
+  return jsxs('button', {
+    type: 'button',
+    role: multiple ? 'checkbox' : 'radio',
+    'aria-checked': checked ? 'true' : 'false',
+    className: cx('huic-opt', state && `huic-opt-${state}`),
+    'data-index': index,
+    'aria-disabled': ariaDisabled ? 'true' : undefined,
+    disabled, tabIndex, ref: refCb, onKeyDown, onClick: onToggle,
+    children: [
+      jsxs('span', {
+        className: 'huic-row huic-opt-row',
         style: { width: '100%', alignItems: 'flex-start' },
         children: [
-          jsx('span', { className: cx('huic-dot', multiple && 'huic-square'), 'aria-hidden': true }),
+          state
+            ? jsx('span', { className: 'huic-num huic-num-state', 'aria-hidden': true, children: state === 'correct' ? '✓' : '✗' })
+            : num
+              ? jsx(NumBadge, { n: num, multiple })
+              : jsx('span', { className: cx('huic-dot', multiple && 'huic-square'), 'aria-hidden': true }),
           option.icon ? jsx('span', { className: 'huic-icon', 'aria-hidden': true, children: option.icon }) : null,
           jsxs('span', {
             className: 'huic-opt-text',
@@ -1138,7 +1319,8 @@ function OptionTile({ option, checked, multiple, disabled, onToggle, tabIndex, r
               jsx('span', { className: 'huic-opt-label', children: option.label }),
               option.description ? jsx('span', { className: 'huic-opt-desc', children: option.description }) : null
             ]
-          })
+          }),
+          option.badge ? jsx('span', { className: 'huic-badge huic-best', children: option.badge }) : null
         ]
       })
     ]
@@ -1186,28 +1368,48 @@ function ChoiceCard({ card, sessionId, display, lang }) {
     ans.submit({ selected: card.options.filter(o => selected.includes(o.id)).map(o => o.id), other: otherText || undefined })
   }
 
-  const grid = card.options.some(o => o.image)
+  const keyed = optionKeys({
+    count: options.length,
+    onDigit: index => {
+      if (ans.locked) return
+      toggle(options[index].id)
+      roving.refs.current[index] && roving.refs.current[index].focus()
+    },
+    onEnter: index => {
+      if (ans.locked) return
+      const id = options[index].id
+      if (id === OTHER_ID) return otherOn ? send() : toggle(id)
+      if (!card.multiple) return void ans.submit({ selected: [id] })
+      return valid ? send() : toggle(id)
+    }
+  })
+
+  const withImages = card.options.some(o => o.image)
+  const tiles = options.map((option, index) => {
+    const props = {
+      option,
+      index,
+      num: index < 9 ? index + 1 : undefined,
+      checked: isChecked(option.id),
+      multiple: Boolean(card.multiple),
+      disabled: ans.locked,
+      tabIndex: card.multiple ? 0 : index === focusIndex ? 0 : -1,
+      refCb: el => (roving.refs.current[index] = el),
+      onKeyDown: card.multiple ? undefined : roving.onKeyDown(index, next => toggle(options[next].id)),
+      onToggle: () => toggle(option.id)
+    }
+    // "Other" has no picture: in an image grid it becomes a full-width row.
+    if (withImages && option.id === OTHER_ID) {
+      return jsx('div', { style: { gridColumn: '1 / -1' }, children: jsx(OptionTile, props) }, option.id)
+    }
+    return jsx(withImages ? ImageTile : OptionTile, props, option.id)
+  })
   const list = jsx('div', {
     role: card.multiple ? 'group' : 'radiogroup',
     'aria-labelledby': labelId,
-    className: grid ? 'huic-grid' : undefined,
-    style: grid ? undefined : { display: 'flex', flexDirection: 'column', gap: 6 },
-    children: options.map((option, index) =>
-      jsx(
-        OptionTile,
-        {
-          option,
-          checked: isChecked(option.id),
-          multiple: Boolean(card.multiple),
-          disabled: ans.locked,
-          tabIndex: card.multiple ? 0 : index === focusIndex ? 0 : -1,
-          refCb: el => (roving.refs.current[index] = el),
-          onKeyDown: card.multiple ? undefined : roving.onKeyDown(index, next => toggle(options[next].id)),
-          onToggle: () => toggle(option.id)
-        },
-        option.id
-      )
-    )
+    className: withImages ? 'huic-tiles' : undefined,
+    style: withImages ? undefined : { display: 'flex', flexDirection: 'column', gap: 6 },
+    children: tiles
   })
 
   const otherInput =
@@ -1234,11 +1436,15 @@ function ChoiceCard({ card, sessionId, display, lang }) {
     display,
     labelId,
     title: card.question,
-    children: [list, otherInput],
+    children: jsxs('div', {
+      onKeyDown: ans.showActions ? keyed : undefined,
+      style: { display: 'flex', flexDirection: 'column', gap: 8 },
+      children: [jsx('style', { children: KEYS_CSS + CHOICE_CSS }), list, otherInput]
+    }),
     footer: !ans.showActions
       ? null
       : jsx(Footer, {
-          hint: pickHint(card, lang),
+          hint: joinHints(pickHint(card, lang), t(lang, card.multiple ? 'keyToggle' : 'keyChoose', { keys: keyRange(options.length) })),
           children: jsx(Btn, {
             variant: 'primary',
             disabled: !valid,
@@ -1251,8 +1457,35 @@ function ChoiceCard({ card, sessionId, display, lang }) {
 }
 
 // ── 61-checklist.js ──
-// checklist: ticks are saved as you go (they survive reopening the chat); "Done" reports
-// what is checked and what is still open.
+// Ticks persist as you go; the header and Done stay in reach in the chat scroll.
+Object.assign(STRINGS.en, {
+  checklistSaved: 'Saved automatically · {done} of {total}',
+  checklistResumed: 'Picked up where you left off'
+})
+Object.assign(STRINGS.de, {
+  checklistSaved: 'Automatisch gespeichert · {done} von {total}',
+  checklistResumed: 'Hier geht’s weiter, wo du aufgehört hast'
+})
+
+const CHECKLIST_CSS = `
+.huic[data-card-type="checklist"]{overflow:visible;background:var(--ui-chat-surface-background,var(--ui-base))}
+.huic[data-card-type="checklist"]>.huic-check-head{padding:var(--huic-pad) var(--huic-pad) 8px;background:inherit;border-radius:11px 11px 0 0;display:flex;flex-direction:column;gap:8px}
+.huic[data-card-type="checklist"]>.huic-foot{background:inherit;border-radius:0 0 11px 11px}
+.huic[data-card-type="checklist"].huic-check-sticky>.huic-check-head{position:sticky;top:0;z-index:3}
+.huic[data-card-type="checklist"].huic-check-sticky>.huic-foot{position:sticky;bottom:0;z-index:2}
+.huic[data-card-type="checklist"] .huic-check-group{border:0;margin:0;padding:0;min-width:0}
+.huic[data-card-type="checklist"] .huic-check-group>legend{padding:0;width:100%}
+.huic[data-card-type="checklist"] .huic-check-heading{display:flex;align-items:center;gap:6px;min-height:28px;width:100%;border:0;border-radius:5px;padding:6px 0 2px;background:transparent;color:var(--ui-text-secondary);font:inherit;font-size:12.5px;font-weight:500;text-align:left;cursor:pointer}
+.huic[data-card-type="checklist"] .huic-check-chevron{width:12px;flex:none;transition:transform .15s}
+.huic[data-card-type="checklist"] .huic-check-heading[aria-expanded="true"] .huic-check-chevron{transform:rotate(90deg)}
+.huic[data-card-type="checklist"] .huic-check-row{align-items:flex-start;min-height:28px;padding:5px 2px;border-radius:5px;cursor:pointer;transition:background .12s,opacity .15s}
+.huic[data-card-type="checklist"] .huic-check-row:hover:has(input:not(:disabled)),.huic[data-card-type="checklist"] .huic-check-heading:hover{background:var(--ui-control-hover-background)}
+.huic[data-card-type="checklist"] .huic-check-row:has(input:disabled){cursor:default}
+.huic[data-card-type="checklist"] .huic-check-row.is-checked .huic-opt-text{opacity:.6}
+.huic[data-card-type="checklist"] .huic-check-row.is-checked .huic-check-text{text-decoration:line-through}
+.huic[data-card-type="checklist"] .huic-check-resumed{margin:0;color:var(--ui-text-tertiary);font-size:12px}
+@media(prefers-reduced-motion:reduce){.huic[data-card-type="checklist"] *{transition:none!important}}
+`
 
 function groupItems(items) {
   if (!items.some(i => i.category)) return [{ name: null, items }]
@@ -1272,6 +1505,35 @@ function groupItems(items) {
 
 function ChecklistCard({ card, sessionId, display, lang }) {
   const labelId = useId()
+  const frameRef = useRef(null)
+  const [sticky, setSticky] = useState(false)
+  useEffect(() => {
+    const frame = frameRef.current
+    if (!frame) return
+    let scrollRoot = frame.parentElement
+    while (scrollRoot && !/(auto|scroll)/.test(getComputedStyle(scrollRoot).overflowY)) scrollRoot = scrollRoot.parentElement
+    const scroller = scrollRoot || window
+    const update = () => {
+      const rect = frame.getBoundingClientRect()
+      const viewport = scrollRoot ? scrollRoot.getBoundingClientRect() : { top: 0, bottom: window.innerHeight }
+      const height = scrollRoot ? scrollRoot.clientHeight : window.innerHeight
+      const head = frame.querySelector('.huic-check-head')?.offsetHeight || 0
+      const foot = frame.querySelector('.huic-foot')?.offsetHeight || 0
+      // Only pin tall cards once enough of the card is visible for both controls.
+      setSticky(rect.height > height && rect.top + head + foot < viewport.bottom && rect.bottom > viewport.top)
+    }
+    update()
+    scroller.addEventListener('scroll', update, { passive: true })
+    window.addEventListener('resize', update)
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null
+    observer?.observe(frame)
+    if (scrollRoot) observer?.observe(scrollRoot)
+    return () => {
+      scroller.removeEventListener('scroll', update)
+      window.removeEventListener('resize', update)
+      observer?.disconnect()
+    }
+  }, [])
   const ans = useCardAnswer(card, sessionId, lang)
   const initial = () => {
     if (ans.answer && ans.answer.data) {
@@ -1282,206 +1544,208 @@ function ChecklistCard({ card, sessionId, display, lang }) {
   }
   const [localChecked, setChecked] = useState(initial)
   const checked = ans.answer ? initial() : ans.draft?.checked || localChecked
+  const [expanded, setExpanded] = useState({})
+  const [resumed, setResumed] = useState(() => !ans.answer && ans.draft?.checked?.some(id => card.items.some(i => i.id === id)) === true)
+  const groupButtons = useRef({})
+  const grouped = groupItems(card.items)
 
   const toggle = id => {
     if (ans.locked) return
     const next = checked.includes(id) ? checked.filter(x => x !== id) : [...checked, id]
+    const group = grouped.find(g => g.name && g.items.some(i => i.id === id))
+    // Keep keyboard focus in reach when the last tick closes a group.
+    if (group && expanded[group.name] !== true && group.items.every(i => next.includes(i.id))) groupButtons.current[group.name]?.focus()
     setChecked(next)
+    setResumed(false)
     ans.saveDraft({ checked: next })
   }
 
   const total = card.items.length
-  const done = checked.filter(id => card.items.some(i => i.id === id)).length
+  const done = card.items.filter(i => checked.includes(i.id)).length
   const pct = total ? Math.round((done / total) * 100) : 0
-
   const progress = jsxs('div', {
     className: 'huic-row',
     children: [
       jsx('div', {
-        className: 'huic-progress',
-        style: { flex: 1 },
-        role: 'progressbar',
-        'aria-valuemin': 0,
-        'aria-valuemax': total,
-        'aria-valuenow': done,
+        className: 'huic-progress', style: { flex: 1 }, role: 'progressbar',
+        'aria-valuemin': 0, 'aria-valuemax': total, 'aria-valuenow': done,
         'aria-label': t(lang, 'progress', { done, total }),
         children: jsx('span', { style: { width: `${pct}%` } })
       }),
-      jsx('span', { className: 'huic-hint', style: { marginRight: 0 }, 'aria-hidden': true, children: t(lang, 'progress', { done, total }) })
+      jsx('span', { className: 'huic-hint', style: { marginRight: 0, flexBasis: 'auto', flexShrink: 0 }, 'aria-hidden': true, children: t(lang, 'progress', { done, total }) })
     ]
   })
 
-  const groups = groupItems(card.items).map((group, gi) =>
-    jsxs(
-      'fieldset',
-      {
-        style: { border: 0, margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 2 },
-        children: [
-          group.name
-            ? jsx('legend', { className: 'huic-label', style: { padding: '6px 0 2px', color: 'var(--ui-text-secondary)' }, children: group.name })
-            : null,
-          ...group.items.map(item => {
+  const groups = grouped.map((group, gi) => {
+    const groupDone = group.items.filter(i => checked.includes(i.id)).length
+    const open = !group.name || (expanded[group.name] ?? groupDone < group.items.length)
+    const groupId = `${labelId}-group-${gi}`
+    return jsxs('fieldset', {
+      className: 'huic-check-group',
+      children: [
+        group.name ? jsx('legend', {
+          children: jsxs('button', {
+            type: 'button', className: 'huic-check-heading', 'aria-expanded': open, 'aria-controls': groupId,
+            ref: el => { groupButtons.current[group.name] = el },
+            onClick: () => setExpanded(prev => ({ ...prev, [group.name]: !open })),
+            children: [jsx('span', { className: 'huic-check-chevron', 'aria-hidden': true, children: '›' }), `${group.name} · ${groupDone}/${group.items.length}`]
+          })
+        }) : null,
+        jsx('div', {
+          id: groupId, hidden: !open,
+          children: group.items.map(item => {
             const on = checked.includes(item.id)
             const inputId = `${labelId}-${item.id}`
-            return jsxs(
-              'label',
-              {
-                htmlFor: inputId,
-                className: 'huic-row',
-                style: {
-                  alignItems: 'flex-start',
-                  padding: '5px 2px',
-                  cursor: ans.locked ? 'default' : 'pointer'
-                },
-                children: [
-                  jsx('input', {
-                    id: inputId,
-                    type: 'checkbox',
-                    checked: on,
-                    disabled: ans.locked,
-                    onChange: () => toggle(item.id),
-                    style: { accentColor: 'var(--huic-accent)', marginTop: 3, width: 15, height: 15, flex: 'none' }
-                  }),
-                  jsxs('span', {
-                    className: 'huic-opt-text',
-                    children: [
-                      jsx('span', {
-                        style: on ? { textDecoration: 'line-through', color: 'var(--ui-text-tertiary)' } : undefined,
-                        children: item.text
-                      }),
-                      item.note ? jsx('span', { className: 'huic-opt-desc', children: item.note }) : null
-                    ]
-                  })
-                ]
-              },
-              item.id
-            )
+            return jsxs('label', {
+              htmlFor: inputId, className: cx('huic-row', 'huic-check-row', on && 'is-checked'),
+              children: [
+                jsx('input', {
+                  id: inputId, type: 'checkbox', checked: on, disabled: ans.locked,
+                  onChange: () => toggle(item.id),
+                  style: { accentColor: 'var(--huic-accent)', marginTop: 3, width: 15, height: 15, flex: 'none' }
+                }),
+                jsxs('span', {
+                  className: 'huic-opt-text',
+                  children: [jsx('span', { className: 'huic-check-text', children: item.text }), item.note ? jsx('span', { className: 'huic-opt-desc', children: item.note }) : null]
+                })
+              ]
+            }, item.id)
           })
-        ]
-      },
-      group.name || `g${gi}`
-    )
-  )
+        })
+      ]
+    }, group.name || `g${gi}`)
+  })
 
   const send = () => ans.submit({ checked: card.items.filter(i => checked.includes(i.id)).map(i => i.id) })
-
-  return jsx(Shell, {
-    card,
-    display,
-    labelId,
-    title: card.title,
-    children: [progress, jsx('div', { role: 'group', 'aria-labelledby': card.title ? labelId : undefined, children: groups })],
-    footer: ans.showActions
-      ? jsx(Footer, {
-          children: jsx(Btn, { variant: 'primary', onClick: send, children: card.doneLabel || t(lang, 'done') })
-        })
-      : null,
-    after: ans.status
+  return jsxs('section', {
+    ref: frameRef,
+    className: cx('huic', display?.compact && 'huic-compact', sticky && 'huic-check-sticky'),
+    style: { '--huic-accent': ACCENT_VARS[display?.accent || 'app'] || ACCENT_VARS.app },
+    'data-card-type': card.type, 'aria-labelledby': card.title ? labelId : undefined, 'aria-label': card.title ? undefined : card.type,
+    children: [
+      jsx(Style, {}), jsx('style', { children: CHECKLIST_CSS }),
+      jsxs('header', {
+        className: 'huic-check-head',
+        children: [card.title ? jsx('h3', { className: 'huic-title', id: labelId, children: card.title }) : null, progress]
+      }),
+      jsxs('div', {
+        className: 'huic-body', style: { paddingTop: 0 },
+        children: [resumed ? jsx('p', { className: 'huic-check-resumed', role: 'status', children: t(lang, 'checklistResumed') }) : null,
+          jsx('div', { role: 'group', 'aria-labelledby': card.title ? labelId : undefined, children: groups })]
+      }),
+      ans.showActions ? jsx(Footer, {
+        hint: ans.draft?.checked ? t(lang, 'checklistSaved', { done, total }) : undefined,
+        children: jsx(Btn, { variant: 'primary', onClick: send, children: card.doneLabel || t(lang, 'done') })
+      }) : null,
+      ans.status
+    ]
   })
 }
 
 // ── 62-compare.js ──
-// compare: 2–4 candidates side by side, aligned attribute rows, one marked as the
-// recommendation, a pick button per column. Narrow views stack the columns.
+Object.assign(STRINGS.en, { compareSources: 'sources', compareChecked: 'Prices checked', compareNoSources: "From the model’s knowledge, no web sources", compareUndo: 'Undo', comparePending: 'Picked {title} · sending in 4 s', compareMore: '+{count} more', compareLess: 'Show less', compareBest: 'best', compareSwitch: 'Compare options' })
+Object.assign(STRINGS.de, { compareSources: 'Quellen', compareChecked: 'Preise geprüft', compareNoSources: 'Aus dem Wissen des Modells, ohne Webquellen', compareUndo: 'Rückgängig', comparePending: 'Gewählt: {title} · wird in 4 s gesendet', compareMore: '+{count} weitere', compareLess: 'Weniger anzeigen', compareBest: 'bester Wert', compareSwitch: 'Optionen vergleichen' })
 
-function displayValue(value, lang) {
+const COMPARE_CSS = `
+.huic[data-card-type="compare"] { max-width: 960px; container-type: inline-size; }
+.huic[data-card-type="compare"] .huic-compare-table { display: grid; grid-template-columns: var(--compare-grid); }
+.huic[data-card-type="compare"] .huic-compare-row { display: contents; }
+.huic[data-card-type="compare"] .huic-compare-cell { min-width: 0; padding: 12px; border-bottom: 1px solid var(--ui-border); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.huic[data-card-type="compare"] .huic-compare-label { color: var(--ui-text-secondary); font-size: 12px; }
+.huic[data-card-type="compare"] .huic-compare-recommended { background: color-mix(in srgb, var(--huic-accent) 8%, transparent); }
+.huic[data-card-type="compare"] .huic-compare-best { color: var(--huic-accent); font-weight: 600; }
+.huic[data-card-type="compare"] .huic-compare-source { display: inline-block; margin: 4px 0 0 4px; font-size: 11px; color: var(--ui-text-secondary); text-decoration: underline; }
+.huic[data-card-type="compare"] .huic-compare-source:hover { color: var(--huic-accent); }
+.huic[data-card-type="compare"] .huic-compare-switch { display: none; gap: 4px; margin-bottom: 10px; }
+.huic[data-card-type="compare"] .huic-compare-switch button, .huic[data-card-type="compare"] .huic-compare-more { border: 0; background: transparent; color: var(--huic-accent); cursor: pointer; font: inherit; }
+.huic[data-card-type="compare"] .huic-compare-switch button { padding: 6px 10px; border-radius: 6px; }
+.huic[data-card-type="compare"] .huic-compare-switch button[aria-checked="true"] { background: color-mix(in srgb, var(--huic-accent) 15%, transparent); font-weight: 600; }
+.huic[data-card-type="compare"] button:focus-visible, .huic[data-card-type="compare"] a:focus-visible { outline: 2px solid var(--huic-accent); outline-offset: 2px; }
+.huic[data-card-type="compare"] .huic-compare-list { margin: 0; padding: 0; list-style: none; }
+.huic[data-card-type="compare"] .huic-compare-footer { color: var(--ui-text-secondary); font-size: 12px; padding: 10px 12px 0; }
+.huic[data-card-type="compare"] .huic-compare-pending { padding: 12px; color: var(--ui-text-secondary); }
+@container (max-width: 560px) {
+ .huic[data-card-type="compare"] .huic-compare-switch { display: flex; }
+ .huic[data-card-type="compare"] .huic-compare-table { grid-template-columns: minmax(90px, max-content) minmax(0, 1fr); }
+ .huic[data-card-type="compare"] .huic-compare-cell[data-visible="false"] { display: none; }
+}
+`
+function displayValue(value) {
   if (value === true) return '✓'
-  if (value === false) return '–'
-  if (value === null || value === undefined || value === '') return '–'
+  if (value === false || value == null || value === '') return '–'
   return String(value)
 }
-
-function CompareColumn({ card, column, index, lang, ans, picked, onPick }) {
-  const rows = card.rows || []
-  const isPicked = picked === column.id
-  return jsxs('div', {
-    role: 'group',
-    'aria-label': column.title + (column.best ? ` (${t(lang, 'recommended')})` : ''),
-    className: 'huic-opt',
-    'aria-pressed': isPicked ? 'true' : undefined,
-    style: {
-      flexDirection: 'column',
-      cursor: 'default',
-      gap: 8,
-      borderColor: column.best && !isPicked ? 'color-mix(in srgb, var(--huic-accent) 45%, transparent)' : undefined
-    },
-    children: [
-      column.image ? jsx(CardImage, { src: column.image }) : null,
-      jsxs('div', {
-        className: 'huic-opt-text',
-        children: [
-          jsxs('div', {
-            className: 'huic-row',
-            style: { flexWrap: 'wrap', gap: 6 },
-            children: [
-              jsx('span', { className: 'huic-opt-label', style: { fontSize: 14 }, children: column.title }),
-              column.best ? jsx('span', { className: 'huic-badge huic-best', children: '★ ' + t(lang, 'recommended') }) : null,
-              column.badge ? jsx('span', { className: 'huic-badge', children: column.badge }) : null
-            ]
-          }),
-          column.subtitle ? jsx('span', { className: 'huic-opt-desc', children: column.subtitle }) : null
-        ]
-      }),
-      rows.length
-        ? jsx(KeyValues, { rows: rows.map(row => ({ label: row.label, value: displayValue(row.values[index], lang) })) })
-        : null,
-      column.pros && column.pros.length
-        ? jsx('ul', {
-            'aria-label': t(lang, 'pros'),
-            style: { margin: 0, paddingLeft: 0, listStyle: 'none' },
-            children: column.pros.map((p, i) =>
-              jsxs('li', { children: [jsx('span', { style: { color: 'var(--ui-green, var(--huic-accent))' }, 'aria-hidden': true, children: '+ ' }), p] }, i)
-            )
-          })
-        : null,
-      column.cons && column.cons.length
-        ? jsx('ul', {
-            'aria-label': t(lang, 'cons'),
-            style: { margin: 0, paddingLeft: 0, listStyle: 'none' },
-            children: column.cons.map((c, i) =>
-              jsxs('li', { children: [jsx('span', { style: { color: 'var(--ui-red, var(--ui-text-tertiary))' }, 'aria-hidden': true, children: '– ' }), c] }, i)
-            )
-          })
-        : null,
-      ans.showActions
-        ? jsx('div', {
-            style: { marginTop: 'auto', display: 'flex' },
-            children: jsx(Btn, {
-              variant: column.best ? 'primary' : 'secondary',
-              onClick: () => onPick(column.id),
-              label: `${card.selectLabel || t(lang, 'pick')}: ${column.title}`,
-              children: card.selectLabel || t(lang, 'pick')
-            })
-          })
-        : null
-    ]
-  })
+function CompareSource({ url, label }) {
+  let domain = ''
+  try { domain = new URL(url).hostname } catch { return null }
+  return jsx('a', { className: 'huic-compare-source', href: url, target: '_blank', rel: 'noopener noreferrer', onClick: e => {
+    if (typeof pluginCtx !== 'undefined' && pluginCtx?.os?.openExternal) { e.preventDefault(); pluginCtx.os.openExternal(url) }
+  }, children: '↗ ' + (label || domain) })
 }
-
 function CompareCard({ card, sessionId, display, lang }) {
   const labelId = useId()
   const ans = useCardAnswer(card, sessionId, lang)
-  const picked = ans.answer && ans.answer.data ? ans.answer.data.selected : null
-  const onPick = id => ans.submit({ selected: id })
-  return jsx(Shell, {
-    card,
-    display,
-    labelId,
-    title: card.title,
-    children: jsx('div', {
-      className: 'huic-grid',
-      style: { gridTemplateColumns: `repeat(auto-fit, minmax(${card.columns.length > 3 ? 150 : 170}px, 1fr))` },
-      children: card.columns.map((column, index) =>
-        jsx(CompareColumn, { card, column, index, lang, ans, picked, onPick }, column.id)
-      )
-    }),
-    after: ans.status
-  })
+  const [selected, setSelected] = useState(() => Math.max(0, card.columns.findIndex(c => c.best)))
+  const [expanded, setExpanded] = useState({})
+  const [pending, setPending] = useState(null)
+  const timer = useRef(null)
+  const switchRefs = useRef([])
+  const undo = () => { clearTimeout(timer.current); timer.current = null; setPending(null) }
+  useEffect(() => () => clearTimeout(timer.current), [])
+  useEffect(() => {
+    if (!pending) return
+    const onKey = e => { if (e.key === 'Escape') { e.preventDefault(); undo() } }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [pending])
+  const pick = column => {
+    if (timer.current) return
+    setPending(column)
+    timer.current = setTimeout(() => { timer.current = null; setPending(null); ans.submit({ selected: column.id }) }, 4000)
+  }
+  const cell = (column, i, content, extra = '') => jsx('div', { role: 'cell', className: cx('huic-compare-cell', column.best && 'huic-compare-recommended', extra), 'data-visible': i === selected ? 'true' : 'false', children: content }, column.id || i)
+  const row = (label, contents, key) => jsxs('div', { role: 'row', className: 'huic-compare-row', children: [jsx('div', { role: 'rowheader', className: 'huic-compare-cell huic-compare-label', children: label }), ...contents] }, key)
+  const urls = new Set(card.columns.map(c => c.source?.url).concat((card.rows || []).flatMap(r => r.sources || [])).filter(Boolean))
+  const rows = [row('', card.columns.map((c, i) => cell(c, i, jsxs('div', { children: [c.image ? jsx(CardImage, { src: c.image }) : null, jsx('strong', { children: c.title }), c.subtitle ? jsx('div', { className: 'huic-opt-desc', children: c.subtitle }) : null, c.badge ? jsx('div', { className: 'huic-badge', children: c.badge }) : null, c.best ? jsx('div', { className: 'huic-badge huic-best', children: '★ ' + t(lang, 'recommended') }) : null, c.source ? jsx('div', { children: jsx(CompareSource, { url: c.source.url, label: c.source.label }) }) : null] }))), 'header')]
+  for (const [ri, r] of (card.rows || []).entries()) rows.push(row(r.label, card.columns.map((c, i) => cell(c, i, jsxs(Fragment, { children: [r.best === i ? jsx('span', { 'aria-label': t(lang, 'compareBest'), children: '● ' }) : null, displayValue(r.values[i]), r.sources?.[i] ? jsx(CompareSource, { url: r.sources[i] }) : null] }), r.best === i ? 'huic-compare-best' : '')), `row${ri}`))
+  for (const kind of ['pros', 'cons']) if (card.columns.some(c => c[kind]?.length)) rows.push(row(t(lang, kind), card.columns.map((c, i) => {
+    const items = c[kind] || [], key = `${kind}-${i}`, more = expanded[key]
+    return cell(c, i, jsxs(Fragment, { children: [jsx('ul', { className: 'huic-compare-list', children: items.slice(0, more ? items.length : 2).map((v, j) => jsx('li', { children: (kind === 'pros' ? '+ ' : '– ') + v }, j)) }), items.length > 2 ? jsx('button', { type: 'button', className: 'huic-compare-more', 'aria-expanded': !!more, onClick: () => setExpanded({ ...expanded, [key]: !more }), children: more ? t(lang, 'compareLess') : t(lang, 'compareMore', { count: items.length - 2 }) }) : null] }))
+  }), kind))
+  if (ans.showActions && !pending) rows.push(row('', card.columns.map((c, i) => cell(c, i, jsx(Btn, { variant: c.best ? 'primary' : 'secondary', onClick: () => pick(c), label: `${card.selectLabel || t(lang, 'pick')}: ${c.title}`, children: card.selectLabel || t(lang, 'pick') }))), 'actions'))
+  return jsx(Shell, { card, display, labelId, title: card.title, after: ans.status, children: jsxs(Fragment, { children: [jsx('style', { children: COMPARE_CSS }), jsx('div', { className: 'huic-compare-switch', role: 'radiogroup', 'aria-label': t(lang, 'compareSwitch'), children: card.columns.map((c, i) => jsx('button', { type: 'button', role: 'radio', 'aria-checked': i === selected, tabIndex: i === selected ? 0 : -1, ref: el => { switchRefs.current[i] = el }, onClick: () => setSelected(i), onKeyDown: e => { if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); const next = (i + (e.key === 'ArrowRight' ? 1 : -1) + card.columns.length) % card.columns.length; setSelected(next); switchRefs.current[next]?.focus() } }, children: c.title }, c.id || i)) }), jsx('div', { role: 'table', className: 'huic-compare-table', 'aria-label': card.title || 'Compare', style: { '--compare-grid': `minmax(90px, max-content) repeat(${card.columns.length}, minmax(0, 1fr))` }, children: rows }), pending ? jsxs('div', { className: 'huic-compare-pending', role: 'status', 'aria-live': 'polite', children: [t(lang, 'comparePending', { title: pending.title }), ' · ', jsx('button', { type: 'button', className: 'huic-compare-more', onClick: undo, children: t(lang, 'compareUndo') })] }) : null, jsx('div', { className: 'huic-compare-footer', children: urls.size ? [card.asOf ? t(lang, 'compareChecked') + ' ' + card.asOf + ' · ' : '', `${urls.size} ${t(lang, 'compareSources')}`] : t(lang, 'compareNoSources') })] }) })
 }
 
 // ── 63-form.js ──
 // form: text, textarea, number, date, time, email, select and toggle fields with
 // required fields and checks. Drafts are saved, so a half-filled form survives reopening.
+
+Object.assign(STRINGS.en, {
+  formChoose: 'Please choose', formRequiredFilled: '{done} of {total} required filled',
+  formDraftSaved: 'Draft saved', formDateFormat: 'Format: dd/mm/yyyy'
+})
+Object.assign(STRINGS.de, {
+  formChoose: 'Bitte wählen', formRequiredFilled: '{done} von {total} Pflichtfeldern ausgefüllt',
+  formDraftSaved: 'Entwurf gespeichert', formDateFormat: 'Format: TT.MM.JJJJ'
+})
+
+const FORM_CSS = `
+.huic[data-card-type="form"] .huic-form-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
+.huic[data-card-type="form"] .huic-form-wide{grid-column:1/-1}
+.huic[data-card-type="form"] .huic-field{min-width:0}
+.huic[data-card-type="form"] .huic-input{min-width:0;min-height:32px;background:color-mix(in srgb,var(--ui-bg-quaternary) 35%,transparent)}
+.huic[data-card-type="form"] input.huic-input,.huic[data-card-type="form"] select.huic-input{height:32px;padding-block:4px}
+.huic[data-card-type="form"] select.huic-input option{background:var(--ui-chat-surface-background,var(--ui-base));color:var(--ui-text-primary)}
+.huic[data-card-type="form"] .huic-switch-label{display:flex;align-items:center;gap:8px;min-height:32px;cursor:pointer}
+.huic[data-card-type="form"] .huic-switch-label:has(:disabled){cursor:default;opacity:.6}
+.huic[data-card-type="form"] input.huic-switch{appearance:none;position:relative;flex:none;width:32px;height:18px;margin:0;border:1px solid var(--ui-stroke-secondary);border-radius:999px;background:var(--ui-bg-quaternary);cursor:inherit;transition:background .15s,border-color .15s}
+.huic[data-card-type="form"] input.huic-switch::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:var(--ui-text-secondary);transition:transform .15s}
+.huic[data-card-type="form"] input.huic-switch:checked{background:var(--huic-accent);border-color:var(--huic-accent)}
+.huic[data-card-type="form"] input.huic-switch:checked::after{transform:translateX(14px);background:var(--ui-chat-surface-background,var(--ui-base))}
+.huic[data-card-type="form"] .huic-form-feedback{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1;color:var(--ui-text-tertiary);font-size:12px}
+@container (min-width:521px){.huic[data-card-type="form"] .huic-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(prefers-reduced-motion:reduce){.huic[data-card-type="form"] *{transition:none!important}}
+`
 
 const TEXT_MAX = { text: 300, email: 200, textarea: 1000 }
 
@@ -1532,9 +1796,11 @@ function FormField({ field, value, error, disabled, lang, onChange, baseId }) {
   const id = `${baseId}-${field.name}`
   const helpId = field.help ? `${id}-help` : undefined
   const errId = error ? `${id}-err` : undefined
-  const describedBy = [helpId, errId].filter(Boolean).join(' ') || undefined
+  const dateHelpId = field.kind === 'date' ? `${id}-format` : undefined
+  const describedBy = [helpId, dateHelpId, errId].filter(Boolean).join(' ') || undefined
   const common = {
     id,
+    lang: field.kind === 'date' ? (lang === 'de' ? 'de-DE' : 'en-GB') : undefined,
     disabled,
     'aria-invalid': error ? 'true' : undefined,
     'aria-describedby': describedBy,
@@ -1543,7 +1809,7 @@ function FormField({ field, value, error, disabled, lang, onChange, baseId }) {
   let control
   if (field.kind === 'toggle') {
     control = jsxs('label', {
-      className: 'huic-row',
+      className: 'huic-switch-label',
       htmlFor: id,
       style: { cursor: disabled ? 'default' : 'pointer' },
       children: [
@@ -1553,7 +1819,7 @@ function FormField({ field, value, error, disabled, lang, onChange, baseId }) {
           role: 'switch',
           checked: value === true,
           onChange: e => onChange(e.target.checked),
-          style: { accentColor: 'var(--huic-accent)', width: 15, height: 15 }
+          className: 'huic-switch'
         }),
         jsx('span', { children: field.label })
       ]
@@ -1565,7 +1831,7 @@ function FormField({ field, value, error, disabled, lang, onChange, baseId }) {
       value,
       onChange: e => onChange(e.target.value),
       children: [
-        jsx('option', { value: '', children: field.placeholder || '–' }),
+        jsx('option', { value: '', children: field.placeholder || t(lang, 'formChoose') }),
         ...field.options.map(o => jsx('option', { value: o, children: o }, o))
       ]
     })
@@ -1601,7 +1867,7 @@ function FormField({ field, value, error, disabled, lang, onChange, baseId }) {
     })
   }
   return jsxs('div', {
-    className: 'huic-field',
+    className: cx('huic-field', ['text', 'textarea'].includes(field.kind) && 'huic-form-wide'),
     children: [
       field.kind === 'toggle'
         ? null
@@ -1617,6 +1883,7 @@ function FormField({ field, value, error, disabled, lang, onChange, baseId }) {
           }),
       control,
       field.help ? jsx('span', { className: 'huic-help', id: helpId, children: field.help }) : null,
+      dateHelpId ? jsx('span', { className: 'huic-help', id: dateHelpId, children: t(lang, 'formDateFormat') }) : null,
       error ? jsx('span', { className: 'huic-err', id: errId, children: error }) : null
     ]
   })
@@ -1647,6 +1914,9 @@ function FormCard({ card, sessionId, display, lang }) {
     if (e) errors[f.name] = e
   }
   const hasErrors = Object.keys(errors).length > 0
+  const required = card.fields.filter(f => f.required)
+  // A switch always has a boolean value; false is a valid answer too.
+  const requiredFilled = required.filter(f => f.kind === 'toggle' || String(values[f.name] ?? '').trim() !== '').length
   const reply = buildReply(card, { values: formOutput(card, values) }, lang)
   const remaining = MAX_REPLY - [...reply.text].length
   const ranked = card.fields.map(f => ({ name: f.name, size: [...JSON.stringify(formOutput(card, values)[f.name])].length }))
@@ -1670,6 +1940,7 @@ function FormCard({ card, sessionId, display, lang }) {
   }, [focusTick])
 
   const change = name => value => {
+    if (ans.locked) return
     const next = { ...values, [name]: value }
     setValues(next)
     ans.saveDraft({ values: next })
@@ -1691,9 +1962,9 @@ function FormCard({ card, sessionId, display, lang }) {
     noValidate: true,
     onSubmit,
     'aria-labelledby': card.title ? labelId : undefined,
-    style: { display: 'flex', flexDirection: 'column', gap: 10 },
+    className: 'huic-form-grid',
     children: [
-      card.description ? jsx('p', { className: 'huic-sub', style: { margin: 0 }, children: card.description }) : null,
+      card.description ? jsx('p', { className: 'huic-sub huic-form-wide', style: { margin: 0 }, children: card.description }) : null,
       ...card.fields.map(field =>
         jsx(
           FormField,
@@ -1709,7 +1980,7 @@ function FormCard({ card, sessionId, display, lang }) {
           field.name
         )
       ),
-      remaining <= MAX_REPLY * 0.15 ? jsx('span', { className: 'huic-help', 'aria-live': 'polite', children: t(lang, 'charactersLeft', { n: new Intl.NumberFormat(lang === 'de' ? 'de-DE' : 'en-US').format(remaining) }) }) : null,
+      remaining <= MAX_REPLY * 0.15 ? jsx('span', { className: 'huic-help huic-form-wide', 'aria-live': 'polite', children: t(lang, 'charactersLeft', { n: new Intl.NumberFormat(lang === 'de' ? 'de-DE' : 'en-US').format(remaining) }) }) : null,
       // Enter in a single-line field submits the form; the visible button sits in the footer.
       jsx('button', { type: 'submit', hidden: true, tabIndex: -1, 'aria-hidden': true })
     ]
@@ -1717,18 +1988,24 @@ function FormCard({ card, sessionId, display, lang }) {
 
   const footer = ans.showActions
     ? jsx(Footer, {
-        hint: tried && hasErrors ? t(lang, 'errFix') : '',
+        hint: jsxs('span', {
+          className: 'huic-form-feedback',
+          children: [
+            required.length ? jsx('span', { 'aria-live': 'polite', children: t(lang, 'formRequiredFilled', { done: requiredFilled, total: required.length }) }) : null,
+            ans.draft?.values ? jsx('span', { role: 'status', children: t(lang, 'formDraftSaved') }) : null,
+            tried && hasErrors ? jsx('span', { children: t(lang, 'errFix') }) : null
+          ]
+        }),
         children: jsx('button', {
           type: 'submit',
           form: formId,
           className: 'huic-btn huic-btn-primary',
-          disabled: !reply.fits,
           children: card.submitLabel || t(lang, 'submit')
         })
       })
     : null
 
-  return jsx(Shell, { card, display, labelId, title: card.title, children: body, footer, after: ans.status })
+  return jsx(Shell, { card, display, labelId, title: card.title, children: [jsx('style', { children: FORM_CSS }), body], footer, after: ans.status })
 }
 
 // ── 64-confirm.js ──
@@ -1739,8 +2016,34 @@ function FormCard({ card, sessionId, display, lang }) {
 const RISK_KEY = { low: 'riskLow', medium: 'riskMedium', high: 'riskHigh' }
 const RISK_ICON = { low: '●', medium: '▲', high: '⬣' }
 
+Object.assign(STRINGS.en, {
+  confirmApprovalHint: 'Hermes may still ask for its own approval before running it.',
+  confirmChangeHint: 'Ctrl/⌘+Enter to send',
+  confirmApproved: 'Approved', confirmDeclined: 'Declined', confirmChanged: 'Change requested'
+})
+Object.assign(STRINGS.de, {
+  confirmApprovalHint: 'Hermes fragt vor dem Ausführen möglicherweise noch nach einer eigenen Freigabe.',
+  confirmChangeHint: 'Mit Strg/⌘+Enter senden',
+  confirmApproved: 'Freigegeben', confirmDeclined: 'Abgelehnt', confirmChanged: 'Änderung angefragt'
+})
+
+const CONFIRM_CSS = `
+.huic[data-card-type="confirm"] .huic-risk{flex-wrap:wrap;align-items:baseline;column-gap:6px;row-gap:2px}
+.huic[data-card-type="confirm"] .huic-risk-low{color:var(--ui-text-tertiary)}
+.huic[data-card-type="confirm"] .huic-risk-medium{color:var(--ui-red,var(--ui-text-primary))}
+.huic[data-card-type="confirm"] .huic-risk-high{padding:10px 12px;border-radius:8px;background:color-mix(in srgb,var(--ui-red) 8%,transparent);border:1px solid color-mix(in srgb,var(--ui-red) 18%,transparent)}
+.huic[data-card-type="confirm"] .huic-btn-danger-outline{background:transparent;color:var(--ui-red);box-shadow:inset 0 0 0 1px var(--ui-red)}
+.huic[data-card-type="confirm"] .huic-btn-danger-outline:hover{background:color-mix(in srgb,var(--ui-red) 8%,transparent)}
+.huic[data-card-type="confirm"] .huic-btn-danger{background:var(--ui-red);color:var(--ui-chat-surface-background,var(--ui-base))}
+.huic[data-card-type="confirm"] .huic-btn-danger:hover{background:color-mix(in srgb,var(--ui-red) 88%,var(--ui-text-primary))}
+.huic[data-card-type="confirm"] .huic-confirm-approval{margin:0;padding:0 var(--huic-pad) 10px;color:var(--ui-text-tertiary);font-size:11px;line-height:1.5}
+.huic[data-card-type="confirm"] .huic-confirm-receipt{display:flex;gap:8px;align-items:center;font-size:15px;font-weight:600;padding:8px 0;color:var(--ui-text-primary)}
+.huic[data-card-type="confirm"] .huic-confirm-edit{display:flex;flex-direction:column;gap:5px;margin-top:4px}
+`
+
 function ConfirmCard({ card, sessionId, display, lang }) {
   const labelId = useId()
+  const changeId = useId()
   const ans = useCardAnswer(card, sessionId, lang)
   const [changing, setChanging] = useState(false)
   const [change, setChange] = useState('')
@@ -1755,12 +2058,19 @@ function ConfirmCard({ card, sessionId, display, lang }) {
   }, [changing])
 
   const risk = card.risk
+  const decision = ans.answer?.data?.decision
+  const receipt = { yes: ['✓', 'confirmApproved'], no: ['✗', 'confirmDeclined'], change: ['✎', 'confirmChanged'] }[decision]
   const body = [
+    jsx('style', { children: CONFIRM_CSS }, 'style'),
+    receipt ? jsxs('div', { className: 'huic-confirm-receipt', children: [
+      jsx('span', { 'aria-hidden': true, children: receipt[0] }),
+      jsx('span', { children: t(lang, receipt[1]) })
+    ] }, 'receipt') : null,
     jsx('p', { style: { margin: 0 }, children: card.action }, 'action'),
     card.reason ? jsx('p', { className: 'huic-sub', style: { margin: 0 }, children: card.reason }, 'reason') : null,
     card.command ? jsx(CodeBlock, { code: card.command, lang }, 'cmd') : null,
     card.details && card.details.length
-      ? jsx(KeyValues, { rows: card.details }, 'details')
+      ? jsx(KeyValues, { rows: card.details, lang }, 'details')
       : null,
     risk
       ? jsxs(
@@ -1777,27 +2087,29 @@ function ConfirmCard({ card, sessionId, display, lang }) {
         )
       : null,
     changing && ans.showActions
-      ? jsx(
-          'textarea',
-          {
+      ? jsxs('div', { className: 'huic-confirm-edit', children: [
+          jsx('textarea', {
             ref: changeRef,
             className: 'huic-input',
             value: change,
             maxLength: 2000,
             placeholder: t(lang, 'changePlaceholder'),
             'aria-label': t(lang, 'changePlaceholder'),
+            'aria-describedby': changeId,
             onChange: e => setChange(limitText(e.target.value, 1000)),
             onKeyDown: e => {
+              if (e.nativeEvent.isComposing) return
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && change.trim()) {
                 e.preventDefault()
                 ans.submit({ decision: 'change', change })
               } else if (e.key === 'Escape') {
+                e.preventDefault()
                 setChanging(false)
               }
             }
-          },
-          'change'
-        )
+          }),
+          jsx('span', { id: changeId, className: 'huic-help', children: t(lang, 'confirmChangeHint') })
+        ] }, 'change')
       : null
   ]
 
@@ -1823,7 +2135,7 @@ function ConfirmCard({ card, sessionId, display, lang }) {
         jsx(
           Btn,
           {
-            variant: risk && risk.level === 'high' ? 'danger' : 'primary',
+            variant: risk?.level === 'high' ? 'danger' : risk?.level === 'medium' ? 'danger-outline' : 'primary',
             onClick: () => ans.submit({ decision: 'yes' }),
             children: card.confirmLabel || t(lang, 'yes')
           },
@@ -1837,70 +2149,151 @@ function ConfirmCard({ card, sessionId, display, lang }) {
     labelId,
     title: card.title,
     children: body,
-    footer: ans.showActions ? jsx(Footer, { children: buttons }) : null,
+    footer: ans.showActions ? jsxs('div', { children: [
+      jsx(Footer, { children: buttons }),
+      card.command ? jsx('p', { className: 'huic-confirm-approval', children: t(lang, 'confirmApprovalHint') }) : null
+    ] }) : null,
     after: ans.status
   })
 }
 
 // ── 70-rating.js ──
-// rating: a keyboard-operable radio scale, with an optional comment.
+// rating: a keyboard-operable radio scale (contiguous stars or a segmented number row),
+// an optional comment. Digits rate, Enter sends.
+
+Object.assign(STRINGS.en, { keyRate: '{keys} rate · Enter send', rateEcho: '{n} of {max}' })
+Object.assign(STRINGS.de, { keyRate: '{keys} bewerten · Enter senden', rateEcho: '{n} von {max}' })
+
+const RATING_CSS = `
+.huic[data-card-type="rating"] .huic-stars{display:flex;flex-wrap:wrap;width:fit-content;max-width:100%}
+.huic[data-card-type="rating"] .huic-star{appearance:none;display:grid;place-items:center;width:28px;height:28px;padding:0;border:0;border-radius:6px;background:none;color:var(--ui-text-quaternary,var(--ui-text-tertiary));cursor:pointer;transition:color .1s,transform .1s}
+.huic[data-card-type="rating"] .huic-star svg{display:block;width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linejoin:round}
+.huic[data-card-type="rating"] .huic-star-on{color:var(--huic-accent)}
+.huic[data-card-type="rating"] .huic-star-on svg{fill:currentColor}
+.huic[data-card-type="rating"] .huic-star-pre svg{fill-opacity:.4}
+.huic[data-card-type="rating"] .huic-star:hover:not([disabled]){transform:scale(1.08)}
+.huic[data-card-type="rating"] .huic-star[disabled]{cursor:default}
+.huic[data-card-type="rating"] .huic-segs{display:flex;width:100%;border:1px solid var(--ui-stroke-secondary);border-radius:9px;overflow:hidden}
+.huic[data-card-type="rating"] .huic-segbtn{appearance:none;flex:1 1 0;min-width:0;padding:7px 0;border:0;border-right:1px solid var(--ui-stroke-tertiary);background:transparent;color:inherit;font:inherit;font-variant-numeric:tabular-nums;cursor:pointer}
+.huic[data-card-type="rating"] .huic-segbtn:last-child{border-right:0}
+.huic[data-card-type="rating"] .huic-segbtn:hover:not([disabled]){background:var(--ui-control-hover-background)}
+.huic[data-card-type="rating"] .huic-segbtn:focus-visible{outline-offset:-2px}
+.huic[data-card-type="rating"] .huic-segbtn[aria-checked="true"]{background:var(--huic-accent);color:var(--ui-chat-surface-background,var(--ui-base,Canvas));font-weight:600}
+.huic[data-card-type="rating"] .huic-segbtn[disabled]{cursor:default}
+.huic[data-card-type="rating"] .huic-rate-meta{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 12px;min-height:1.45em}
+.huic[data-card-type="rating"] .huic-rate-echo{font-weight:600}
+@media (prefers-reduced-motion: reduce){.huic[data-card-type="rating"] .huic-star:hover:not([disabled]){transform:none}}
+`
+
+const STAR_PATH = 'M12 2.8l2.8 5.9 6.4.8-4.7 4.4 1.2 6.4L12 17.2 6.3 20.3l1.2-6.4L2.8 9.5l6.4-.8z'
+
 function RatingCard({ card, sessionId, display, lang }) {
   const labelId = useId()
   const ans = useCardAnswer(card, sessionId, lang)
   const sent = ans.answer && ans.answer.data
   const [picked, setPicked] = useState(null)
   const [comment, setComment] = useState('')
+  const [hover, setHover] = useState(null)
+  const [focused, setFocused] = useState(null)
   const value = sent ? sent.value : picked
   const scale = card.scale ?? 5
+  const numbers = card.style === 'numbers'
   const roving = useRovingFocus(scale)
   const choose = n => { if (!ans.locked) setPicked(n) }
+  const send = n => { if (n !== null && n !== undefined) ans.submit({ value: n, comment }) }
+  const shown = ans.locked ? value : (hover ?? focused ?? value)
+
+  const onKeyDown = event => {
+    if (ans.locked || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return
+    const tag = event.target && event.target.tagName
+    if (tag === 'TEXTAREA' || tag === 'INPUT') return
+    if (/^[0-9]$/.test(event.key)) {
+      const n = event.key === '0' ? 10 : Number(event.key)
+      if (n <= scale) {
+        event.preventDefault()
+        setHover(null)
+        choose(n)
+        roving.refs.current[n - 1] && roving.refs.current[n - 1].focus()
+      }
+    } else if (event.key === 'Enter' && event.target.getAttribute && event.target.getAttribute('role') === 'radio') {
+      event.preventDefault()
+      if (value === null) choose(Number(event.target.getAttribute('data-index')) + 1)
+      else send(value)
+    }
+  }
+
+  const star = i => {
+    const n = i + 1
+    const on = shown !== null && shown !== undefined && n <= shown
+    const preview = on && n > (value || 0)
+    return jsx('button', {
+      type: 'button', role: 'radio',
+      className: numbers ? 'huic-segbtn' : cx('huic-star', on && 'huic-star-on', preview && 'huic-star-pre'),
+      'aria-label': t(lang, 'rate', { n, max: scale }),
+      'aria-checked': value === n,
+      'data-index': i,
+      disabled: ans.locked, tabIndex: i === (value ? value - 1 : 0) ? 0 : -1,
+      ref: el => (roving.refs.current[i] = el),
+      onKeyDown: roving.onKeyDown(i, next => choose(next + 1)),
+      onClick: () => choose(n),
+      onMouseEnter: () => { if (!ans.locked) setHover(n) },
+      onFocus: () => { if (!ans.locked) setFocused(n) },
+      onBlur: () => setFocused(null),
+      children: numbers ? n : jsx('svg', { viewBox: '0 0 24 24', 'aria-hidden': true, focusable: 'false', children: jsx('path', { d: STAR_PATH }) })
+    }, n)
+  }
+
+  const endLabel = shown === 1 ? card.lowLabel : shown === scale ? card.highLabel : ''
+  const ends = [card.lowLabel ? `1 = ${card.lowLabel}` : '', card.highLabel ? `${scale} = ${card.highLabel}` : ''].filter(Boolean).join(' · ')
 
   return jsx(Shell, {
     card, display, labelId, title: card.question,
-    children: [
-      jsx('div', {
-        role: 'radiogroup', 'aria-labelledby': labelId,
-        style: { display: 'grid', gridTemplateColumns: `repeat(${scale},minmax(0,1fr))`, gap: 3 },
-        children: Array.from({ length: scale }, (_, i) => jsx('button', {
-          type: 'button', role: 'radio', className: 'huic-opt',
-          'aria-label': t(lang, 'rate', { n: i + 1, max: scale }),
-          'aria-checked': value === i + 1,
-          disabled: ans.locked, tabIndex: i === (value ? value - 1 : 0) ? 0 : -1,
-          ref: el => (roving.refs.current[i] = el),
-          onKeyDown: roving.onKeyDown(i, next => choose(next + 1)),
-          onClick: () => choose(i + 1),
-          style: {
-            padding: '8px 0', justifyContent: 'center', minWidth: 0,
-            fontSize: card.style === 'numbers' ? 14 : 20,
-            color: value >= i + 1 ? 'var(--huic-accent)' : 'var(--ui-text-tertiary)'
-          },
-          children: card.style === 'numbers' ? i + 1 : '★'
-        }, i + 1))
-      }),
-      card.lowLabel || card.highLabel ? jsxs('div', {
-        className: 'huic-sub', style: { display: 'flex', justifyContent: 'space-between', gap: 12 },
-        children: [jsx('span', { children: card.lowLabel }), jsx('span', { style: { textAlign: 'right' }, children: card.highLabel })]
-      }) : null,
-      card.comment ? jsxs('label', {
-        className: 'huic-field',
-        children: [
-          jsx('span', { className: 'huic-label', children: t(lang, 'comment') }),
-          jsx('textarea', {
-            className: 'huic-input', disabled: ans.locked, maxLength: 2000,
-            value: sent ? sent.comment || '' : comment, onChange: e => setComment(limitText(e.target.value, 1000))
-          })
-        ]
-      }) : null
-    ],
+    children: jsxs('div', {
+      onKeyDown,
+      style: { display: 'flex', flexDirection: 'column', gap: 8 },
+      children: [
+        jsx('style', { children: RATING_CSS }),
+        jsx('div', {
+          role: 'radiogroup', 'aria-labelledby': labelId,
+          className: numbers ? 'huic-segs' : 'huic-stars',
+          onMouseLeave: () => setHover(null),
+          children: Array.from({ length: scale }, (_, i) => star(i))
+        }),
+        jsxs('div', {
+          className: 'huic-rate-meta',
+          children: [
+            jsx('span', {
+              className: 'huic-rate-echo',
+              children: shown ? t(lang, 'rateEcho', { n: shown, max: scale }) + (endLabel ? ` · ${endLabel}` : '') : ''
+            }),
+            ends ? jsx('span', { className: 'huic-sub', style: { margin: 0 }, children: ends }) : null
+          ]
+        }),
+        card.comment ? jsxs('label', {
+          className: 'huic-field',
+          children: [
+            jsx('span', { className: 'huic-label', children: t(lang, 'comment') }),
+            jsx('textarea', {
+              className: 'huic-input', disabled: ans.locked, maxLength: 2000,
+              value: sent ? sent.comment || '' : comment, onChange: e => setComment(limitText(e.target.value, 1000))
+            })
+          ]
+        }) : null
+      ]
+    }),
     footer: ans.showActions ? jsx(Footer, {
+      hint: t(lang, 'keyRate', { keys: scale === 10 ? '1–0' : keyRange(scale) }),
       children: jsx(Btn, { variant: 'primary', disabled: value === null,
-        onClick: () => { if (value !== null) ans.submit({ value, comment }) }, children: t(lang, 'send') })
+        onClick: () => send(value), children: t(lang, 'send') })
     }) : null,
     after: ans.status
   })
 }
 
 // ── 71-slider.js ──
+Object.assign(STRINGS.en, { keySlider: 'Type a value or drag · Enter send' })
+Object.assign(STRINGS.de, { keySlider: 'Wert eintippen oder ziehen · Enter senden' })
+
 // Snap relative to min, just like the native range input, without float noise.
 function sliderInitialValue(card) {
   if (card.default !== undefined) return card.default
@@ -1909,52 +2302,211 @@ function sliderInitialValue(card) {
   return Number(Math.min(card.max, Math.max(card.min, value)).toPrecision(12))
 }
 
+function sliderSnap(card, raw) {
+  const step = card.step || 1
+  const clamped = Math.min(card.max, Math.max(card.min, raw))
+  const snapped = card.min + Math.round((clamped - card.min) / step) * step
+  return Number(Math.min(card.max, Math.max(card.min, snapped)).toPrecision(12))
+}
+
+function sliderParse(text) {
+  const trimmed = String(text).trim().replace(',', '.')
+  if (!trimmed) return null
+  const n = Number(trimmed)
+  return Number.isFinite(n) ? n : null
+}
+
+const SLIDER_CSS = `
+.huic[data-card-type="slider"] .huic-slider-value{display:flex;justify-content:center;align-items:baseline;gap:6px;padding-top:4px}
+.huic[data-card-type="slider"] .huic-slider-num{appearance:textfield;-moz-appearance:textfield;min-width:3ch;max-width:100%;padding:0 2px 2px;border:0;border-bottom:1.5px dashed var(--ui-stroke-secondary);border-radius:0;background:transparent;color:inherit;font:inherit;font-size:28px;font-weight:600;line-height:1.2;text-align:center;font-variant-numeric:tabular-nums}
+.huic[data-card-type="slider"] .huic-slider-num::-webkit-inner-spin-button,.huic[data-card-type="slider"] .huic-slider-num::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.huic[data-card-type="slider"] .huic-slider-num:hover:not(:disabled){border-bottom-color:var(--ui-text-tertiary)}
+.huic[data-card-type="slider"] .huic-slider-num:focus{outline:0;border-bottom:1.5px solid var(--huic-accent)}
+.huic[data-card-type="slider"] .huic-slider-num:disabled{border-bottom-color:transparent;opacity:1;-webkit-text-fill-color:currentColor}
+.huic[data-card-type="slider"] .huic-slider-unit{font-size:16px;font-weight:500;color:var(--ui-text-secondary)}
+.huic[data-card-type="slider"] .huic-range{-webkit-appearance:none;appearance:none;display:block;width:100%;height:6px;margin:12px 0 6px;padding:0;border-radius:999px;background:linear-gradient(to right,var(--huic-accent) var(--fill),var(--ui-bg-quaternary) var(--fill));accent-color:var(--huic-accent);cursor:pointer}
+.huic[data-card-type="slider"] .huic-range::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--huic-accent);border:3px solid var(--ui-chat-surface-background,var(--ui-base,Canvas));box-shadow:0 0 0 1px var(--huic-accent);transition:transform .1s}
+.huic[data-card-type="slider"] .huic-range::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--huic-accent);border:3px solid var(--ui-chat-surface-background,var(--ui-base,Canvas));box-shadow:0 0 0 1px var(--huic-accent)}
+.huic[data-card-type="slider"] .huic-range::-moz-range-track{background:transparent}
+.huic[data-card-type="slider"] .huic-range:hover:not(:disabled)::-webkit-slider-thumb{transform:scale(1.12)}
+.huic[data-card-type="slider"] .huic-range:disabled{cursor:default}
+.huic[data-card-type="slider"] .huic-range:focus-visible{outline-offset:6px}
+.huic[data-card-type="slider"] .huic-slider-ends{display:flex;justify-content:space-between;gap:12px;margin:0}
+@media (prefers-reduced-motion: reduce){.huic[data-card-type="slider"] .huic-range::-webkit-slider-thumb{transition:none}}
+`
+
 function SliderCard({ card, sessionId, display, lang }) {
   const labelId = useId()
   const ans = useCardAnswer(card, sessionId, lang)
   const [draftValue, setValue] = useState(() => ans.draft?.value ?? sliderInitialValue(card))
+  const [text, setText] = useState(null) // null: the field shows the committed value
   const value = ans.answer ? ans.answer.data.value : (ans.draft?.value ?? draftValue)
+  const typed = text === null ? null : sliderParse(text)
+  const live = typed === null ? value : Math.min(card.max, Math.max(card.min, typed))
+  const fill = card.max > card.min ? ((live - card.min) / (card.max - card.min)) * 100 : 0
   const valueText = card.unit ? `${value} ${card.unit}` : String(value)
-  const change = e => {
-    if (ans.locked) return
-    const next = Number(e.target.value)
+  const withUnit = n => (card.unit ? `${n} ${card.unit}` : String(n))
+
+  const setCommitted = next => {
     setValue(next)
     ans.saveDraft({ value: next })
   }
+  const change = e => {
+    if (ans.locked) return
+    setText(null)
+    setCommitted(Number(e.target.value))
+  }
+  // Clamp and snap what was typed; an empty or non-numeric field falls back to the current value.
+  const commit = () => {
+    if (text === null) return { n: value, corrected: false }
+    const parsed = sliderParse(text)
+    setText(null)
+    if (parsed === null) return { n: value, corrected: true }
+    const n = sliderSnap(card, parsed)
+    if (n !== value) setCommitted(n)
+    return { n, corrected: n !== parsed }
+  }
+  const send = n => ans.submit({ value: n })
+
   return jsx(Shell, {
     card, display, labelId, title: card.question,
     children: [
-      jsx('output', { 'aria-live': 'polite', style: { fontSize: 28, fontWeight: 600, textAlign: 'center' }, children: valueText }),
+      jsx('style', { children: SLIDER_CSS }),
+      jsxs('div', {
+        className: 'huic-slider-value',
+        children: [
+          jsx('input', {
+            type: 'number', className: 'huic-slider-num', inputMode: 'decimal',
+            min: card.min, max: card.max, step: card.step || 1,
+            value: ans.locked ? String(value) : (text ?? String(value)),
+            disabled: ans.locked, 'aria-labelledby': labelId,
+            style: { width: `${Math.max(2, (text ?? String(value)).length) + 0.6}ch` },
+            onChange: e => { if (!ans.locked) setText(e.target.value) },
+            onBlur: () => { if (!ans.locked) commit() },
+            onKeyDown: e => {
+              if (e.key !== 'Enter' || ans.locked) return
+              e.preventDefault()
+              const { n, corrected } = commit()
+              if (!corrected && ans.showActions) send(n)
+            }
+          }),
+          card.unit ? jsx('span', { className: 'huic-slider-unit', children: card.unit }) : null
+        ]
+      }),
       jsx('input', {
-        type: 'range', min: card.min, max: card.max, step: card.step || 1, value,
+        type: 'range', className: 'huic-range', min: card.min, max: card.max, step: card.step || 1, value: live,
         disabled: ans.locked, 'aria-labelledby': labelId, 'aria-valuetext': valueText,
-        onChange: change, style: { width: '100%', margin: '8px 0', accentColor: 'var(--huic-accent)' }
+        style: { '--fill': `${fill}%` },
+        onChange: change,
+        onKeyDown: e => { if (e.key === 'Enter' && ans.showActions) { e.preventDefault(); send(value) } }
       }),
       jsxs('div', {
-        className: 'huic-sub', style: { display: 'flex', justifyContent: 'space-between', gap: 12 },
-        children: [jsx('span', { children: card.minLabel || String(card.min) }), jsx('span', { style: { textAlign: 'right' }, children: card.maxLabel || String(card.max) })]
+        className: 'huic-sub huic-slider-ends',
+        children: [jsx('span', { children: card.minLabel || withUnit(card.min) }), jsx('span', { style: { textAlign: 'right' }, children: card.maxLabel || withUnit(card.max) })]
       })
     ],
-    footer: ans.showActions ? jsx(Footer, { children: jsx(Btn, {
-      variant: 'primary', onClick: () => ans.submit({ value }), children: card.submitLabel || t(lang, 'send')
-    }) }) : null,
+    footer: ans.showActions ? jsx(Footer, {
+      hint: t(lang, 'keySlider'),
+      children: jsx(Btn, {
+        variant: 'primary', onClick: () => send(commit().n), children: card.submitLabel || t(lang, 'send')
+      })
+    }) : null,
     after: ans.status
   })
 }
 
 // ── 72-schedule.js ──
-// Group in the same wall-clock zone used by formatSlot (naive times stay local).
+// schedule: slots as chips under day headings (Today / Tomorrow / weekday + date),
+// a friendly zone label, digits pick available slots, Enter sends.
+
+const ZONE_DE = {
+  Vienna: 'Wien', Zurich: 'Zürich', Prague: 'Prag', Rome: 'Rom', Warsaw: 'Warschau', Copenhagen: 'Kopenhagen',
+  Brussels: 'Brüssel', Lisbon: 'Lissabon', Moscow: 'Moskau', Athens: 'Athen', Kiev: 'Kiew', Kyiv: 'Kiew',
+  Belgrade: 'Belgrad', Bucharest: 'Bukarest', Mexico_City: 'Mexiko-Stadt', Sao_Paulo: 'São Paulo',
+  Tokyo: 'Tokio', Hong_Kong: 'Hongkong', Singapore: 'Singapur', Cairo: 'Kairo', Dubai: 'Dubai'
+}
+
+function zoneLabel(zone, lang) {
+  if (!zone) return ''
+  const raw = String(zone).split('/').pop()
+  if (!String(zone).includes('/')) return /^(utc|gmt|z)$/i.test(raw) ? 'UTC' : zone
+  if (/^(utc|gmt|uct|universal|zulu)$/i.test(raw)) return 'UTC'
+  if (lang === 'de') return `Zeit: ${ZONE_DE[raw] || raw.replace(/_/g, ' ')}`
+  return `${raw.replace(/_/g, ' ')} time`
+}
+
+Object.assign(STRINGS.en, { today: 'Today', tomorrow: 'Tomorrow' })
+Object.assign(STRINGS.de, { today: 'Heute', tomorrow: 'Morgen' })
+
+// Day keys come from slotDay (card zone, naive times stay wall-clock) so grouping,
+// "Today" and the heading all agree. "Now" is read in the card zone, else locally.
+function scheduleToday(card) {
+  const zone = validTimeZone(card.timezone)
+  return new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', ...(zone ? { timeZone: zone } : {}) }).format(new Date())
+}
+function nextDayKey(key) {
+  const [y, m, d] = key.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10)
+}
+
 function scheduleDays(card, lang) {
   const groups = new Map()
   for (const slot of card.slots) {
-    const zone = slotZone(slot.start, card)
-    const day = new Intl.DateTimeFormat(lang === 'de' ? 'de-DE' : 'en-GB', {
-      weekday: 'long', year: 'numeric', month: 'short', day: 'numeric', ...(zone ? { timeZone: zone } : {})
-    }).format(slotDate(slot.start))
-    if (!groups.has(day)) groups.set(day, [])
-    groups.get(day).push(slot)
+    const key = slotDay(slot.start, card)
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(slot)
   }
-  return [...groups].map(([day, slots]) => ({ day, slots }))
+  const today = scheduleToday(card)
+  const tomorrow = nextDayKey(today)
+  return [...groups].map(([key, slots]) => {
+    const zone = slotZone(slots[0].start, card)
+    const parsed = slotDate(slots[0].start)
+    const date = Number.isNaN(parsed.getTime())
+      ? key
+      : new Intl.DateTimeFormat(lang === 'de' ? 'de-DE' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'short', ...(zone ? { timeZone: zone } : {}) }).format(parsed)
+    const rel = key === today ? t(lang, 'today') : key === tomorrow ? t(lang, 'tomorrow') : ''
+    return { key, rel, date, slots }
+  })
+}
+
+const SCHEDULE_CSS = `
+.huic[data-card-type="schedule"] .huic-day{display:flex;flex-direction:column;gap:6px}
+.huic[data-card-type="schedule"] .huic-day-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;margin:6px 0 0;font-size:13px}
+.huic[data-card-type="schedule"] .huic-day-rel{font-weight:600}
+.huic[data-card-type="schedule"] .huic-day-date{color:var(--ui-text-tertiary);font-size:12px}
+.huic[data-card-type="schedule"] .huic-chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:8px}
+.huic[data-card-type="schedule"] .huic-chip{display:flex;flex-direction:column;gap:2px;min-width:0;padding:8px 10px;text-align:left;font:inherit;color:inherit;cursor:pointer;border-radius:10px;border:1px solid var(--ui-stroke-tertiary);background:transparent;transition:background .12s,border-color .12s,box-shadow .12s}
+.huic[data-card-type="schedule"] .huic-chip:hover:not([disabled]){background:var(--ui-control-hover-background);border-color:var(--ui-stroke-secondary)}
+.huic[data-card-type="schedule"] .huic-chip[aria-checked="true"]{border-color:var(--huic-accent);background:color-mix(in srgb,var(--huic-accent) 12%,transparent);box-shadow:0 0 0 1px var(--huic-accent)}
+.huic[data-card-type="schedule"] .huic-chip[disabled]{cursor:default}
+.huic[data-card-type="schedule"] .huic-chip[disabled]:not([aria-checked="true"]){opacity:.45}
+.huic[data-card-type="schedule"] .huic-chip-time{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.huic[data-card-type="schedule"] .huic-chip-off .huic-chip-time{text-decoration:line-through}
+.huic[data-card-type="schedule"] .huic-chip-note{color:var(--ui-text-tertiary);font-size:12px;line-height:1.3}
+.huic[data-card-type="schedule"] .huic-chip-main{display:flex;align-items:center;gap:7px}
+`
+
+function SlotChip({ slot, card, lang, num, multiple, checked, disabled, tabIndex, refCb, onKeyDown, onToggle, index }) {
+  const note = [slot.label, slot.note].filter(Boolean).join(' · ')
+  return jsxs('button', {
+    type: 'button',
+    role: multiple ? 'checkbox' : 'radio',
+    'aria-checked': checked ? 'true' : 'false',
+    className: cx('huic-chip', slot.unavailable && 'huic-chip-off'),
+    'data-index': index,
+    disabled, tabIndex, ref: refCb, onKeyDown, onClick: onToggle,
+    children: [
+      jsxs('span', {
+        className: 'huic-chip-main',
+        children: [
+          num ? jsx(NumBadge, { n: num, multiple }) : null,
+          jsx('span', { className: 'huic-chip-time', children: formatSlot(slot, card, lang, { withDay: false }) })
+        ]
+      }),
+      note ? jsx('span', { className: 'huic-chip-note', children: note }) : null,
+      slot.unavailable ? jsx('span', { className: 'huic-chip-note', children: t(lang, 'unavailable') }) : null
+    ]
+  })
 }
 
 function ScheduleCard({ card, sessionId, display, lang }) {
@@ -1970,36 +2522,66 @@ function ScheduleCard({ card, sessionId, display, lang }) {
     if (ans.locked || slot.unavailable) return
     setPicked(card.multiple ? (selected.includes(slot.id) ? selected.filter(id => id !== slot.id) : [...selected, slot.id]) : [slot.id])
   }
+  const send = () => { if (selected.length) ans.submit({ selected }) }
+  const keyed = optionKeys({
+    count: available.length,
+    onDigit: index => {
+      if (ans.locked) return
+      toggle(available[index])
+      roving.refs.current[index] && roving.refs.current[index].focus()
+    },
+    onEnter: index => {
+      if (ans.locked || !available[index]) return
+      if (!card.multiple) return void ans.submit({ selected: [available[index].id] })
+      return selected.length ? send() : toggle(available[index])
+    }
+  })
   const groups = scheduleDays(card, lang)
+  const zone = zoneLabel(card.timezone, lang)
   return jsx(Shell, {
-    card, display, labelId, title: card.title, subtitle: card.timezone,
-    children: jsx('div', {
+    card, display, labelId, title: card.title, subtitle: zone || undefined,
+    children: jsxs('div', {
       role: card.multiple ? 'group' : 'radiogroup',
       'aria-labelledby': card.title ? labelId : undefined, 'aria-label': card.title ? undefined : t(lang, 'pick'),
+      onKeyDown: ans.showActions ? keyed : undefined,
       style: { display: 'flex', flexDirection: 'column', gap: 8 },
-      children: groups.map(group => jsxs('div', {
-        style: { display: 'flex', flexDirection: 'column', gap: 6 },
-        children: [
-          groups.length > 1 ? jsx('h4', { className: 'huic-label', style: { margin: '4px 0' }, children: group.day }) : null,
-          group.slots.map(slot => {
-            const index = available.findIndex(s => s.id === slot.id)
-            return jsx(OptionTile, {
-              option: { label: formatSlot(slot, card, lang, { withDay: groups.length < 2 }), description: [slot.label, slot.note, slot.unavailable ? t(lang, 'unavailable') : null].filter(Boolean).join(' · ') },
-              checked: selected.includes(slot.id), multiple: Boolean(card.multiple), disabled: ans.locked || slot.unavailable,
-              tabIndex: slot.unavailable ? -1 : card.multiple || index === focusIndex ? 0 : -1,
-              refCb: el => { if (index >= 0) roving.refs.current[index] = el },
-              onKeyDown: card.multiple || slot.unavailable ? undefined : roving.onKeyDown(index, next => toggle(available[next])),
-              onToggle: () => toggle(slot)
-            }, slot.id)
-          })
-        ]
-      }, group.day))
+      children: [
+        jsx('style', { children: KEYS_CSS + SCHEDULE_CSS }),
+        ...groups.map(group => jsxs('div', {
+          className: 'huic-day',
+          children: [
+            jsxs('h4', {
+              className: 'huic-day-head',
+              children: group.rel
+                ? [jsx('span', { className: 'huic-day-rel', children: group.rel }), jsx('span', { className: 'huic-day-date', children: group.date })]
+                : [jsx('span', { className: 'huic-day-rel', children: group.date })]
+            }),
+            jsx('div', {
+              className: 'huic-chips',
+              children: group.slots.map(slot => {
+                const index = available.findIndex(s => s.id === slot.id)
+                return jsx(SlotChip, {
+                  slot, card, lang, index,
+                  num: index >= 0 && index < 9 ? index + 1 : undefined,
+                  multiple: Boolean(card.multiple),
+                  checked: selected.includes(slot.id),
+                  disabled: ans.locked || slot.unavailable,
+                  tabIndex: slot.unavailable ? -1 : card.multiple || index === focusIndex ? 0 : -1,
+                  refCb: el => { if (index >= 0) roving.refs.current[index] = el },
+                  onKeyDown: card.multiple || slot.unavailable ? undefined : roving.onKeyDown(index, next => toggle(available[next])),
+                  onToggle: () => toggle(slot)
+                }, slot.id)
+              })
+            })
+          ]
+        }, group.key))
+      ]
     }),
     footer: ans.showActions ? jsx(Footer, {
+      hint: available.length ? t(lang, card.multiple ? 'keyToggle' : 'keyChoose', { keys: keyRange(available.length) }) : undefined,
       children: jsxs(Fragment, { children: [
         card.noneLabel ? jsx(Btn, { variant: 'ghost', onClick: () => ans.submit({ none: true }), children: card.noneLabel }) : null,
-        jsx(Btn, { variant: 'primary', disabled: !selected.length,
-          onClick: () => { if (selected.length) ans.submit({ selected }) }, children: t(lang, 'send') })
+        jsx(Btn, { variant: 'primary', disabled: !selected.length, onClick: send, children: t(lang, 'send') })
       ] })
     }) : null,
     after: ans.status
@@ -2007,63 +2589,192 @@ function ScheduleCard({ card, sessionId, display, lang }) {
 }
 
 // ── 73-steps.js ──
+Object.assign(STRINGS.en, {
+  stepsMap: 'Guide steps', stepsWhatHappened: 'What happened?', stepsOptional: 'Optional',
+  stepsNotePlaceholder: 'Tell Hermes where you got stuck'
+})
+Object.assign(STRINGS.de, {
+  stepsMap: 'Schritte der Anleitung', stepsWhatHappened: 'Was ist passiert?', stepsOptional: 'Optional',
+  stepsNotePlaceholder: 'Sag Hermes, wo du festhängst'
+})
+
+const STEPS_CSS = `
+.huic[data-card-type="steps"] .huic-steps-map{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 6px;padding:0;list-style:none}
+.huic[data-card-type="steps"] .huic-steps-map li{display:block;padding:0;margin:0}
+.huic[data-card-type="steps"] .huic-steps-dot{display:grid;place-items:center;min-width:27px;height:27px;border:1px solid var(--ui-stroke-tertiary);border-radius:999px;background:transparent;color:var(--ui-text-secondary);font:inherit;font-size:11px;font-variant-numeric:tabular-nums;cursor:pointer}
+.huic[data-card-type="steps"] .huic-steps-dot:hover:not(:disabled){background:var(--ui-control-hover-background)}
+.huic[data-card-type="steps"] .huic-steps-dot[aria-current="step"]{background:var(--huic-accent);border-color:var(--huic-accent);color:var(--ui-chat-surface-background,var(--ui-base));font-weight:600}
+.huic[data-card-type="steps"] .huic-steps-dot:disabled{color:var(--ui-text-secondary);opacity:.65;cursor:default}
+.huic[data-card-type="steps"] .huic-steps-done{border-color:color-mix(in srgb,var(--huic-accent) 40%,var(--ui-stroke-tertiary));color:var(--huic-accent);background:color-mix(in srgb,var(--huic-accent) 7%,transparent)}
+.huic[data-card-type="steps"] .huic-steps-left{margin-right:auto;min-width:0}
+.huic[data-card-type="steps"] .huic-steps-left button::before{content:'⚠';margin-right:6px}
+.huic[data-card-type="steps"] .huic-steps-nav{display:flex;gap:8px;align-items:center;margin-left:auto}
+.huic[data-card-type="steps"] .huic-steps-report{padding:12px var(--huic-pad);border-top:1px solid var(--ui-stroke-tertiary);display:flex;flex-direction:column;gap:7px}
+.huic[data-card-type="steps"] .huic-steps-report-actions{display:flex;justify-content:flex-end;gap:8px}
+`
+
 function StepsCard({ card, sessionId, display, lang }) {
   const labelId = useId()
+  const noteId = useId()
   const ans = useCardAnswer(card, sessionId, lang)
   const [localIndex, setIndex] = useState(() => Math.max(0, Math.min(card.steps.length - 1, ans.draft?.index ?? 0)))
-  const index = ans.draft?.index ?? localIndex
+  const index = Math.max(0, Math.min(card.steps.length - 1, ans.draft?.index ?? localIndex))
+  const [reporting, setReporting] = useState(false)
+  const [note, setNote] = useState('')
+  const noteRef = useRef(null)
+  const stuckRef = useRef(null)
+  const wasReporting = useRef(false)
   const headingRef = useRef(null)
   const previous = useRef(index)
   useEffect(() => {
     if (previous.current !== index) headingRef.current?.focus()
     previous.current = index
   }, [index])
+  useEffect(() => {
+    if (reporting) noteRef.current?.focus()
+    else if (wasReporting.current) stuckRef.current?.focus()
+    wasReporting.current = reporting
+  }, [reporting])
   const move = next => {
+    if (next < 0 || next >= card.steps.length) return
     setIndex(next)
     ans.saveDraft({ index: next })
   }
+  const sendStuck = () => {
+    if (ans.submit({ stuck: index + 1, ...(note.trim() ? { note: note.trim() } : {}) })) setReporting(false)
+  }
+  const navigate = e => {
+    if (!(ans.showActions || ans.answered) || reporting || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.nativeEvent.isComposing) return
+    if (e.target.closest('input,textarea,select,[contenteditable="true"],[role="textbox"]')) return
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      e.preventDefault()
+      move(index + (e.key === 'ArrowLeft' ? -1 : 1))
+    }
+  }
   const step = card.steps[index]
   const progressText = t(lang, 'stepOf', { n: index + 1, total: card.steps.length })
-  return jsx(Shell, {
+  const canNavigate = ans.showActions || ans.answered
+  return jsx('div', { onKeyDown: navigate, children: jsx(Shell, {
     card, display, labelId, title: card.title,
     children: [
+      jsx('style', { children: STEPS_CSS }),
       jsx('span', { className: 'huic-sub', children: progressText }),
       jsx('div', {
         className: 'huic-progress', role: 'progressbar', 'aria-label': progressText,
         'aria-valuemin': 0, 'aria-valuemax': card.steps.length, 'aria-valuenow': index + 1,
         children: jsx('span', { style: { width: `${((index + 1) / card.steps.length) * 100}%` } })
       }),
+      jsx('ol', { className: 'huic-steps-map', 'aria-label': t(lang, 'stepsMap'), children: card.steps.map((item, i) =>
+        jsx('li', { children: jsx('button', {
+          type: 'button', className: cx('huic-steps-dot', i < index && 'huic-steps-done'),
+          title: item.title, 'aria-label': `${t(lang, 'stepOf', { n: i + 1, total: card.steps.length })}: ${item.title}`,
+          'aria-current': i === index ? 'step' : undefined,
+          disabled: !canNavigate || i > index,
+          onClick: () => move(i), children: i + 1
+        }) }, i)
+      ) }),
       jsx('h4', { ref: headingRef, tabIndex: -1, className: 'huic-title', children: step.title }),
       step.body ? jsx('p', { style: { margin: 0, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }, children: step.body }) : null,
       step.command ? jsx(CodeBlock, { code: step.command, lang }) : null,
       step.image ? jsx(CardImage, { src: step.image }, index) : null
     ],
-    footer: (ans.showActions || ans.answered) ? jsx(Footer, { children: jsxs(Fragment, { children: [
-      ans.showActions ? jsx(Btn, { variant: 'ghost', onClick: () => ans.submit({ stuck: index + 1 }), children: t(lang, 'stuck') }) : null,
-      jsx(Btn, { disabled: index === 0, onClick: () => move(index - 1), children: t(lang, 'back') }),
-      index === card.steps.length - 1
-        ? (ans.showActions ? jsx(Btn, { variant: 'primary', onClick: () => ans.submit({ completed: true }), children: card.finishLabel || t(lang, 'finish') }) : null)
-        : jsx(Btn, { variant: 'primary', onClick: () => move(index + 1), children: t(lang, 'next') })
-    ] }) }) : null,
+    footer: canNavigate ? (reporting && ans.showActions
+      ? jsxs('div', { className: 'huic-steps-report', children: [
+          jsxs('label', { htmlFor: noteId, className: 'huic-label', children: [t(lang, 'stepsWhatHappened'), ' ', jsx('span', { className: 'huic-req', children: `(${t(lang, 'stepsOptional')})` })] }),
+          jsx('input', {
+            id: noteId, ref: noteRef, className: 'huic-input', type: 'text', value: note, maxLength: 600,
+            placeholder: t(lang, 'stepsNotePlaceholder'), onChange: e => setNote(limitText(e.target.value, 300)),
+            onKeyDown: e => {
+              if (e.nativeEvent.isComposing) return
+              if (e.key === 'Escape') { e.preventDefault(); setReporting(false) }
+              else if (e.key === 'Enter') { e.preventDefault(); sendStuck() }
+            }
+          }),
+          jsxs('div', { className: 'huic-steps-report-actions', children: [
+            jsx(Btn, { variant: 'ghost', onClick: () => setReporting(false), children: t(lang, 'cancel') }),
+            jsx(Btn, { variant: 'primary', onClick: sendStuck, children: t(lang, 'send') })
+          ] })
+        ] })
+      : jsx(Footer, { children: jsxs(Fragment, { children: [
+          ans.showActions ? jsx('span', { className: 'huic-steps-left', children: jsx(Btn, { ref: stuckRef, label: t(lang, 'stuck'), variant: 'ghost', onClick: () => setReporting(true), children: t(lang, 'stuck') }) }) : null,
+          jsxs('div', { className: 'huic-steps-nav', children: [
+            index > 0 ? jsx(Btn, { onClick: () => move(index - 1), children: t(lang, 'back') }) : null,
+            index === card.steps.length - 1
+              ? (ans.showActions ? jsx(Btn, { variant: 'primary', onClick: () => ans.submit({ completed: true }), children: card.finishLabel || t(lang, 'finish') }) : null)
+              : jsx(Btn, { variant: 'primary', onClick: () => move(index + 1), children: t(lang, 'next') })
+          ] })
+        ] }) })) : null,
     after: ans.status
-  })
+  }) })
 }
 
 // ── 74-quiz.js ──
-// One question at a time; checking locks that choice before revealing feedback.
+// quiz: one question at a time; checking locks that pick before feedback is shown.
+// A segmented bar tracks the questions, a result screen shows the score before sending.
+
+Object.assign(STRINGS.en, {
+  questionOf: 'Question {n} of {total}',
+  quizResult: 'Result',
+  seeResult: 'See result',
+  correctAnswer: 'Correct answer: {x}'
+})
+Object.assign(STRINGS.de, {
+  questionOf: 'Frage {n} von {total}',
+  quizResult: 'Ergebnis',
+  seeResult: 'Ergebnis ansehen',
+  correctAnswer: 'Richtig: {x}'
+})
+
+const QUIZ_CSS = `
+.huic[data-card-type="quiz"] h4[tabindex="-1"]:focus{outline:0}
+.huic[data-card-type="quiz"] .huic-qsegs{display:flex;gap:4px;margin:2px 0 4px}
+.huic[data-card-type="quiz"] .huic-qseg{flex:1 1 0;height:6px;border-radius:999px;background:var(--ui-bg-quaternary);transition:background .15s}
+.huic[data-card-type="quiz"] .huic-qseg-cur{background:color-mix(in srgb,var(--huic-accent) 55%,transparent);box-shadow:0 0 0 1.5px var(--ui-chat-surface-background,var(--ui-base,Canvas)),0 0 0 3px var(--ui-stroke-secondary)}
+.huic[data-card-type="quiz"] .huic-qseg-ok{background:var(--ui-green,var(--huic-accent))}
+.huic[data-card-type="quiz"] .huic-qseg-bad{background:var(--ui-red,var(--ui-text-tertiary))}
+.huic[data-card-type="quiz"] .huic-opt-correct{border-color:var(--ui-green,var(--huic-accent));background:color-mix(in srgb,var(--ui-green,var(--huic-accent)) 14%,transparent)}
+.huic[data-card-type="quiz"] .huic-opt-wrong{border-color:var(--ui-red,var(--ui-text-tertiary));background:color-mix(in srgb,var(--ui-red,var(--ui-text-tertiary)) 12%,transparent)}
+.huic[data-card-type="quiz"] .huic-opt-correct .huic-num-state{background:var(--ui-green,var(--huic-accent));border-color:var(--ui-green,var(--huic-accent));color:var(--ui-chat-surface-background,var(--ui-base,Canvas))}
+.huic[data-card-type="quiz"] .huic-opt-wrong .huic-num-state{background:var(--ui-red,var(--ui-text-tertiary));border-color:var(--ui-red,var(--ui-text-tertiary));color:var(--ui-chat-surface-background,var(--ui-base,Canvas))}
+.huic[data-card-type="quiz"] .huic-quiz-done .huic-opt{cursor:default}
+.huic[data-card-type="quiz"] .huic-quiz-done .huic-opt:not(.huic-opt-correct):not(.huic-opt-wrong){opacity:.6}
+.huic[data-card-type="quiz"] .huic-quiz-done .huic-opt:not(.huic-opt-correct):not(.huic-opt-wrong):hover{background:transparent}
+.huic[data-card-type="quiz"] .huic-callout{display:flex;flex-direction:column;gap:2px;padding:9px 12px;border-radius:9px;background:var(--ui-bg-quaternary);border-left:3px solid var(--ui-text-tertiary)}
+.huic[data-card-type="quiz"] .huic-callout-ok{border-left-color:var(--ui-green,var(--huic-accent))}
+.huic[data-card-type="quiz"] .huic-callout-bad{border-left-color:var(--ui-red,var(--ui-text-tertiary))}
+.huic[data-card-type="quiz"] .huic-callout-ok b{color:var(--ui-green,var(--huic-accent))}
+.huic[data-card-type="quiz"] .huic-callout-bad b{color:var(--ui-red,var(--ui-text-primary))}
+.huic[data-card-type="quiz"] .huic-callout p{margin:0;color:var(--ui-text-secondary)}
+.huic[data-card-type="quiz"] .huic-score{display:flex;align-items:baseline;gap:8px;margin:2px 0 0}
+.huic[data-card-type="quiz"] .huic-score-big{font-size:30px;font-weight:700;line-height:1.1;color:var(--huic-accent);font-variant-numeric:tabular-nums}
+.huic[data-card-type="quiz"] .huic-review{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+.huic[data-card-type="quiz"] .huic-review li{display:flex;gap:8px;align-items:flex-start;padding:7px 10px;border-radius:9px;border:1px solid var(--ui-stroke-tertiary)}
+.huic[data-card-type="quiz"] .huic-review-mark{flex:none;width:18px;text-align:center;font-weight:700}
+.huic[data-card-type="quiz"] .huic-review-ok .huic-review-mark{color:var(--ui-green,var(--huic-accent))}
+.huic[data-card-type="quiz"] .huic-review-bad .huic-review-mark{color:var(--ui-red,var(--ui-text-primary))}
+`
+
 function QuizCard({ card, sessionId, display, lang }) {
   const labelId = useId()
   const questionId = useId()
   const ans = useCardAnswer(card, sessionId, lang)
   const sent = ans.answer && ans.answer.data
-  const [progress, setProgress] = useState(() => ({
-    index: sent ? card.questions.length - 1 : Math.max(0, Math.min(card.questions.length - 1, ans.draft?.index ?? 0)),
-    chosen: sent ? sent.answers.map(a => a.chosen) : card.questions.map((_, i) => ans.draft?.chosen?.[i] ?? null),
-    checked: card.questions.map((_, i) => Boolean(sent || ans.draft?.checked?.[i]))
-  }))
-  const visible = sent ? { index: progress.index, chosen: sent.answers.map(a => a.chosen), checked: card.questions.map(() => true) } : (ans.draft || progress)
-  const { index, chosen, checked } = visible
-  const q = card.questions[index]
+  const total = card.questions.length
+  const [progress, setProgress] = useState(() => {
+    const checkedNow = card.questions.map((_, i) => Boolean(sent || ans.draft?.checked?.[i]))
+    // index === total is the result screen, reachable only once every question is checked.
+    const wanted = sent ? total : Math.max(0, Math.min(total, ans.draft?.index ?? 0))
+    return {
+      index: wanted >= total && !checkedNow.every(Boolean) ? total - 1 : wanted,
+      chosen: sent ? sent.answers.map(a => a.chosen) : card.questions.map((_, i) => ans.draft?.chosen?.[i] ?? null),
+      checked: checkedNow
+    }
+  })
+  const visible = sent ? { index: total, chosen: sent.answers.map(a => a.chosen), checked: card.questions.map(() => true) } : (ans.draft || progress)
+  const { chosen, checked } = visible
+  const index = Math.min(visible.index, checked.every(Boolean) ? total : total - 1)
+  const inResult = index >= total
+  const q = inResult ? null : card.questions[index]
   const headingRef = useRef(null)
   const previous = useRef(index)
   useEffect(() => {
@@ -2072,56 +2783,123 @@ function QuizCard({ card, sessionId, display, lang }) {
   }, [index])
   const update = change => {
     if (ans.locked) return
-    const next = { ...visible, ...change }
+    const next = { ...visible, index, ...change }
     setProgress(next)
     ans.saveDraft(next)
   }
+  const roving = useRovingFocus(q ? q.options.length : 1)
+  const done = !inResult && checked[index]
+  const allChecked = checked.every(Boolean)
+  const isRight = i => chosen[i] === card.questions[i].answer
+  const score = chosen.filter((v, i) => v === card.questions[i].answer).length
   const pick = option => {
-    if (checked[index] || ans.locked) return
+    if (done || ans.locked || inResult) return
     update({ chosen: chosen.map((v, i) => i === index ? option : v) })
   }
-  const roving = useRovingFocus(q.options.length)
-  const allChecked = checked.every(Boolean)
-  const score = chosen.filter((v, i) => v === card.questions[i].answer).length
-  const locked = ans.locked || checked[index]
-  return jsx(Shell, {
-    card, display, labelId, title: card.title,
-    subtitle: `${index + 1} / ${card.questions.length}`,
-    children: [
+  const check = () => { if (!inResult && chosen[index] !== null) update({ checked: checked.map((v, i) => i === index ? true : v) }) }
+  const next = () => update({ index: index + 1 })
+  const sendResult = () => { if (allChecked) ans.submit({ chosen }) }
+  // The one thing Enter does right now.
+  const primary = inResult ? sendResult : done ? next : check
+
+  const onKeyDown = event => {
+    if (ans.locked || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return
+    const tag = event.target && event.target.tagName
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      primary()
+    } else if (/^[1-9]$/.test(event.key) && q && !done && Number(event.key) <= q.options.length) {
+      event.preventDefault()
+      const i = Number(event.key) - 1
+      pick(i)
+      roving.refs.current[i] && roving.refs.current[i].focus()
+    }
+  }
+
+  const bar = jsx('div', {
+    className: 'huic-qsegs', role: 'progressbar', 'aria-label': card.title || t(lang, 'quizResult'),
+    'aria-valuemin': 1, 'aria-valuemax': total, 'aria-valuenow': Math.min(index + 1, total),
+    'aria-valuetext': inResult ? t(lang, 'quizResult') : t(lang, 'questionOf', { n: index + 1, total }),
+    children: card.questions.map((_, i) => jsx('span', {
+      className: cx('huic-qseg', checked[i] ? (isRight(i) ? 'huic-qseg-ok' : 'huic-qseg-bad') : null, i === index && 'huic-qseg-cur')
+    }, i))
+  })
+
+  let body
+  if (inResult) {
+    body = [
+      jsxs('div', {
+        className: 'huic-score', role: 'status',
+        children: [
+          jsx('span', { className: 'huic-score-big', 'aria-hidden': true, children: `${score}/${total}` }),
+          jsx('h4', { id: questionId, ref: headingRef, tabIndex: -1, className: 'huic-title', children: t(lang, 'score', { score, total }) })
+        ]
+      }),
+      jsx('ul', {
+        className: 'huic-review',
+        children: card.questions.map((item, i) => jsxs('li', {
+          className: isRight(i) ? 'huic-review-ok' : 'huic-review-bad',
+          children: [
+            jsx('span', { className: 'huic-review-mark', 'aria-hidden': true, children: isRight(i) ? '✓' : '✗' }),
+            jsxs('span', {
+              className: 'huic-opt-text',
+              children: [
+                jsx('span', { className: 'huic-opt-label', children: item.question }),
+                isRight(i) ? null : jsx('span', { className: 'huic-opt-desc', children: t(lang, 'correctAnswer', { x: item.options[item.answer] }) })
+              ]
+            })
+          ]
+        }, i))
+      })
+    ]
+  } else {
+    body = [
       jsx('h4', { id: questionId, ref: headingRef, tabIndex: -1, className: 'huic-title', children: q.question }),
       jsx('div', {
         role: 'radiogroup', 'aria-labelledby': questionId,
+        className: done ? 'huic-quiz-done' : undefined,
         style: { display: 'flex', flexDirection: 'column', gap: 6 },
         children: q.options.map((option, i) => jsx(OptionTile, {
-          option: { label: option }, checked: chosen[index] === i, multiple: false, disabled: locked,
+          option: { label: option }, index: i, num: i < 9 ? i + 1 : undefined,
+          checked: chosen[index] === i, multiple: false,
+          disabled: ans.locked, ariaDisabled: done,
+          state: done ? (i === q.answer ? 'correct' : chosen[index] === i ? 'wrong' : undefined) : undefined,
           tabIndex: i === (chosen[index] ?? 0) ? 0 : -1,
           refCb: el => (roving.refs.current[i] = el),
           onKeyDown: roving.onKeyDown(i, pick), onToggle: () => pick(i)
         }, `${index}-${i}`))
       }),
-      checked[index] ? jsxs('div', {
-        role: 'status', className: 'huic-field',
+      done ? jsxs('div', {
+        role: 'status', className: cx('huic-callout', isRight(index) ? 'huic-callout-ok' : 'huic-callout-bad'),
         children: [
-          jsx('b', { children: t(lang, chosen[index] === q.answer ? 'correct' : 'wrong') }),
-          q.explanation ? jsx('p', { style: { margin: 0 }, children: q.explanation }) : null
+          jsx('b', { children: (isRight(index) ? '✓ ' : '✗ ') + t(lang, isRight(index) ? 'correct' : 'wrong') }),
+          q.explanation ? jsx('p', { children: q.explanation }) : null
         ]
-      }) : null,
-      allChecked && index === card.questions.length - 1 ? jsx('p', {
-        className: 'huic-title', role: 'status', children: t(lang, 'score', { score, total: card.questions.length })
       }) : null
-    ],
-    footer: ans.showActions ? jsx(Footer, { children: jsxs(Fragment, { children: [
-      index > 0 ? jsx(Btn, { onClick: () => update({ index: index - 1 }), children: t(lang, 'back') }) : null,
-      !checked[index] ? jsx(Btn, {
-        variant: 'primary', disabled: chosen[index] === null,
-        onClick: () => { if (chosen[index] !== null) update({ checked: checked.map((v, i) => i === index ? true : v) }) },
-        children: t(lang, 'check')
-      }) : index < card.questions.length - 1 ? jsx(Btn, {
-        variant: 'primary', onClick: () => update({ index: index + 1 }), children: t(lang, 'next')
-      }) : jsx(Btn, {
-        variant: 'primary', disabled: !allChecked, onClick: () => { if (allChecked) ans.submit({ chosen }) }, children: t(lang, 'sendScore')
-      })
-    ] }) }) : null,
+    ]
+  }
+
+  const hintKey = inResult ? 'keySend' : done ? 'keyNext' : 'keyCheck'
+  return jsx(Shell, {
+    card, display, labelId, title: card.title,
+    subtitle: inResult ? t(lang, 'quizResult') : t(lang, 'questionOf', { n: index + 1, total }),
+    children: jsxs('div', {
+      onKeyDown: ans.showActions ? onKeyDown : undefined,
+      style: { display: 'flex', flexDirection: 'column', gap: 8 },
+      children: [jsx('style', { children: KEYS_CSS + QUIZ_CSS }), bar, ...body]
+    }),
+    footer: ans.showActions ? jsx(Footer, {
+      hint: t(lang, hintKey, { keys: keyRange(q ? q.options.length : 0) }),
+      children: jsxs(Fragment, { children: [
+        index > 0 ? jsx(Btn, { onClick: () => update({ index: index - 1 }), children: t(lang, 'back') }) : null,
+        inResult
+          ? jsx(Btn, { variant: 'primary', disabled: !allChecked, onClick: sendResult, children: t(lang, 'sendScore') })
+          : !done
+            ? jsx(Btn, { variant: 'primary', disabled: chosen[index] === null, onClick: check, children: t(lang, 'check') })
+            : jsx(Btn, { variant: 'primary', onClick: next, children: t(lang, index < total - 1 ? 'next' : 'seeResult') })
+      ] })
+    }) : null,
     after: ans.status
   })
 }

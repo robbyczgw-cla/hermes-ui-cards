@@ -281,6 +281,15 @@ def _rule(name, card, ctx):
             got = len(row.get("values", []))
             if got != n:
                 ctx.errors.append(f"card.rows[{i}].values: needs {n} values, one per column (got {got})")
+    elif name == "rowSourcesMatchValues":
+        for i, row in enumerate(card.get("rows", [])):
+            if "sources" in row and len(row["sources"]) != len(row.get("values", [])):
+                ctx.errors.append(f"card.rows[{i}].sources: needs {len(row.get('values', []))} sources, one per value (got {len(row['sources'])})")
+    elif name == "rowBestInColumns":
+        n = len(card.get("columns", []))
+        for i, row in enumerate(card.get("rows", [])):
+            if "best" in row and row["best"] >= n:
+                ctx.errors.append(f"card.rows[{i}].best: {row['best']} is not a column index (0..{n - 1})")
     elif name == "singleBest":
         best = [i for i, c in enumerate(card.get("columns", [])) if c.get("best")]
         if len(best) > 1:

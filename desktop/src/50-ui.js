@@ -78,6 +78,19 @@ textarea.huic-input{min-height:64px;resize:vertical}
   .huic-hint{flex-basis:100%}
 }
 @media (prefers-reduced-motion: reduce){.huic *{transition:none !important}}
+/* code + key-values */
+.huic .huic-code-block{position:relative;min-width:0;border-radius:8px;background:var(--ui-inline-code-background,var(--ui-bg-quaternary))}
+.huic .huic-code-block .huic-code{padding:38px 12px 12px;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;background:transparent;line-height:1.6}
+.huic .huic-copy{display:inline-flex;align-items:center;justify-content:center;gap:4px;min-width:26px;min-height:26px;padding:4px;border:1px solid transparent;border-radius:5px;background:transparent;color:var(--ui-text-tertiary);cursor:pointer;font:inherit;font-size:11px;line-height:1}
+.huic .huic-copy:hover{color:var(--ui-text-primary);background:var(--ui-control-hover-background);border-color:var(--ui-stroke-tertiary)}
+.huic .huic-copy svg{width:13px;height:13px;flex:none}
+.huic .huic-code-block>.huic-copy{position:absolute;right:6px;top:5px}
+.huic .huic-copy[data-copied="true"]{color:var(--ui-green,var(--ui-text-primary))}
+.huic .huic-kv dd{font-variant-numeric:tabular-nums}
+.huic .huic-kv-value{display:flex;align-items:center;gap:6px;min-width:0}
+.huic .huic-kv-value>span{min-width:0;flex:1}
+.huic .huic-kv-value>.huic-copy{flex:none}
+.huic .huic-kv-path{font-family:var(--font-mono,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:12px}
 `
 
 function Style() {
@@ -177,6 +190,11 @@ function NoticeBar({ text, action }) {
 
 function CopyButton({ text, lang }) {
   const [copied, setCopied] = useState(false)
+  const timer = useRef(null)
+  useEffect(() => {
+    setCopied(false)
+    return () => clearTimeout(timer.current)
+  }, [text])
   const copy = async () => {
     let ok = false
     try {
@@ -188,10 +206,28 @@ function CopyButton({ text, lang }) {
     }
     if (ok) {
       setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+      clearTimeout(timer.current)
+      timer.current = setTimeout(() => setCopied(false), 1500)
     }
   }
-  return jsx(Btn, { variant: 'ghost', onClick: copy, children: copied ? t(lang, 'copied') : t(lang, 'copy') })
+  const label = t(lang, copied ? 'copied' : 'copy')
+  return jsxs('button', {
+    type: 'button', className: 'huic-copy', onClick: copy,
+    'aria-label': label, title: label, 'data-copied': copied,
+    children: [
+      jsx('svg', {
+        viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: 1.4,
+        'aria-hidden': true,
+        children: copied
+          ? jsx('path', { d: 'm3 8 3 3 7-7', strokeLinecap: 'round', strokeLinejoin: 'round' })
+          : jsxs(Fragment, { children: [
+              jsx('rect', { x: 5, y: 5, width: 8, height: 9, rx: 1.5 }),
+              jsx('path', { d: 'M10 3V2H2v9h1', strokeLinecap: 'round', strokeLinejoin: 'round' })
+            ] })
+      }),
+      jsx('span', { className: copied ? undefined : 'huic-sr', children: label })
+    ]
+  })
 }
 
 // Label/value pairs. The app's Markdown styles reach dl/dt/dd inside messages, so the
@@ -200,22 +236,42 @@ const KV_ROW = { display: 'flex', gap: 12, justifyContent: 'space-between', alig
 const KV_DT = { margin: 0, padding: 0, float: 'none', fontWeight: 400, color: 'var(--ui-text-tertiary)', flex: 'none', maxWidth: '50%' }
 const KV_DD = { margin: 0, padding: 0, textAlign: 'right', minWidth: 0, overflowWrap: 'anywhere' }
 
-function KeyValues({ rows }) {
+function KeyValues({ rows, lang }) {
   return jsx('dl', {
     className: 'huic-kv',
     style: { margin: 0, padding: 0, display: 'block', alignSelf: 'stretch', width: '100%' },
-    children: rows.map((row, i) =>
-      jsxs('div', { style: KV_ROW, children: [jsx('dt', { style: KV_DT, children: row.label }), jsx('dd', { style: KV_DD, children: row.value })] }, i)
-    )
+    children: rows.map((row, i) => {
+      const value = String(row.value ?? '')
+      const stacked = [...value].length > 40
+      const path = /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(value)
+      const chars = [...value]
+      const shown = path && chars.length > 40 ? chars.slice(0, 18).join('') + '…' + chars.slice(-21).join('') : value
+      return jsxs('div', {
+        className: stacked ? 'huic-kv-stacked' : undefined,
+        style: { ...KV_ROW, ...(stacked ? { flexDirection: 'column', alignItems: 'stretch', gap: 3, padding: '7px 0' } : {}) },
+        children: [
+          jsx('dt', { style: { ...KV_DT, ...(stacked ? { maxWidth: '100%' } : {}) }, children: row.label }),
+          jsx('dd', {
+            style: { ...KV_DD, ...(stacked ? { textAlign: 'left' } : {}) },
+            children: path ? jsxs('span', {
+              className: 'huic-kv-value',
+              children: [
+                jsx('span', { className: 'huic-kv-path', title: value, 'aria-label': value, children: shown }),
+                jsx(CopyButton, { text: value, lang })
+              ]
+            }) : value
+          })
+        ]
+      }, i)
+    })
   })
 }
 
 function CodeBlock({ code, lang }) {
   return jsxs('div', {
-    className: 'huic-row',
-    style: { alignItems: 'flex-start' },
+    className: 'huic-code-block',
     children: [
-      jsx('pre', { className: 'huic-code', style: { flex: 1 }, children: code }),
+      jsx('pre', { className: 'huic-code', children: jsx('code', { children: code }) }),
       jsx(CopyButton, { text: code, lang })
     ]
   })

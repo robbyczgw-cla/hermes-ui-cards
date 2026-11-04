@@ -170,6 +170,22 @@
                 "items": {
                   "$ref": "text"
                 }
+              },
+              "source": {
+                "type": "object",
+                "required": [
+                  "label",
+                  "url"
+                ],
+                "properties": {
+                  "label": {
+                    "$ref": "label"
+                  },
+                  "url": {
+                    "$ref": "image",
+                    "description": "HTTPS source URL; never invent one."
+                  }
+                }
               }
             }
           }
@@ -199,18 +215,39 @@
                   ],
                   "maxLength": 120
                 }
+              },
+              "sources": {
+                "type": "array",
+                "items": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "https-url",
+                  "maxLength": 2000
+                }
+              },
+              "best": {
+                "type": "integer",
+                "minimum": 0
               }
             }
           }
         },
         "selectLabel": {
           "$ref": "label"
+        },
+        "asOf": {
+          "type": "string",
+          "maxLength": 40
         }
       },
       "x-rules": [
         "uniqueColumnIds",
         "rowsMatchColumns",
-        "singleBest"
+        "singleBest",
+        "rowSourcesMatchValues",
+        "rowBestInColumns"
       ]
     },
     "form": {
@@ -477,6 +514,11 @@
               },
               "image": {
                 "$ref": "image"
+              },
+              "badge": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 24
               }
             }
           }

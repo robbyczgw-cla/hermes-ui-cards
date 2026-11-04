@@ -379,6 +379,8 @@ def _shape(spec: dict) -> str:
     if types == ["integer"]:
         return "int"
     fmt = {"datetime": "ISO 8601 like 2026-11-12T14:00", "https-url": "https URL"}.get(spec.get("format"))
+    if fmt and "null" in types:
+        fmt += "|null"
     return fmt or "|".join(t for t in types if t)
 
 
@@ -391,6 +393,8 @@ def _field(name: str, spec: dict, required: bool) -> str:
         return f"{name}{mark}"
     if name == "answer":
         return f"{name}{mark}: 0-based option index"
+    if name == "best" and shape == "int":
+        return f"{name}{mark}: 0-based column index of the best value"
     return f"{name}{mark}: {shape}"
 
 

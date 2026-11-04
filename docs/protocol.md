@@ -102,3 +102,14 @@ Why: they use 2.3 GB
 Risk (medium): the files can't be restored
 Reply yes, no, or what to change.
 ```
+
+### Compare sources and picks
+
+A `compare` card can provide `asOf` (up to 40 characters), a column `source`
+with a `label` and HTTPS `url`, and a `sources` array on each row. Each source
+entry is an HTTPS URL or null and corresponds to the value at the same index.
+A row can also set `best` to the zero-based index of its strongest value; this
+is independent of the column-level `best` recommendation. Supply real sources,
+not invented URLs. Desktop links source chips to those pages and counts unique
+URLs. Text surfaces show source domains and the date. Desktop gives the user
+four seconds to undo a pick before sending the normal compare answer.

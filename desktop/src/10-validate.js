@@ -218,6 +218,11 @@ const vc_validateCard = (() => {
     } else if (name === 'rowsMatchColumns') {
       const n = (card.columns || []).length
       for (const [i, row] of (card.rows || []).entries()) if ((row.values || []).length !== n) ctx.errors.push(`card.rows[${i}].values: needs ${n} values, one per column (got ${(row.values || []).length})`)
+    } else if (name === 'rowSourcesMatchValues') {
+      for (const [i, row] of (card.rows || []).entries()) if (row.sources && row.sources.length !== (row.values || []).length) ctx.errors.push(`card.rows[${i}].sources: needs ${(row.values || []).length} sources, one per value (got ${row.sources.length})`)
+    } else if (name === 'rowBestInColumns') {
+      const n = (card.columns || []).length
+      for (const [i, row] of (card.rows || []).entries()) if (row.best != null && row.best >= n) ctx.errors.push(`card.rows[${i}].best: ${row.best} is not a column index (0..${n - 1})`)
     } else if (name === 'singleBest') {
       const n = (card.columns || []).filter(c => c.best).length
       if (n > 1) ctx.errors.push(`card.columns: only one column may have best: true (got ${n})`)

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { beforeEach, test } from 'node:test'
 
-import { buttonByText, click, key, lastReply, makeStorage, mount, registerPlugin, resetHost, testHost, toolResult, type, host } from './dom.mjs'
+import { act, buttonByText, click, key, lastReply, makeStorage, mount, registerPlugin, resetHost, testHost, toolResult, type, host } from './dom.mjs'
 
 beforeEach(resetHost)
 
@@ -170,6 +170,13 @@ test('compare: pick button per column, recommendation marked', async () => {
   assert.equal(picks.length, 2)
   assert.equal(picks[1].getAttribute('aria-label'), 'Choose: Galaxy S')
   await click(picks[1])
+  // A pick waits 4 s (Undo window) before it is sent.
+  assert.equal(testHost.submissions.length, 0, 'not sent during the undo window')
+  assert.match(container.textContent, /Undo/)
+  await act(async () => {
+    await new Promise(resolve => setTimeout(resolve, 4200))
+  })
+  assert.equal(testHost.submissions.length, 1)
   const reply = lastReply()
   assert.equal(reply.line1, '✓ Picked: Galaxy S')
   assert.equal(reply.json.selected, 'c2')

@@ -1,0 +1,13 @@
+{
+  "type": "choice",
+  "question": "Q",
+  "options": [
+    {
+      "label": "A",
+      "badge": "New"
+    },
+    {
+      "label": "B"
+    }
+  ]
+}

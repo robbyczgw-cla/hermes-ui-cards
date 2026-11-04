@@ -336,3 +336,14 @@ def test_schedule_offsets_are_shown_in_the_card_timezone():
     card, _, _ = validate_card({"type": "schedule", "timezone": "Mars/Base", "slots": [{"start": "2026-11-12T14:00Z"}]})
     text = render_text(card)
     assert "14:00 UTC" in text and text.endswith("Reply with 1 to take it.")
+
+
+def test_compare_sources_and_as_of():
+    raw = {"type": "compare", "asOf": "8 Nov 2026", "columns": [
+        {"title": "A", "source": {"label": "Retailer", "url": "https://retailer.at/a"}}, {"title": "B"}],
+        "rows": [{"label": "Price", "values": ["€100", "€200"], "sources": ["https://shop.at/item", None]}]}
+    out = text(raw)
+    assert "Retailer [retailer.at]" in out
+    assert "Price: €100 [shop.at]" in out
+    assert "Prices checked 8 Nov 2026" in out
+    assert "Preise geprüft 8 Nov 2026" in text(german(raw))
