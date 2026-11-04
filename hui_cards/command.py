@@ -4,7 +4,7 @@ from __future__ import annotations
 from .demos import DEMOS, demo_card
 from .fallback import render_text
 from .schema import CARD_TYPES, SCHEMA, validate_card
-from .tool import current_surface, setting
+from .tool import current_surface, enabled_types, setting
 
 VERSION = "0.1.0"
 
@@ -19,13 +19,16 @@ def _status(surface: str) -> str:
                  "default) and reload.")
     else:
         where = "This chat gets the text version of each card (numbered options)."
+    types = enabled_types()
+    off = [t for t in CARD_TYPES if t not in types]
     lines = [
         f"HUI+ Cards {VERSION}: cards are {'on' if on else 'off (text only)'}.",
         where,
-        "Types: " + ", ".join(CARD_TYPES) + ".",
-        "Try it: send \"Show me the hui_present demo for checklist\" as a message (any type works), "
+        "Types: " + ", ".join(types) + "." + (" Turned off in settings: " + ", ".join(off) + "." if off else ""),
+        f"Try it: send \"Show me the hui_present demo for {'checklist' if 'checklist' in types else types[0]}\" as a message (any type works), "
         "or /cards demo <type> for the text version.",
-        "Settings: Settings → Plugins → hermes-ui-cards (cards on/off, compact, accent colour).",
+        "Settings: Settings → Plugins → hermes-ui-cards (cards on/off, compact, accent colour, undo time, "
+        "card types).",
     ]
     return "\n".join(lines)
 
@@ -37,13 +40,18 @@ def handle_cards(raw_args: str = "", platform: str = "", session_id: str = "", *
     if not args or args[0] in ("help", "status"):
         return _status(surface) + "\n" + USAGE
     if args[0] == "types":
-        return "\n".join(f"{t}: {s['summary']}" for t, s in SCHEMA["cards"].items())
+        types = enabled_types()
+        return "\n".join(f"{t}: {s['summary']}" + ("" if t in types else " (turned off in settings)")
+                         for t, s in SCHEMA["cards"].items())
     if args[0] == "demo":
         kind = args[1] if len(args) > 1 else "checklist"
         raw = demo_card(kind)
         if raw is None:
             return f"Unknown card type \"{kind}\". Types: {', '.join(DEMOS)}."
         card, _errors, _warnings = validate_card(raw)
+        if kind not in enabled_types():
+            return (f"The {kind} card is turned off in Settings → Plugins → hermes-ui-cards (card types). "
+                    "Its text version:\n\n" + render_text(card))
         ask = f"\"Show me the hui_present demo for {kind}\""
         if surface == "desktop":
             return (f"Commands can't draw cards. Send {ask} as a message to get it as an interactive card. "

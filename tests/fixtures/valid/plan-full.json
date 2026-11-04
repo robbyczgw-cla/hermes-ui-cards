@@ -1,0 +1,13 @@
+{
+  "type": "plan",
+  "title": "Release plan",
+  "steps": [
+    {
+      "title": "Run tests"
+    },
+    {
+      "title": "Publish notes",
+      "optional": true
+    }
+  ]
+}

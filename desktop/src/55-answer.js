@@ -1,8 +1,16 @@
 // One answer per card: send it into the card's own chat, remember it, never send twice.
 
+// Seconds a pick waits before it is sent so it can be undone (Settings → Plugins → Undo time:
+// 0, 4 or 8). Cards call it when the pick happens, so a changed setting applies at once.
+function undoDelayMs(display) {
+  const pick = [liveDisplay, display, lastResultDisplay].find(d => d && [0, 4, 8].includes(d.undo))
+  return (pick ? pick.undo : 4) * 1000
+}
+
 function useCardAnswer(card, sessionId, lang) {
   const key = sessionId ? `${sessionId}\u0000${card.cardId}` : null
   const record = useCardRecord(key)
+  useServerAnswer(card, sessionId) // answered elsewhere (another window, the Webapp, another computer)
   const [problem, setProblem] = useState(null) // null | 'inactive' | 'failed' | 'oversize'
   const sending = useRef(false)
   const [focusAnswer, setFocusAnswer] = useState(false)

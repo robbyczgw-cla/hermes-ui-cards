@@ -4,7 +4,7 @@ import * as sdk from '@hermes/plugin-sdk'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Fragment, jsx, jsxs } from 'react/jsx-runtime'
 
-const SCHEMA = {"$comment":"Single source of truth for card shapes. Read by hui_cards/schema.py (validation in the tool) and by scripts/build.py, which embeds it in desktop/plugin.js and generates desktop/cards.d.ts. Subset of JSON Schema plus x-rules (cross-field checks implemented in both validators).","version":1,"limits":{"maxCardBytes":24000,"maxReplyChars":4000},"common":{"type":"object","properties":{"type":{"type":"string","description":"Card type."},"id":{"type":"string","pattern":"^[a-z0-9][a-z0-9_-]{0,39}$","description":"Short slug you choose, e.g. \"trip-style\". Optional."},"lang":{"type":"string","pattern":"^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$","description":"Language of the card text (\"en\", \"de\"). Sets the language of buttons and hints. Optional."}}},"definitions":{"image":{"type":"string","format":"https-url","maxLength":2000,"description":"https image URL that came from a tool or the user. Never invent one."},"icon":{"type":"string","maxLength":8,"format":"no-space","description":"One emoji."},"shortText":{"type":"string","minLength":1,"maxLength":80},"text":{"type":"string","minLength":1,"maxLength":300},"longText":{"type":"string","minLength":1,"maxLength":1200},"label":{"type":"string","minLength":1,"maxLength":40},"itemId":{"type":"string","pattern":"^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$"}},"cards":{"checklist":{"phase":1,"summary":"Items the user ticks off; the ticks are kept when the chat is reopened. \"Done\" reports checked and open items.","type":"object","required":["items"],"properties":{"title":{"$ref":"shortText"},"items":{"type":"array","minItems":1,"maxItems":50,"items":{"type":"object","required":["text"],"properties":{"id":{"$ref":"itemId"},"text":{"$ref":"text"},"note":{"$ref":"text"},"category":{"type":"string","minLength":1,"maxLength":40,"description":"Groups items under a heading."},"checked":{"type":"boolean","default":false}}}},"doneLabel":{"$ref":"label"}},"x-rules":["uniqueItemIds"]},"compare":{"phase":1,"summary":"2-4 candidates side by side with aligned attribute rows, one may be marked best; each column has a pick button.","type":"object","required":["columns"],"properties":{"title":{"$ref":"shortText"},"columns":{"type":"array","minItems":2,"maxItems":4,"items":{"type":"object","required":["title"],"properties":{"id":{"$ref":"itemId"},"title":{"$ref":"shortText"},"subtitle":{"$ref":"text"},"badge":{"type":"string","minLength":1,"maxLength":24},"image":{"$ref":"image"},"best":{"type":"boolean","default":false,"description":"Your recommendation (at most one column)."},"pros":{"type":"array","maxItems":5,"items":{"$ref":"text"}},"cons":{"type":"array","maxItems":5,"items":{"$ref":"text"}},"source":{"type":"object","required":["label","url"],"properties":{"label":{"$ref":"label"},"url":{"$ref":"image","description":"HTTPS source URL; never invent one."}}}}}},"rows":{"type":"array","maxItems":12,"description":"Attribute rows; values[i] belongs to columns[i].","items":{"type":"object","required":["label","values"],"properties":{"label":{"$ref":"shortText"},"values":{"type":"array","items":{"type":["string","number","boolean","null"],"maxLength":120}},"sources":{"type":"array","items":{"type":["string","null"],"format":"https-url","maxLength":2000}},"best":{"type":"integer","minimum":0}}}},"selectLabel":{"$ref":"label"},"asOf":{"type":"string","maxLength":40}},"x-rules":["uniqueColumnIds","rowsMatchColumns","singleBest","rowSourcesMatchValues","rowBestInColumns"]},"form":{"phase":1,"summary":"Fields the user fills in (text, number, date, select, toggle) with required fields and checks.","type":"object","required":["fields"],"properties":{"title":{"$ref":"shortText"},"description":{"$ref":"text"},"fields":{"type":"array","minItems":1,"maxItems":12,"items":{"type":"object","required":["name","label","kind"],"properties":{"name":{"type":"string","pattern":"^[A-Za-z][A-Za-z0-9_]{0,39}$"},"label":{"$ref":"shortText"},"kind":{"type":"string","enum":["text","textarea","number","date","time","email","select","toggle"]},"required":{"type":"boolean","default":false},"placeholder":{"type":"string","maxLength":80},"help":{"$ref":"text"},"default":{"type":["string","number","boolean"],"maxLength":1000},"min":{"type":"number","description":"number: smallest value."},"max":{"type":"number","description":"number: largest value."},"step":{"type":"number","minimum":0},"unit":{"type":"string","maxLength":12},"maxLength":{"type":"integer","minimum":1,"maximum":2000},"options":{"type":"array","minItems":2,"maxItems":20,"items":{"$ref":"shortText"},"description":"select: the choices."}}}},"submitLabel":{"$ref":"label"}},"x-rules":["uniqueFieldNames","fieldKindRules"]},"steps":{"phase":2,"summary":"A guided walkthrough, one step at a time with Back/Next; the user reports done or where they got stuck.","type":"object","required":["steps"],"properties":{"title":{"$ref":"shortText"},"steps":{"type":"array","minItems":2,"maxItems":12,"items":{"type":"object","required":["title"],"properties":{"title":{"$ref":"shortText"},"body":{"$ref":"longText"},"command":{"type":"string","minLength":1,"maxLength":1000},"image":{"$ref":"image"}}}},"finishLabel":{"$ref":"label"}},"x-rules":[]},"confirm":{"phase":1,"summary":"Ask before you act: one action with reason and risk; the user answers Yes, No or Change.","type":"object","required":["title","action"],"properties":{"title":{"$ref":"shortText"},"action":{"$ref":"text","description":"What exactly will happen."},"reason":{"$ref":"text"},"risk":{"type":"object","required":["level"],"properties":{"level":{"type":"string","enum":["low","medium","high"]},"text":{"$ref":"text"}}},"command":{"type":"string","minLength":1,"maxLength":2000,"description":"Command or code shown monospace."},"details":{"type":"array","maxItems":8,"items":{"type":"object","required":["label","value"],"properties":{"label":{"$ref":"shortText"},"value":{"$ref":"text"}}}},"confirmLabel":{"$ref":"label"},"cancelLabel":{"$ref":"label"},"allowChange":{"type":"boolean","default":true,"description":"Offer \"Change\" with a text field."}},"x-rules":[]},"choice":{"phase":1,"summary":"Pick several of 2-6 options, or options that need a picture or a short text each. For one plain question with simple options use the built-in clarify tool instead.","type":"object","required":["question","options"],"properties":{"question":{"$ref":"text"},"options":{"type":"array","minItems":2,"maxItems":6,"items":{"type":"object","required":["label"],"properties":{"id":{"$ref":"itemId"},"label":{"$ref":"shortText"},"description":{"$ref":"text"},"icon":{"$ref":"icon"},"image":{"$ref":"image"},"badge":{"type":"string","minLength":1,"maxLength":24}}}},"multiple":{"type":"boolean","default":false,"description":"Allow several picks."},"min":{"type":"integer","minimum":1,"maximum":6,"description":"Fewest picks (multiple only)."},"max":{"type":"integer","minimum":1,"maximum":6,"description":"Most picks (multiple only)."},"allowOther":{"type":"boolean","default":false,"description":"Add a free-text \"Other\" field."},"submitLabel":{"$ref":"label"}},"x-rules":["uniqueOptionIds","minMaxPicks"]},"schedule":{"phase":2,"summary":"Offer time slots to pick from (meetings, appointments).","type":"object","required":["slots"],"properties":{"title":{"$ref":"shortText"},"timezone":{"type":"string","maxLength":64,"description":"IANA zone, e.g. \"Europe/Vienna\"."},"slots":{"type":"array","minItems":1,"maxItems":20,"items":{"type":"object","required":["start"],"properties":{"id":{"$ref":"itemId"},"start":{"type":"string","format":"datetime","description":"ISO 8601, e.g. 2026-11-12T14:00"},"end":{"type":"string","format":"datetime"},"label":{"$ref":"shortText"},"note":{"$ref":"text"},"unavailable":{"type":"boolean","default":false}}}},"multiple":{"type":"boolean","default":false},"noneLabel":{"$ref":"label","description":"Button for \"none of these fit\"."}},"x-rules":["uniqueSlotIds","slotOrder"]},"rating":{"phase":2,"summary":"Ask for a rating on a scale (stars or numbers), optional comment.","type":"object","required":["question"],"properties":{"question":{"$ref":"text"},"scale":{"type":"integer","minimum":3,"maximum":10,"default":5},"style":{"type":"string","enum":["stars","numbers"],"default":"stars"},"lowLabel":{"type":"string","maxLength":30},"highLabel":{"type":"string","maxLength":30},"comment":{"type":"boolean","default":false,"description":"Add an optional comment field."}},"x-rules":[]},"slider":{"phase":2,"summary":"Ask for one number in a range (budget, duration, level).","type":"object","required":["question","min","max"],"properties":{"question":{"$ref":"text"},"min":{"type":"number"},"max":{"type":"number"},"step":{"type":"number","minimum":0},"default":{"type":"number"},"unit":{"type":"string","maxLength":12},"minLabel":{"type":"string","maxLength":30},"maxLabel":{"type":"string","maxLength":30},"submitLabel":{"$ref":"label"}},"x-rules":["sliderRange"]},"quiz":{"phase":2,"summary":"Multiple-choice questions with feedback per answer; the score is sent back.","type":"object","required":["questions"],"properties":{"title":{"$ref":"shortText"},"questions":{"type":"array","minItems":1,"maxItems":10,"items":{"type":"object","required":["question","options","answer"],"properties":{"question":{"$ref":"text"},"options":{"type":"array","minItems":2,"maxItems":6,"items":{"$ref":"shortText"}},"answer":{"type":"integer","minimum":0,"description":"0-based index of the correct option."},"explanation":{"$ref":"text"}}}}},"x-rules":["quizAnswers"]}}}
+const SCHEMA = {"$comment":"Single source of truth for card shapes. Read by hui_cards/schema.py (validation in the tool) and by scripts/build.py, which embeds it in desktop/plugin.js and generates desktop/cards.d.ts. Subset of JSON Schema plus x-rules (cross-field checks implemented in both validators).","version":1,"limits":{"maxCardBytes":24000,"maxReplyChars":4000},"common":{"type":"object","properties":{"type":{"type":"string","description":"Card type."},"id":{"type":"string","pattern":"^[a-z0-9][a-z0-9_-]{0,39}$","description":"Short slug you choose, e.g. \"trip-style\". Optional."},"lang":{"type":"string","pattern":"^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$","description":"Language of the card text (\"en\", \"de\"). Sets the language of buttons and hints. Optional."}}},"definitions":{"image":{"type":"string","format":"https-url","maxLength":2000,"description":"https image URL that came from a tool or the user. Never invent one."},"icon":{"type":"string","maxLength":8,"format":"no-space","description":"One emoji."},"shortText":{"type":"string","minLength":1,"maxLength":80},"text":{"type":"string","minLength":1,"maxLength":300},"longText":{"type":"string","minLength":1,"maxLength":1200},"label":{"type":"string","minLength":1,"maxLength":40},"itemId":{"type":"string","pattern":"^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$"}},"cards":{"plan":{"phase":3,"summary":"Edit and run a plan.","type":"object","required":["title","steps"],"properties":{"title":{"$ref":"shortText"},"summary":{"$ref":"text"},"steps":{"type":"array","minItems":1,"maxItems":15,"items":{"type":"object","required":["title"],"properties":{"id":{"$ref":"itemId"},"title":{"$ref":"shortText"},"detail":{"$ref":"text"},"command":{"type":"string","minLength":1,"maxLength":1000},"risk":{"type":"string","enum":["low","medium","high"]},"optional":{"type":"boolean","default":false}}}},"runLabel":{"$ref":"label"}},"x-rules":["uniqueStepIds"]},"review":{"phase":3,"summary":"Review items together.","type":"object","required":["title","items"],"properties":{"title":{"$ref":"shortText"},"summary":{"$ref":"text"},"items":{"type":"array","minItems":1,"maxItems":30,"items":{"type":"object","required":["title"],"properties":{"id":{"$ref":"itemId"},"title":{"$ref":"shortText"},"detail":{"$ref":"text"},"preview":{"type":"string","minLength":1,"maxLength":1000},"tag":{"type":"string","minLength":1,"maxLength":24}}}},"defaultDecision":{"type":"string","enum":["keep","drop","none"],"default":"none"},"keepLabel":{"$ref":"label"},"dropLabel":{"$ref":"label"},"applyLabel":{"$ref":"label"}},"x-rules":["uniqueItemIds"]},"checklist":{"phase":1,"summary":"Items the user ticks off; the ticks are kept when the chat is reopened. \"Done\" reports checked and open items.","type":"object","required":["items"],"properties":{"title":{"$ref":"shortText"},"items":{"type":"array","minItems":1,"maxItems":50,"items":{"type":"object","required":["text"],"properties":{"id":{"$ref":"itemId"},"text":{"$ref":"text"},"note":{"$ref":"text"},"category":{"type":"string","minLength":1,"maxLength":40,"description":"Groups items under a heading."},"checked":{"type":"boolean","default":false}}}},"doneLabel":{"$ref":"label"}},"x-rules":["uniqueItemIds"]},"compare":{"phase":1,"summary":"2-4 candidates side by side with aligned attribute rows, one may be marked best; each column has a pick button.","type":"object","required":["columns"],"properties":{"title":{"$ref":"shortText"},"columns":{"type":"array","minItems":2,"maxItems":4,"items":{"type":"object","required":["title"],"properties":{"id":{"$ref":"itemId"},"title":{"$ref":"shortText"},"subtitle":{"$ref":"text"},"badge":{"type":"string","minLength":1,"maxLength":24},"image":{"$ref":"image"},"best":{"type":"boolean","default":false,"description":"Your recommendation (at most one column)."},"pros":{"type":"array","maxItems":5,"items":{"$ref":"text"}},"cons":{"type":"array","maxItems":5,"items":{"$ref":"text"}},"source":{"type":"object","required":["label","url"],"properties":{"label":{"$ref":"label"},"url":{"$ref":"image","description":"HTTPS source URL; never invent one."}}}}}},"rows":{"type":"array","maxItems":12,"description":"Attribute rows; values[i] belongs to columns[i].","items":{"type":"object","required":["label","values"],"properties":{"label":{"$ref":"shortText"},"values":{"type":"array","items":{"type":["string","number","boolean","null"],"maxLength":120}},"sources":{"type":"array","items":{"type":["string","null"],"format":"https-url","maxLength":2000}},"best":{"type":"integer","minimum":0}}}},"selectLabel":{"$ref":"label"},"asOf":{"type":"string","maxLength":40}},"x-rules":["uniqueColumnIds","rowsMatchColumns","singleBest","rowSourcesMatchValues","rowBestInColumns"]},"form":{"phase":1,"summary":"Fields the user fills in (text, number, date, select, toggle) with required fields and checks.","type":"object","required":["fields"],"properties":{"title":{"$ref":"shortText"},"description":{"$ref":"text"},"fields":{"type":"array","minItems":1,"maxItems":12,"items":{"type":"object","required":["name","label","kind"],"properties":{"name":{"type":"string","pattern":"^[A-Za-z][A-Za-z0-9_]{0,39}$"},"label":{"$ref":"shortText"},"kind":{"type":"string","enum":["text","textarea","number","date","time","email","select","toggle"]},"required":{"type":"boolean","default":false},"placeholder":{"type":"string","maxLength":80},"help":{"$ref":"text"},"default":{"type":["string","number","boolean"],"maxLength":1000},"min":{"type":"number","description":"number: smallest value."},"max":{"type":"number","description":"number: largest value."},"step":{"type":"number","minimum":0},"unit":{"type":"string","maxLength":12},"maxLength":{"type":"integer","minimum":1,"maximum":2000},"options":{"type":"array","minItems":2,"maxItems":20,"items":{"$ref":"shortText"},"description":"select: the choices."}}}},"submitLabel":{"$ref":"label"}},"x-rules":["uniqueFieldNames","fieldKindRules"]},"confirm":{"phase":1,"summary":"Ask before you act: one action with reason and risk; the user answers Yes, No or Change.","type":"object","required":["title","action"],"properties":{"title":{"$ref":"shortText"},"action":{"$ref":"text","description":"What exactly will happen."},"reason":{"$ref":"text"},"risk":{"type":"object","required":["level"],"properties":{"level":{"type":"string","enum":["low","medium","high"]},"text":{"$ref":"text"}}},"command":{"type":"string","minLength":1,"maxLength":2000,"description":"Command or code shown monospace."},"details":{"type":"array","maxItems":8,"items":{"type":"object","required":["label","value"],"properties":{"label":{"$ref":"shortText"},"value":{"$ref":"text"}}}},"confirmLabel":{"$ref":"label"},"cancelLabel":{"$ref":"label"},"allowChange":{"type":"boolean","default":true,"description":"Offer \"Change\" with a text field."}},"x-rules":[]},"steps":{"phase":2,"summary":"A guided walkthrough, one step at a time with Back/Next; the user reports done or where they got stuck.","type":"object","required":["steps"],"properties":{"title":{"$ref":"shortText"},"steps":{"type":"array","minItems":2,"maxItems":12,"items":{"type":"object","required":["title"],"properties":{"title":{"$ref":"shortText"},"body":{"$ref":"longText"},"command":{"type":"string","minLength":1,"maxLength":1000},"image":{"$ref":"image"}}}},"finishLabel":{"$ref":"label"}},"x-rules":[]},"decision":{"phase":3,"summary":"Compare weighted options.","type":"object","required":["title","criteria","options"],"properties":{"title":{"$ref":"shortText"},"criteria":{"type":"array","minItems":2,"maxItems":8,"items":{"type":"object","required":["id","label","weight"],"properties":{"id":{"$ref":"itemId"},"label":{"$ref":"shortText"},"weight":{"type":"integer","minimum":0,"maximum":10}}}},"options":{"type":"array","minItems":2,"maxItems":6,"items":{"type":"object","required":["label","scores"],"properties":{"id":{"$ref":"itemId"},"label":{"$ref":"shortText"},"scores":{"type":"object","additionalProperties":{"type":"integer","minimum":0,"maximum":10}},"note":{"$ref":"text"}}}},"note":{"$ref":"text"},"submitLabel":{"$ref":"label"}},"x-rules":["uniqueCriterionIds","uniqueOptionIds","scoresMatchCriteria"]},"calc":{"phase":3,"summary":"Calculate outputs from inputs.","type":"object","required":["title","inputs","outputs"],"properties":{"title":{"$ref":"shortText"},"inputs":{"type":"array","minItems":1,"maxItems":8,"items":{"type":"object","required":["name","label","default"],"properties":{"name":{"type":"string","pattern":"^[A-Za-z_][A-Za-z0-9_]{0,31}$"},"label":{"$ref":"shortText"},"kind":{"type":"string","enum":["number","slider","select","toggle"],"default":"number"},"min":{"type":"number"},"max":{"type":"number"},"step":{"type":"number"},"default":{"type":"number"},"unit":{"type":"string","minLength":1,"maxLength":12},"options":{"type":"array","minItems":2,"maxItems":12,"items":{"type":"object","required":["label","value"],"properties":{"label":{"$ref":"shortText"},"value":{"type":"number"}}}}}}},"outputs":{"type":"array","minItems":1,"maxItems":4,"items":{"type":"object","required":["label","expr"],"properties":{"label":{"$ref":"shortText"},"expr":{"type":"string","minLength":1,"maxLength":300},"format":{"type":"string","enum":["number","integer","percent","currency"],"default":"number"},"decimals":{"type":"integer","minimum":0,"maximum":6},"unit":{"type":"string","minLength":1,"maxLength":12},"emphasis":{"type":"boolean"}}}},"note":{"$ref":"text"},"currency":{"type":"string","pattern":"^[A-Z]{3}$","default":"EUR"},"sendLabel":{"$ref":"label"}},"x-rules":["uniqueInputNames","calcExpressions","calcInputs"]},"rank":{"phase":3,"summary":"Put items in order.","type":"object","required":["title","items"],"properties":{"title":{"$ref":"shortText"},"prompt":{"$ref":"text"},"items":{"type":"array","minItems":2,"maxItems":12,"items":{"type":"object","required":["label"],"properties":{"id":{"$ref":"itemId"},"label":{"$ref":"shortText"},"detail":{"$ref":"text"}}}},"submitLabel":{"$ref":"label"}},"x-rules":["uniqueItemIds"]},"choice":{"phase":1,"summary":"Pick several of 2-6 options, or options that need a picture or a short text each. For one plain question with simple options use the built-in clarify tool instead.","type":"object","required":["question","options"],"properties":{"question":{"$ref":"text"},"options":{"type":"array","minItems":2,"maxItems":6,"items":{"type":"object","required":["label"],"properties":{"id":{"$ref":"itemId"},"label":{"$ref":"shortText"},"description":{"$ref":"text"},"icon":{"$ref":"icon"},"image":{"$ref":"image"},"badge":{"type":"string","minLength":1,"maxLength":24}}}},"multiple":{"type":"boolean","default":false,"description":"Allow several picks."},"min":{"type":"integer","minimum":1,"maximum":6,"description":"Fewest picks (multiple only)."},"max":{"type":"integer","minimum":1,"maximum":6,"description":"Most picks (multiple only)."},"allowOther":{"type":"boolean","default":false,"description":"Add a free-text \"Other\" field."},"submitLabel":{"$ref":"label"}},"x-rules":["uniqueOptionIds","minMaxPicks"]},"schedule":{"phase":2,"summary":"Offer time slots to pick from (meetings, appointments).","type":"object","required":["slots"],"properties":{"title":{"$ref":"shortText"},"timezone":{"type":"string","maxLength":64,"description":"IANA zone, e.g. \"Europe/Vienna\"."},"slots":{"type":"array","minItems":1,"maxItems":20,"items":{"type":"object","required":["start"],"properties":{"id":{"$ref":"itemId"},"start":{"type":"string","format":"datetime","description":"ISO 8601, e.g. 2026-11-12T14:00"},"end":{"type":"string","format":"datetime"},"label":{"$ref":"shortText"},"note":{"$ref":"text"},"unavailable":{"type":"boolean","default":false}}}},"multiple":{"type":"boolean","default":false},"noneLabel":{"$ref":"label","description":"Button for \"none of these fit\"."}},"x-rules":["uniqueSlotIds","slotOrder"]},"recipe":{"phase":3,"summary":"Scale a recipe and make a shopping list.","type":"object","required":["title","servings","ingredients"],"properties":{"title":{"$ref":"shortText"},"servings":{"type":"integer","minimum":1,"maximum":50},"ingredients":{"type":"array","minItems":1,"maxItems":40,"items":{"type":"object","required":["item"],"properties":{"id":{"$ref":"itemId"},"item":{"$ref":"shortText"},"qty":{"type":"number","minimum":0},"unit":{"type":"string","minLength":1,"maxLength":12},"note":{"type":"string","minLength":1,"maxLength":80},"group":{"type":"string","minLength":1,"maxLength":40}}}},"steps":{"type":"array","minItems":0,"maxItems":20,"items":{"type":"object","required":["text"],"properties":{"text":{"$ref":"text"},"minutes":{"type":"integer","minimum":1,"maximum":600}}}},"sendLabel":{"$ref":"label"}},"x-rules":["uniqueIngredientIds"]},"flashcards":{"phase":3,"summary":"Practise with flashcards.","type":"object","required":["title","cards"],"properties":{"title":{"$ref":"shortText"},"cards":{"type":"array","minItems":1,"maxItems":40,"items":{"type":"object","required":["front","back"],"properties":{"front":{"$ref":"text"},"back":{"$ref":"text"},"hint":{"$ref":"text"}}}},"shuffle":{"type":"boolean","default":false}},"x-rules":[]},"rating":{"phase":2,"summary":"Ask for a rating on a scale (stars or numbers), optional comment.","type":"object","required":["question"],"properties":{"question":{"$ref":"text"},"scale":{"type":"integer","minimum":3,"maximum":10,"default":5},"style":{"type":"string","enum":["stars","numbers"],"default":"stars"},"lowLabel":{"type":"string","maxLength":30},"highLabel":{"type":"string","maxLength":30},"comment":{"type":"boolean","default":false,"description":"Add an optional comment field."}},"x-rules":[]},"slider":{"phase":2,"summary":"Ask for one number in a range (budget, duration, level).","type":"object","required":["question","min","max"],"properties":{"question":{"$ref":"text"},"min":{"type":"number"},"max":{"type":"number"},"step":{"type":"number","minimum":0},"default":{"type":"number"},"unit":{"type":"string","maxLength":12},"minLabel":{"type":"string","maxLength":30},"maxLabel":{"type":"string","maxLength":30},"submitLabel":{"$ref":"label"}},"x-rules":["sliderRange"]},"quiz":{"phase":2,"summary":"Multiple-choice questions with feedback per answer; the score is sent back.","type":"object","required":["questions"],"properties":{"title":{"$ref":"shortText"},"questions":{"type":"array","minItems":1,"maxItems":10,"items":{"type":"object","required":["question","options","answer"],"properties":{"question":{"$ref":"text"},"options":{"type":"array","minItems":2,"maxItems":6,"items":{"$ref":"shortText"}},"answer":{"type":"integer","minimum":0,"description":"0-based index of the correct option."},"explanation":{"$ref":"text"}}}}},"x-rules":["quizAnswers"]}}}
 
 // ── 10-validate.js ──
 // Port of hui_cards/schema.py. Keep traversal and message order in sync.
@@ -34,6 +34,20 @@ const vc_validateCard = (() => {
 
   // json.dumps(..., ensure_ascii=False), including Python's default separators.
   // This is deliberately separate from the card's wire representation.
+  // undefined → absent (objects) / null (arrays), like JSON; everything else (also Infinity) unchanged.
+  function vc_dropUndefined(v) {
+    if (Array.isArray(v)) return v.map(x => (x === undefined ? null : vc_dropUndefined(x)))
+    if (v && typeof v === 'object') {
+      const out = {}
+      for (const [k, x] of Object.entries(v)) {
+        // defineProperty: a key named "__proto__" stays a plain field (it is reported as unknown).
+        if (x !== undefined) Object.defineProperty(out, k, { value: vc_dropUndefined(x), enumerable: true, writable: true, configurable: true })
+      }
+      return out
+    }
+    return v
+  }
+
   function pyJSON(v) {
     if (v === null) return 'null'
     if (typeof v === 'string') return JSON.stringify(v)
@@ -196,6 +210,7 @@ const vc_validateCard = (() => {
     const props = { ...extra, ...spec.properties }, out = {}, required = spec.required || []
     for (const key of required) if (!own(value, key) || value[key] === null) ctx.errors.push(`${path}.${key}: required`)
     for (const [key, item] of Object.entries(value)) {
+      if (!own(props, key) && spec.additionalProperties) { const before = ctx.errors.length, cleaned = checkValue(item, spec.additionalProperties, `${path}.${key}`, ctx); if (before === ctx.errors.length) Object.defineProperty(out, key, {value: cleaned, enumerable: true, writable: true, configurable: true}); continue }
       if (!own(props, key)) { ctx.warnings.push(`${path}.${key}: unknown field, ignored${suggest(key, Object.keys(props))}`); continue }
       if (item === null && !required.includes(key)) continue
       const before = ctx.errors.length, cleaned = checkValue(item, props[key], `${path}.${key}`, ctx)
@@ -216,8 +231,26 @@ const vc_validateCard = (() => {
     }
   }
   function rule(name, card, ctx) {
-    const unique = { uniqueOptionIds: 'options', uniqueItemIds: 'items', uniqueColumnIds: 'columns', uniqueSlotIds: 'slots' }
+    const unique = { uniqueOptionIds: 'options', uniqueItemIds: 'items', uniqueColumnIds: 'columns', uniqueSlotIds: 'slots', uniqueStepIds: 'steps', uniqueCriterionIds: 'criteria', uniqueIngredientIds: 'ingredients' }
     if (own(unique, name)) uniqueIds(card, unique[name], ctx)
+    else if (name === 'uniqueInputNames') {
+      const seen = new Set(); for (const [i, item] of card.inputs.entries()) { if (seen.has(item.name)) ctx.errors.push(`card.inputs[${i}].name: duplicate name "${item.name}"`); seen.add(item.name) }
+    } else if (name === 'scoresMatchCriteria') {
+      const ids = card.criteria.map(c => c.id)
+      for (const [i, option] of card.options.entries()) { for (const key of ids) if (!own(option.scores,key)) ctx.errors.push(`card.options[${i}].scores: missing criterion "${key}"`); for (const key of Object.keys(option.scores)) if (!ids.includes(key)) ctx.errors.push(`card.options[${i}].scores: unknown criterion "${key}"`) }
+    } else if (name === 'calcExpressions') {
+      const names = card.inputs.map(x => x.name)
+      for (const [i, output] of card.outputs.entries()) { const parsed = calcParse(output.expr,names); if (!Array.isArray(parsed)) ctx.errors.push(`card.outputs[${i}].expr: ${parsed.message} at ${parsed.at}`) }
+    } else if (name === 'calcInputs') {
+      for (const [i, item] of card.inputs.entries()) {
+        const p=`card.inputs[${i}]`, lo=item.min, hi=item.max, d=item.default
+        if (lo != null && hi != null && lo >= hi) ctx.errors.push(`${p}.min: must be smaller than max`)
+        if ((lo != null && d < lo) || (hi != null && d > hi)) ctx.errors.push(`${p}.default: outside range`)
+        if (item.step != null && item.step <= 0) ctx.errors.push(`${p}.step: must be larger than 0`)
+        if (item.kind === 'select') { if (!item.options) ctx.errors.push(`${p}.options: required for kind select`); else if (!item.options.some(x => x.value === d)) ctx.errors.push(`${p}.default: must be one of the options`) }
+        if (item.kind === 'toggle' && d !== 0 && d !== 1) ctx.errors.push(`${p}.default: must be 0 or 1 for kind toggle`)
+      }
+    }
     else if (name === 'minMaxPicks') {
       const n = (card.options || []).length, lo = card.min, hi = card.max
       if (!card.multiple && (lo != null || hi != null)) { ctx.warnings.push('card.min/max: only used with multiple: true, ignored'); delete card.min; delete card.max; return }
@@ -270,7 +303,11 @@ const vc_validateCard = (() => {
     }
   }
   function assignIds(card) {
-    for (const [key, prefix] of Object.entries({ options: 'o', items: 'i', columns: 'c', slots: 's' })) {
+    const prefixes = { options: 'o', items: 'i', columns: 'c', slots: 's' }
+    if (card.type === 'plan') prefixes.steps = 'p'
+    if (card.type === 'review' || card.type === 'rank') prefixes.items = card.type === 'review' ? 'r' : 'k'
+    if (card.type === 'recipe') prefixes.ingredients = 'g'
+    for (const [key, prefix] of Object.entries(prefixes)) {
       const items = card[key]
       if (!Array.isArray(items) || !items.length || !object(items[0])) continue
       const used = new Set(items.filter(it => own(it, 'id')).map(it => it.id))
@@ -289,6 +326,8 @@ const vc_validateCard = (() => {
       try { raw = JSON.parse(raw) } catch { return reject(['card: must be a JSON object, got a string that is not JSON']) }
     }
     if (!object(raw)) return reject([`card: must be an object (got ${kind(raw)})`])
+    // A card that reached JS (not JSON) may hold undefined fields: read it as the JSON it stands for.
+    raw = vc_dropUndefined(raw)
     const size = utf8Length(pyJSON(raw)), limit = SCHEMA.limits.maxCardBytes
     if (size > limit) return reject([`card: too large (${size} bytes, limit ${limit}); split it or shorten the text`])
     const ctype = raw.type
@@ -306,6 +345,68 @@ const vc_validateCard = (() => {
 
 function validateCard(raw) {
   return vc_validateCard(raw)
+}
+
+// Bounded recursive-descent calculator; AST is shared with the Python evaluator.
+function calcParse(expr, names) {
+  let pos = 0
+  const funcs = {min:[1,99],max:[1,99],round:[1,2],floor:[1,1],ceil:[1,1],sqrt:[1,1],abs:[1,1],pow:[2,2],log:[1,1],exp:[1,1],if:[3,3]}
+  const fail = (message, at = pos) => { throw {message, at: [...expr.slice(0, at)].length} }
+  const skip = () => { while (pos < expr.length && /\s/u.test(expr[pos])) pos++ }
+  function parse(level=0, depth=0) {
+    if (depth > 32) fail('maximum depth exceeded')
+    skip()
+    if (level < 3) {
+      let left = parse(level+1, depth)
+      const ops = [['<=','>=','==','!=','<','>'],['+','-'],['*','/']][level]
+      while (true) { skip(); const op = ops.find(x => expr.startsWith(x,pos)); if (!op) break; pos += op.length; left = ['binary',op,left,parse(level+1,depth+1)] }
+      return left
+    }
+    if (level === 3) {
+      if (expr.startsWith('-',pos)) { pos++; return ['unary',parse(3,depth+1)] }
+      let left = parse(4,depth); skip()
+      if (expr.startsWith('^',pos)) { pos++; left=['binary','^',left,parse(3,depth+1)] }
+      return left
+    }
+    skip(); const start = pos
+    if (expr[pos] === '(') { pos++; const node=parse(0,depth+1); skip(); if (expr[pos] !== ')') fail('expected ")"'); pos++; return node }
+    let m = expr.slice(pos).match(/^(?:\d+(?:\.\d*)?|\.\d+)/)
+    if (m) { pos += m[0].length; const v=Number(m[0]); if (!Number.isFinite(v)) fail('invalid number',start); return ['number',v] }
+    m=expr.slice(pos).match(/^[A-Za-z_][A-Za-z0-9_]*/)
+    if (m) {
+      const name=m[0]; pos+=name.length; skip()
+      if (expr[pos] === '(') {
+        if (!Object.prototype.hasOwnProperty.call(funcs,name)) fail(`unknown function "${name}"`,start)
+        pos++; const args=[]; skip()
+        if (expr[pos] !== ')') while (true) { args.push(parse(0,depth+1)); skip(); if (expr[pos] !== ',') break; pos++ }
+        if (expr[pos] !== ')') fail('expected ")"'); pos++
+        const [lo,hi]=funcs[name]; if (args.length<lo || args.length>hi) fail(`wrong number of arguments for "${name}"`,start)
+        return ['call',name,args]
+      }
+      if (!names.includes(name)) fail(`unknown name "${name}"`,start)
+      return ['name',name]
+    }
+    fail('expected expression')
+  }
+  try { if ([...expr].length > 300) fail('expression too long',300); const result=parse(); skip(); if (pos !== expr.length) fail('unexpected character'); return result } catch (e) { return e }
+}
+function calcEval(ast, values) {
+  function ev(n) {
+    const [type, op] = n
+    if (type==='number') return op
+    if (type==='name') return values[op]
+    if (type==='unary') return -ev(op)
+    if (type==='binary') {
+      const a=ev(n[2]), b=ev(n[3])
+      if (!Number.isFinite(a) || !Number.isFinite(b) || (op === '/' && b === 0)) throw new Error('invalid result')
+      switch(op) { case '+':return a+b; case '-':return a-b; case '*':return a*b; case '/':return a/b; case '^':return Math.pow(a,b); case '<':return +(a<b); case '<=':return +(a<=b); case '>':return +(a>b); case '>=':return +(a>=b); case '==':return +(a===b); case '!=':return +(a!==b) }
+    }
+    if (op==='if') { const condition=ev(n[2][0]); if (!Number.isFinite(condition)) throw new Error('invalid result'); return ev(n[2][condition ? 1 : 2]) }
+    const a=n[2].map(ev)
+    if (op==='round') { const f=10**(a.length>1?a[1]:0); return Math.floor(a[0]*f+0.5)/f }
+    return Math[op](...a)
+  }
+  try { const v=ev(ast); return Number.isFinite(v) ? v : null } catch { return null }
 }
 
 // ── 20-i18n.js ──
@@ -499,6 +600,7 @@ function t(lang, key, vars) {
 // `[hui-card] {json}` for the model. Pure functions, unit-tested.
 
 const REPLY_TAG = '[hui-card]'
+const REPLY_BUILDERS = {}
 const MAX_REPLY = (SCHEMA.limits && SCHEMA.limits.maxReplyChars) || 4000
 const SUMMARY_ITEM_MAX = 60
 
@@ -693,8 +795,14 @@ function buildReply(card, answer, lang) {
       summary = t(L, 'rQuiz', { score: data.score, total: data.total })
       break
     }
-    default:
-      throw new Error(`no reply for card type ${card.type}`)
+    default: {
+      // Card types in their own files (81-…js) register a builder: (card, answer, lang, data) => { mark?, summary }.
+      const extra = REPLY_BUILDERS[card.type]
+      if (!extra) throw new Error(`no reply for card type ${card.type}`)
+      const built = extra(card, answer, L, data)
+      if (built.mark) mark = built.mark
+      summary = built.summary
+    }
   }
 
   let reply = fitReply(mark, summary, data)
@@ -793,6 +901,199 @@ function useCardRecord(cardId) {
   return record
 }
 
+// ── Answers kept by the plugin's backend (dashboard/plugin_api.py) ──
+// A card answered in another window, in the Webapp or on another computer is locked here too.
+// Each mounted card asks once (batched per chat, cached for SERVER_TTL); the backend's
+// `answer.recorded` event locks cards that are already on screen. ctx.storage stays the fast
+// path and the offline fallback: without the route (an older Hermes, a remote backend without
+// the agent half, a failed request) cards behave exactly as before, silently.
+// When the two disagree the server wins: an answer it knows locks the card. A local answer the
+// server never received (it tracks the card as shown and unanswered) is released after
+// SERVER_GRACE, so a click that got lost on the way does not leave a dead card behind.
+
+const SERVER_TTL = 60 * 1000
+const SERVER_GRACE = 10 * 60 * 1000
+const SERVER_BATCH = 50
+const SERVER_MARKS = ['✓', '✗', '✎', '⚠']
+let serverRest = null
+const serverChecked = new Map() // key -> time asked
+const serverQueue = new Map() // sessionId -> Map(cardId -> card type)
+let serverTimer = null
+let serverPaused = 0 // no requests before this time (after a failure)
+let serverInflight = Promise.resolve()
+
+function useServerAnswers(rest) {
+  serverRest = typeof rest === 'function' ? rest : null
+  serverChecked.clear()
+  serverQueue.clear()
+  serverPaused = 0
+}
+
+function askServer(sessionId, card) {
+  if (!serverRest || !sessionId || !card || typeof card.cardId !== 'string') return
+  const key = `${sessionId}\u0000${card.cardId}`
+  const now = Date.now()
+  if (now < serverPaused || now - (serverChecked.get(key) || 0) < SERVER_TTL) return
+  serverChecked.set(key, now)
+  if (!serverQueue.has(sessionId)) serverQueue.set(sessionId, new Map())
+  serverQueue.get(sessionId).set(card.cardId, card.type)
+  if (!serverTimer) serverTimer = setTimeout(() => { serverInflight = flushServer() }, 25)
+}
+
+async function flushServer() {
+  serverTimer = null
+  const rest = serverRest
+  const batches = [...serverQueue]
+  serverQueue.clear()
+  for (const [sessionId, cards] of batches) {
+    const ids = [...cards.keys()]
+    for (let i = 0; i < ids.length; i += SERVER_BATCH) {
+      const chunk = ids.slice(i, i + SERVER_BATCH)
+      let reply
+      try {
+        reply = await rest(`/answers?session=${encodeURIComponent(sessionId)}&cards=${chunk.map(encodeURIComponent).join(',')}`, { timeoutMs: 8000 })
+      } catch {
+        // Route missing or backend away: keep the local state, try again after a pause.
+        serverPaused = Date.now() + SERVER_TTL
+        for (const id of chunk) serverChecked.delete(`${sessionId}\u0000${id}`)
+        continue
+      }
+      applyServerReply(sessionId, chunk.map(id => [id, cards.get(id)]), reply)
+    }
+  }
+}
+
+function applyServerReply(sessionId, cards, reply) {
+  if (!reply || typeof reply !== 'object') return
+  const answers = reply.answers && typeof reply.answers === 'object' ? reply.answers : {}
+  const open = new Set(Array.isArray(reply.open) ? reply.open : [])
+  for (const [cardId, type] of cards) {
+    const key = `${sessionId}\u0000${cardId}`
+    if (Object.prototype.hasOwnProperty.call(answers, cardId)) applyServerAnswer(key, cardId, type, answers[cardId])
+    else if (open.has(cardId)) releaseLostAnswer(key)
+  }
+}
+
+const isPlain = v => v !== null && typeof v === 'object' && !Array.isArray(v)
+const isScalar = v => v === null || ['string', 'number', 'boolean'].includes(typeof v)
+// What the cards read from an answer's data, per type ('!' = required). The data comes from a chat
+// message, so it is checked before a card renders it: S string[], N number[], o {key: scalar},
+// a [{key: scalar}], s/n/b scalars. Types not listed here are taken as they are.
+const ANSWER_SHAPES = {
+  choice: { selected: 'S!', labels: 'S', other: 's' },
+  checklist: { done_ids: 'S!', open_ids: 'S', done: 'S', open: 'S', done_count: 'n', open_count: 'n' },
+  compare: { selected: 's!', label: 's' },
+  form: { values: 'o!' },
+  confirm: { decision: 's!', change: 's' },
+  rating: { value: 'n!', scale: 'n', comment: 's' },
+  slider: { value: 'n!', unit: 's' },
+  schedule: { selected: 'a', none: 'b' },
+  steps: { completed: 'b', steps: 'n', stuck: 'n', title: 's', note: 's' },
+  quiz: { score: 'n!', total: 'n!', answers: 'a!' },
+  plan: { steps: 'a' },
+  review: { keep: 'S', drop: 'S', undecided: 'S', notes: 'o', titles: 'o' },
+  decision: { weights: 'o', ranking: 'a', picked: 's' },
+  calc: { inputs: 'o', outputs: 'a' },
+  rank: { order: 'S', labels: 'S' },
+  recipe: { servings: 'n', missing: 'a', have: 'S' },
+  flashcards: { known: 'N', again: 'N', rounds: 'n' }
+}
+const SHAPE_CHECKS = {
+  s: v => typeof v === 'string',
+  n: v => typeof v === 'number' && Number.isFinite(v),
+  b: v => typeof v === 'boolean',
+  S: v => Array.isArray(v) && v.every(x => typeof x === 'string'),
+  N: v => Array.isArray(v) && v.every(x => typeof x === 'number' && Number.isFinite(x)),
+  o: v => isPlain(v) && Object.values(v).every(isScalar),
+  a: v => Array.isArray(v) && v.every(x => isPlain(x) && Object.values(x).every(isScalar))
+}
+
+function answerDataFits(type, cardId, data) {
+  if (!isPlain(data) || data.card !== cardId || data.type !== type) return false
+  for (const [field, spec] of Object.entries(ANSWER_SHAPES[type] || {})) {
+    if (data[field] === undefined) {
+      if (spec.endsWith('!')) return false
+    } else if (!SHAPE_CHECKS[spec[0]](data[field])) return false
+  }
+  return true
+}
+
+function applyServerAnswer(key, cardId, type, rec) {
+  if (!isPlain(rec) || readCard(key).answer) return // this window's own receipt stays
+  if (!answerDataFits(type, cardId, rec.data)) return // not an answer this card can show
+  const answer = {
+    mark: SERVER_MARKS.includes(rec.mark) ? rec.mark : '✓',
+    summary: typeof rec.summary === 'string' ? rec.summary.slice(0, 300) : '',
+    data: rec.data,
+    at: Number.isFinite(rec.at) && rec.at > 0 ? rec.at : Date.now(),
+    source: 'server'
+  }
+  writeCard(key, { answer })
+}
+
+function releaseLostAnswer(key) {
+  const answer = cardStorage.get(`answer.${key}`, null)
+  if (!answer || answer.source === 'server' || !(Date.now() - (Number(answer.at) || 0) > SERVER_GRACE)) return
+  cardStorage.remove(`answer.${key}`)
+  const index = cardStorage.get('answerIndex', [])
+  if (Array.isArray(index)) cardStorage.set('answerIndex', index.filter(id => id !== key))
+  const next = readCard(key)
+  for (const fn of cardListeners.get(key) || []) fn(next)
+}
+
+// The backend's live event (hui_cards/tool.py broadcasts it when a turn starts with a card answer).
+function onAnswerRecorded(event) {
+  const payload = event && isPlain(event.payload) ? event.payload : null
+  if (!payload || typeof payload.session_id !== 'string' || typeof payload.card !== 'string') return
+  const key = `${payload.session_id}\u0000${payload.card}`
+  const type = mountedTypes.get(key)
+  if (type) applyServerAnswer(key, payload.card, type, payload.answer)
+}
+
+// Cards on screen (key -> type), so a live event is applied only to a card this window shows.
+const mountedTypes = new Map()
+
+function useServerAnswer(card, sessionId) {
+  useEffect(() => {
+    if (!sessionId || !card || !card.cardId) return
+    const key = `${sessionId}\u0000${card.cardId}`
+    mountedTypes.set(key, card.type)
+    askServer(sessionId, card)
+    return () => { if (mountedTypes.get(key) === card.type) mountedTypes.delete(key) }
+  }, [sessionId, card && card.cardId, card && card.type])
+}
+
+// Resolves once queued and running answer requests are done (tests, and nothing else waits on it).
+async function serverIdle() {
+  while (serverTimer) await new Promise(resolve => setTimeout(resolve, 10))
+  await serverInflight
+}
+
+// ── Display settings (Settings → Plugins), applied live to cards already on screen ──
+// A card starts with the `display` its tool result carries; once the backend has been read
+// (first card on screen, and after every save in Settings → Plugins) the current values win.
+
+let liveDisplay = null
+let lastResultDisplay = null
+const displayListeners = new Set()
+
+function setLiveDisplay(display) {
+  if (!display) return
+  const same = liveDisplay && Object.keys(display).every(k => liveDisplay[k] === display[k])
+  liveDisplay = display
+  if (!same) for (const fn of displayListeners) fn(display)
+}
+
+function useLiveDisplay(initial) {
+  const [, setTick] = useState(0)
+  useEffect(() => {
+    const fn = () => setTick(n => n + 1)
+    displayListeners.add(fn)
+    return () => void displayListeners.delete(fn)
+  }, [])
+  return liveDisplay ? { ...(initial || {}), ...liveDisplay } : initial
+}
+
 // ── 50-ui.js ──
 // Shared look: theme variables only (light and dark come from the Desktop theme),
 // a visible focus ring, container queries for narrow split views.
@@ -806,65 +1107,95 @@ const ACCENT_VARS = {
   red: 'var(--ui-red, var(--ui-accent))'
 }
 
+// Shared UI strings (fragments after 20-i18n.js may extend the tables).
+Object.assign(STRINGS.en, { copyResult: 'Copy result', copiedResult: 'Copied' })
+Object.assign(STRINGS.de, { copyResult: 'Ergebnis kopieren', copiedResult: 'Kopiert' })
+
+// Design tokens: 4/8 spacing, three radii, one easing, hairlines from the theme strokes.
+// Uppercase "eyebrow" labels echo the Desktop sidebar headings; accent rails mark state.
 const CARD_CSS = `
-.huic{--huic-accent:var(--ui-accent);--huic-pad:14px;container-type:inline-size;box-sizing:border-box;width:100%;max-width:680px;margin:6px 0;border:1px solid var(--ui-stroke-tertiary);border-radius:12px;background:var(--ui-chat-surface-background,transparent);color:var(--ui-text-primary);font-size:13px;line-height:1.45;text-align:left}
+.huic{--huic-accent:var(--ui-accent);--huic-pad:16px;--huic-line:var(--ui-stroke-tertiary);--huic-line-strong:var(--ui-stroke-secondary);--huic-on-accent:var(--dt-primary-foreground,#fff);--huic-mono:var(--font-mono,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);--huic-ease:cubic-bezier(.2,.8,.2,1);--huic-r:12px;--huic-r-md:8px;--huic-r-sm:6px;container-type:inline-size;box-sizing:border-box;width:100%;max-width:680px;margin:8px 0;border:1px solid var(--huic-line);border-radius:var(--huic-r);background:var(--ui-chat-surface-background,transparent);color:var(--ui-text-primary);font-size:13px;line-height:1.5;text-align:left;transition:border-color .4s var(--huic-ease)}
+@supports (color: oklch(from red l c h)){.huic{--huic-on-accent:oklch(from var(--huic-accent) clamp(0, (0.62 - l) * 1000, 1) 0 0)}}
 .huic>:first-child{border-top-left-radius:11px;border-top-right-radius:11px}
 .huic>:last-child{border-bottom-left-radius:11px;border-bottom-right-radius:11px}
 .huic *{box-sizing:border-box;overflow-wrap:anywhere}
 .huic-body>*{min-width:0}
-.huic.huic-compact{--huic-pad:10px;font-size:12.5px}
+.huic.huic-compact{--huic-pad:12px;font-size:12.5px}
 .huic :focus-visible{outline:2px solid var(--huic-accent);outline-offset:2px}
-.huic-head{padding:var(--huic-pad) var(--huic-pad) 2px}
-.huic-title{font-weight:600;font-size:14px;margin:0}
-.huic-sub{color:var(--ui-text-tertiary);font-size:12px;margin:2px 0 0}
-.huic-body{padding:8px var(--huic-pad) var(--huic-pad);display:flex;flex-direction:column;gap:8px}
-.huic-foot{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:flex-end;padding:10px var(--huic-pad);border-top:1px solid var(--ui-stroke-tertiary)}
-.huic-hint{margin-right:auto;color:var(--ui-text-tertiary);font-size:12px}
-.huic-opt{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;padding:9px 11px;border-radius:9px;border:1px solid var(--ui-stroke-tertiary);background:transparent;color:inherit;cursor:pointer;font:inherit;transition:background .12s,border-color .12s}
-.huic-opt:hover:not([disabled]){background:var(--ui-control-hover-background)}
+.huic-head{padding:var(--huic-pad) var(--huic-pad) 0;display:flex;flex-direction:column;gap:2px}
+.huic-title{font-weight:600;font-size:14px;line-height:20px;letter-spacing:-.005em;margin:0;color:var(--ui-text-primary)}
+.huic-sub{color:var(--ui-text-tertiary);font-size:12.5px;line-height:18px;margin:0}
+.huic-eyebrow{margin:0;font-size:11px;line-height:16px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ui-text-tertiary);font-variant-numeric:tabular-nums}
+.huic-body{padding:12px var(--huic-pad) var(--huic-pad);display:flex;flex-direction:column;gap:12px}
+.huic-foot{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:flex-end;padding:12px var(--huic-pad);border-top:1px solid var(--huic-line)}
+.huic-hint{margin-right:auto;color:var(--ui-text-tertiary);font-size:12px;line-height:16px;font-variant-numeric:tabular-nums}
+.huic-opt{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;padding:10px 12px;border-radius:var(--huic-r-md);border:1px solid var(--huic-line);background:transparent;color:inherit;cursor:pointer;font:inherit;transition:background .15s,border-color .15s,transform .08s}
+.huic-opt:hover:not([disabled]){background:var(--ui-row-hover-background,var(--ui-control-hover-background));border-color:var(--huic-line-strong)}
+.huic-opt:active:not([disabled]){transform:scale(.995)}
 .huic-opt[aria-checked="true"],.huic-opt[aria-pressed="true"]{border-color:var(--huic-accent);background:color-mix(in srgb,var(--huic-accent) 10%,transparent)}
 .huic-opt[disabled]{cursor:default}
-.huic-opt-text{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+.huic-opt-text{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
 .huic-opt-label{font-weight:500}
-.huic-opt-desc{color:var(--ui-text-tertiary);font-size:12px}
+.huic-opt-desc{color:var(--ui-text-tertiary);font-size:12px;line-height:17px}
 .huic-icon{font-size:18px;line-height:1.2;flex:none}
-.huic-dot{flex:none;width:16px;height:16px;margin-top:1px;border-radius:50%;border:1.5px solid var(--ui-stroke-secondary);display:grid;place-items:center}
+.huic-dot{flex:none;width:16px;height:16px;margin-top:1px;border-radius:50%;border:1.5px solid var(--ui-stroke-secondary);display:grid;place-items:center;transition:background .15s,border-color .15s}
 .huic-dot.huic-square{border-radius:4px}
 [aria-checked="true"]>.huic-dot{border-color:var(--huic-accent);background:var(--huic-accent)}
-[aria-checked="true"]>.huic-dot::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--ui-chat-surface-background,var(--ui-base,currentColor))}
-[aria-checked="true"]>.huic-dot.huic-square::after{width:8px;height:4px;border-radius:0;background:none;border-left:2px solid var(--ui-chat-surface-background,var(--ui-base,currentColor));border-bottom:2px solid var(--ui-chat-surface-background,var(--ui-base,currentColor));transform:translateY(-1px) rotate(-45deg)}
+[aria-checked="true"]>.huic-dot::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--huic-on-accent)}
+[aria-checked="true"]>.huic-dot.huic-square::after{width:8px;height:4px;border-radius:0;background:none;border-left:2px solid var(--huic-on-accent);border-bottom:2px solid var(--huic-on-accent);transform:translateY(-1px) rotate(-45deg)}
 .huic-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px}
-.huic-img{display:block;width:100%;height:auto;aspect-ratio:16/9;object-fit:cover;border-radius:7px;background:var(--ui-bg-quaternary)}
+.huic-img{display:block;width:100%;height:auto;aspect-ratio:16/9;object-fit:cover;border-radius:var(--huic-r-md);background:var(--ui-bg-quaternary)}
 .huic-compact .huic-img{aspect-ratio:3/1}
-.huic-input{width:100%;padding:6px 8px;border-radius:7px;border:1px solid var(--ui-stroke-secondary);background:transparent;color:inherit;font:inherit}
-.huic-input:focus-visible{outline-offset:0}
+.huic-input{width:100%;min-height:34px;padding:6px 10px;border-radius:var(--huic-r-md);border:1px solid var(--huic-line-strong);background:color-mix(in srgb,var(--ui-bg-quaternary) 70%,transparent);color:inherit;font:inherit;transition:border-color .15s,box-shadow .15s}
+.huic-input::placeholder{color:var(--ui-text-quaternary,var(--ui-text-tertiary));opacity:1}
+.huic-input:hover:not(:disabled){border-color:var(--ui-stroke-primary,var(--huic-line-strong))}
+.huic .huic-input:focus-visible{outline:none;border-color:var(--huic-accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--huic-accent) 22%,transparent)}
 .huic-input[aria-invalid="true"]{border-color:var(--ui-red)}
-textarea.huic-input{min-height:64px;resize:vertical}
-.huic-field{display:flex;flex-direction:column;gap:3px}
-.huic-label{font-weight:500;font-size:12.5px}
+.huic .huic-input[aria-invalid="true"]:focus-visible{border-color:var(--ui-red);box-shadow:0 0 0 3px color-mix(in srgb,var(--ui-red) 20%,transparent)}
+.huic-input:disabled{cursor:default;opacity:.75}
+textarea.huic-input{min-height:72px;resize:vertical;line-height:1.5}
+.huic-field{display:flex;flex-direction:column;gap:4px}
+.huic-label{font-weight:500;font-size:13px}
 .huic-req{color:var(--ui-text-tertiary);font-weight:400}
-.huic-help{color:var(--ui-text-tertiary);font-size:12px}
-.huic-err{color:var(--ui-red);font-size:12px}
+.huic-help{color:var(--ui-text-tertiary);font-size:12px;line-height:17px}
+.huic-err{color:var(--ui-red);font-size:12px;line-height:17px}
 .huic-row{display:flex;gap:8px;align-items:center}
-.huic-badge{display:inline-block;font-size:11px;line-height:16px;padding:1px 7px;border-radius:999px;background:var(--ui-bg-quaternary);color:var(--ui-text-secondary);white-space:nowrap}
-.huic-best{background:color-mix(in srgb,var(--huic-accent) 16%,transparent);color:var(--huic-accent)}
-.huic-progress{height:4px;border-radius:2px;background:var(--ui-bg-quaternary);overflow:hidden}
-.huic-progress>span{display:block;height:100%;background:var(--huic-accent);transition:width .2s}
-.huic-code{margin:0;font-family:var(--font-mono,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:12px;white-space:pre-wrap;word-break:break-word;padding:8px 10px;border-radius:7px;background:var(--ui-inline-code-background,var(--ui-bg-quaternary));color:var(--ui-inline-code-foreground,inherit)}
-.huic-answer{display:flex;gap:8px;align-items:flex-start;padding:10px var(--huic-pad);border-top:1px solid var(--ui-stroke-tertiary);background:color-mix(in srgb,var(--huic-accent) 6%,transparent);color:var(--ui-text-secondary);font-size:12.5px}
-.huic-answer b{color:var(--ui-text-primary);font-weight:600}
-.huic-notice{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px var(--huic-pad);border-top:1px solid var(--ui-stroke-tertiary);color:var(--ui-text-secondary);font-size:12.5px}
+.huic-badge{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;font-size:11px;line-height:16px;font-weight:500;padding:1px 8px;border-radius:999px;background:var(--ui-bg-tertiary,var(--ui-bg-quaternary));color:var(--ui-text-secondary);white-space:nowrap}
+.huic-best{background:color-mix(in srgb,var(--huic-accent) 14%,transparent);color:var(--huic-accent)}
+.huic-progress{height:4px;border-radius:999px;background:var(--ui-bg-tertiary,var(--ui-bg-quaternary));overflow:hidden}
+.huic-progress>span{display:block;height:100%;border-radius:inherit;background:var(--huic-accent);transition:width .35s var(--huic-ease)}
+.huic-code{margin:0;font-family:var(--huic-mono);font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-word;padding:8px 10px;border-radius:var(--huic-r-md);background:var(--ui-inline-code-background,var(--ui-bg-quaternary));color:var(--ui-inline-code-foreground,inherit)}
+.huic-answer{display:flex;gap:10px;align-items:center;padding:12px var(--huic-pad);border-top:1px solid var(--huic-line);background:color-mix(in srgb,var(--huic-accent) 6%,transparent);box-shadow:inset 3px 0 0 var(--huic-accent);color:var(--ui-text-primary);font-size:13px;outline:none}
+.huic .huic-answer:focus-visible{outline:2px solid var(--huic-accent);outline-offset:-2px}
+.huic-answer-mark{flex:none;display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--huic-accent);color:var(--huic-on-accent);font-size:11px;font-weight:700;line-height:1}
+.huic-answer-mark svg{width:12px;height:12px;display:block}
+.huic-answer-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.huic-answer-summary{color:var(--ui-text-primary);line-height:18px}
+.huic-answer>.huic-copy{flex:none}
+.huic-answer.is-fresh{animation:huic-rise .32s var(--huic-ease) both}
+.huic-answer.is-fresh .huic-answer-mark{animation:huic-pop .36s var(--huic-ease) both}
+.huic-answer.is-fresh .huic-answer-mark path{animation:huic-draw .32s .14s var(--huic-ease) both}
+.huic:has(>.huic-answer){border-color:color-mix(in srgb,var(--huic-accent) 30%,var(--huic-line))}
+@keyframes huic-rise{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+@keyframes huic-pop{from{opacity:0;transform:scale(.5)}to{opacity:1;transform:scale(1)}}
+@keyframes huic-draw{from{stroke-dasharray:16;stroke-dashoffset:16}to{stroke-dasharray:16;stroke-dashoffset:0}}
+@keyframes huic-fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.huic-notice{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px var(--huic-pad);border-top:1px solid var(--huic-line);background:var(--ui-bg-quinary,transparent);color:var(--ui-text-secondary);font-size:12.5px}
+.huic-notice>svg{flex:none;width:16px;height:16px;color:var(--ui-text-tertiary)}
+.huic-notice>span{flex:1;min-width:12em}
 .huic-risk{display:inline-flex;gap:6px;align-items:baseline;font-size:12.5px}
 .huic-risk-low{color:var(--ui-green,var(--ui-text-secondary))}
 .huic-risk-medium{color:var(--ui-orange,var(--ui-yellow,var(--ui-text-secondary)))}
 .huic-risk-high{color:var(--ui-red,var(--ui-text-primary))}
-.huic-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-.huic-btn{appearance:none;border:0;border-radius:7px;padding:5px 12px;font:inherit;font-weight:500;cursor:pointer;color:var(--ui-text-primary);background:var(--ui-bg-quaternary)}
-.huic-btn:hover:not([disabled]){background:var(--ui-control-hover-background)}
-.huic-btn-primary{background:var(--huic-accent);color:var(--ui-chat-surface-background,var(--ui-base))}
-.huic-btn-primary:hover:not([disabled]){background:color-mix(in srgb,var(--huic-accent) 88%,var(--ui-text-primary))}
-.huic-btn-ghost{background:transparent;color:var(--ui-text-secondary)}
-.huic-btn-danger{background:color-mix(in srgb,var(--ui-red) 16%,transparent);color:var(--ui-red)}
+.huic-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.huic-btn{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:32px;border:0;border-radius:var(--huic-r-md);padding:6px 14px;font:inherit;font-size:13px;font-weight:500;line-height:18px;cursor:pointer;color:var(--ui-text-primary);background:var(--ui-bg-tertiary,var(--ui-bg-quaternary));box-shadow:inset 0 0 0 1px var(--huic-line);transition:background .15s,box-shadow .15s,color .15s,transform .08s}
+.huic-btn:hover:not([disabled]){background:var(--ui-bg-secondary,var(--ui-control-hover-background))}
+.huic-btn:active:not([disabled]){transform:translateY(1px)}
+.huic-btn-primary{background:var(--huic-accent);color:var(--huic-on-accent);box-shadow:none}
+.huic-btn-primary:hover:not([disabled]){background:color-mix(in srgb,var(--huic-accent) 86%,var(--ui-text-primary))}
+.huic-btn-ghost{background:transparent;box-shadow:none;color:var(--ui-text-secondary)}
+.huic-btn-ghost:hover:not([disabled]){background:var(--ui-control-hover-background);color:var(--ui-text-primary)}
+.huic-btn-danger{background:color-mix(in srgb,var(--ui-red) 16%,transparent);color:var(--ui-red);box-shadow:none}
 .huic-btn[disabled]{opacity:.5;cursor:default}
 .huic-btn-primary[disabled]{opacity:1;background:var(--ui-bg-quaternary);color:var(--ui-text-quaternary,var(--ui-text-tertiary))}
 @container (max-width: 440px){
@@ -872,21 +1203,25 @@ textarea.huic-input{min-height:64px;resize:vertical}
   .huic-foot{justify-content:stretch}
   .huic-foot>.huic-btn,.huic-foot>button{flex:1}
   .huic-hint{flex-basis:100%}
+  .huic .huic-copy-text{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 }
-@media (prefers-reduced-motion: reduce){.huic *{transition:none !important}}
 /* code + key-values */
-.huic .huic-code-block{position:relative;min-width:0;border-radius:8px;background:var(--ui-inline-code-background,var(--ui-bg-quaternary))}
-.huic .huic-code-block .huic-code{padding:38px 12px 12px;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;background:transparent;line-height:1.6}
-.huic .huic-copy{display:inline-flex;align-items:center;justify-content:center;gap:4px;min-width:26px;min-height:26px;padding:4px;border:1px solid transparent;border-radius:5px;background:transparent;color:var(--ui-text-tertiary);cursor:pointer;font:inherit;font-size:11px;line-height:1}
-.huic .huic-copy:hover{color:var(--ui-text-primary);background:var(--ui-control-hover-background);border-color:var(--ui-stroke-tertiary)}
-.huic .huic-copy svg{width:13px;height:13px;flex:none}
-.huic .huic-code-block>.huic-copy{position:absolute;right:6px;top:5px}
+.huic .huic-code-block{position:relative;min-width:0;border-radius:var(--huic-r-md);background:var(--ui-inline-code-background,var(--ui-bg-quaternary));box-shadow:inset 0 0 0 1px var(--ui-stroke-quaternary,transparent)}
+.huic .huic-code-block .huic-code{position:relative;padding:10px 44px 10px 12px;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;background:transparent;line-height:1.6}
+.huic .huic-code-block[data-prompt] .huic-code{padding-left:28px}
+.huic .huic-code-block[data-prompt] .huic-code::before{content:"$";position:absolute;left:12px;top:10px;color:var(--ui-text-quaternary,var(--ui-text-tertiary));user-select:none;pointer-events:none}
+.huic .huic-copy{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-width:28px;min-height:28px;padding:4px 6px;border:1px solid transparent;border-radius:var(--huic-r-sm);background:transparent;color:var(--ui-text-tertiary);cursor:pointer;font:inherit;font-size:12px;line-height:1;transition:color .15s,background .15s,border-color .15s}
+.huic .huic-copy:hover{color:var(--ui-text-primary);background:var(--ui-control-hover-background);border-color:var(--huic-line)}
+.huic .huic-copy svg{width:14px;height:14px;flex:none}
+.huic .huic-code-block>.huic-copy{position:absolute;right:6px;top:6px}
 .huic .huic-copy[data-copied="true"]{color:var(--ui-green,var(--ui-text-primary))}
+.huic .huic-copy[data-copied="true"] svg{animation:huic-pop .25s var(--huic-ease) both}
 .huic .huic-kv dd{font-variant-numeric:tabular-nums}
 .huic .huic-kv-value{display:flex;align-items:center;gap:6px;min-width:0}
 .huic .huic-kv-value>span{min-width:0;flex:1}
 .huic .huic-kv-value>.huic-copy{flex:none}
-.huic .huic-kv-path{font-family:var(--font-mono,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:12px}
+.huic .huic-kv-path{font-family:var(--huic-mono);font-size:12px}
+@media (prefers-reduced-motion: reduce){.huic,.huic *,.huic *::before,.huic *::after{transition:none !important;animation:none !important}}
 `
 
 function Style() {
@@ -901,10 +1236,10 @@ function cx(...names) {
 
 // Buttons use our own styles so the accent setting applies and nothing depends on
 // app class names (Tailwind classes only exist for what the app itself uses).
-function Btn({ variant = 'secondary', onClick, disabled, children, label, type = 'button', autoFocus, ref }) {
+function Btn({ variant = 'secondary', onClick, disabled, children, label, type = 'button', autoFocus, ref, className }) {
   return jsx('button', {
     type,
-    className: cx('huic-btn', variant !== 'secondary' && `huic-btn-${variant}`),
+    className: cx('huic-btn', variant !== 'secondary' && `huic-btn-${variant}`, className),
     onClick,
     disabled,
     autoFocus,
@@ -961,17 +1296,31 @@ function Footer({ hint, children }) {
   })
 }
 
+const CHECK_PATH = 'm3.5 8.5 3 3 6-7'
+
+// The answered state reads like a receipt: accent rail, the mark, what was sent, and a copy action.
 function AnsweredBar({ lang, record, focus }) {
   const ref = useRef(null)
   useEffect(() => { if (focus) ref.current?.focus() }, [focus])
+  const mark = record.mark || '✓'
   return jsxs('div', {
-    className: 'huic-answer',
+    className: cx('huic-answer', focus && 'is-fresh'),
     role: 'status', ref, tabIndex: -1,
     children: [
-      jsx('span', { 'aria-hidden': true, children: record.mark || '✓' }),
+      jsx('span', {
+        className: 'huic-answer-mark', 'aria-hidden': true,
+        children: mark === '✓'
+          ? jsx('svg', { viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: 2.2, children: jsx('path', { d: CHECK_PATH, strokeLinecap: 'round', strokeLinejoin: 'round' }) })
+          : mark
+      }),
       jsxs('span', {
-        children: [jsx('b', { children: t(lang, 'answered') + ': ' }), record.summary]
-      })
+        className: 'huic-answer-text',
+        children: [
+          jsxs('span', { className: 'huic-eyebrow', children: [t(lang, 'answered'), jsx('span', { className: 'huic-sr', children: ': ' })] }),
+          jsx('span', { className: 'huic-answer-summary', children: record.summary })
+        ]
+      }),
+      record.summary ? jsx(CopyButton, { text: record.summary, lang, label: t(lang, 'copyResult'), doneLabel: t(lang, 'copiedResult'), showLabel: true }) : null
     ]
   })
 }
@@ -980,11 +1329,18 @@ function NoticeBar({ text, action }) {
   return jsxs('div', {
     className: 'huic-notice',
     role: 'status',
-    children: [jsx('span', { children: text }), action || null]
+    children: [
+      jsxs('svg', { viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: 1.4, 'aria-hidden': true, children: [
+        jsx('circle', { cx: 8, cy: 8, r: 6.25 }),
+        jsx('path', { d: 'M8 7.25v3.5M8 5.1v.1', strokeLinecap: 'round' })
+      ] }),
+      jsx('span', { children: text }),
+      action || null
+    ]
   })
 }
 
-function CopyButton({ text, lang }) {
+function CopyButton({ text, lang, label: idleLabel, doneLabel, showLabel }) {
   const [copied, setCopied] = useState(false)
   const timer = useRef(null)
   useEffect(() => {
@@ -1006,7 +1362,7 @@ function CopyButton({ text, lang }) {
       timer.current = setTimeout(() => setCopied(false), 1500)
     }
   }
-  const label = t(lang, copied ? 'copied' : 'copy')
+  const label = copied ? doneLabel || t(lang, 'copied') : idleLabel || t(lang, 'copy')
   return jsxs('button', {
     type: 'button', className: 'huic-copy', onClick: copy,
     'aria-label': label, title: label, 'data-copied': copied,
@@ -1015,20 +1371,20 @@ function CopyButton({ text, lang }) {
         viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: 1.4,
         'aria-hidden': true,
         children: copied
-          ? jsx('path', { d: 'm3 8 3 3 7-7', strokeLinecap: 'round', strokeLinejoin: 'round' })
+          ? jsx('path', { d: CHECK_PATH, strokeLinecap: 'round', strokeLinejoin: 'round' })
           : jsxs(Fragment, { children: [
               jsx('rect', { x: 5, y: 5, width: 8, height: 9, rx: 1.5 }),
               jsx('path', { d: 'M10 3V2H2v9h1', strokeLinecap: 'round', strokeLinejoin: 'round' })
             ] })
       }),
-      jsx('span', { className: copied ? undefined : 'huic-sr', children: label })
+      jsx('span', { className: showLabel ? 'huic-copy-text' : copied ? undefined : 'huic-sr', children: label })
     ]
   })
 }
 
 // Label/value pairs. The app's Markdown styles reach dl/dt/dd inside messages, so the
 // layout-critical properties are inline; each pair is one flex row (dl > div > dt + dd).
-const KV_ROW = { display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'baseline', padding: '3px 0', borderTop: '1px solid var(--ui-stroke-tertiary)' }
+const KV_ROW = { display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'baseline', padding: '6px 0', borderTop: '1px solid var(--ui-stroke-tertiary)' }
 const KV_DT = { margin: 0, padding: 0, float: 'none', fontWeight: 400, color: 'var(--ui-text-tertiary)', flex: 'none', maxWidth: '50%' }
 const KV_DD = { margin: 0, padding: 0, textAlign: 'right', minWidth: 0, overflowWrap: 'anywhere' }
 
@@ -1044,7 +1400,7 @@ function KeyValues({ rows, lang }) {
       const shown = path && chars.length > 40 ? chars.slice(0, 18).join('') + '…' + chars.slice(-21).join('') : value
       return jsxs('div', {
         className: stacked ? 'huic-kv-stacked' : undefined,
-        style: { ...KV_ROW, ...(stacked ? { flexDirection: 'column', alignItems: 'stretch', gap: 3, padding: '7px 0' } : {}) },
+        style: { ...KV_ROW, ...(stacked ? { flexDirection: 'column', alignItems: 'stretch', gap: 2, padding: '8px 0' } : {}) },
         children: [
           jsx('dt', { style: { ...KV_DT, ...(stacked ? { maxWidth: '100%' } : {}) }, children: row.label }),
           jsx('dd', {
@@ -1063,9 +1419,11 @@ function KeyValues({ rows, lang }) {
   })
 }
 
-function CodeBlock({ code, lang }) {
+// prompt: shell commands get a "$" gutter (CSS only, so copy and selection stay exact).
+function CodeBlock({ code, lang, prompt }) {
   return jsxs('div', {
     className: 'huic-code-block',
+    'data-prompt': prompt ? '' : undefined,
     children: [
       jsx('pre', { className: 'huic-code', children: jsx('code', { children: code }) }),
       jsx(CopyButton, { text: code, lang })
@@ -1076,9 +1434,17 @@ function CodeBlock({ code, lang }) {
 // ── 55-answer.js ──
 // One answer per card: send it into the card's own chat, remember it, never send twice.
 
+// Seconds a pick waits before it is sent so it can be undone (Settings → Plugins → Undo time:
+// 0, 4 or 8). Cards call it when the pick happens, so a changed setting applies at once.
+function undoDelayMs(display) {
+  const pick = [liveDisplay, display, lastResultDisplay].find(d => d && [0, 4, 8].includes(d.undo))
+  return (pick ? pick.undo : 4) * 1000
+}
+
 function useCardAnswer(card, sessionId, lang) {
   const key = sessionId ? `${sessionId}\u0000${card.cardId}` : null
   const record = useCardRecord(key)
+  useServerAnswer(card, sessionId) // answered elsewhere (another window, the Webapp, another computer)
   const [problem, setProblem] = useState(null) // null | 'inactive' | 'failed' | 'oversize'
   const sending = useRef(false)
   const [focusAnswer, setFocusAnswer] = useState(false)
@@ -1163,7 +1529,7 @@ Object.assign(STRINGS.de, {
 const KEYS_CSS = `
 .huic .huic-num{flex:none;display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 4px;border-radius:50%;border:1px solid var(--ui-stroke-secondary);color:var(--ui-text-tertiary);font-size:11px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums;background:transparent}
 .huic .huic-num.huic-num-multi{border-radius:5px}
-.huic [aria-checked="true"] .huic-num,.huic [aria-checked="true"]>.huic-num{background:var(--huic-accent);border-color:var(--huic-accent);color:var(--ui-chat-surface-background,var(--ui-base,Canvas))}
+.huic [aria-checked="true"] .huic-num,.huic [aria-checked="true"]>.huic-num{background:var(--huic-accent);border-color:var(--huic-accent);color:var(--huic-on-accent,var(--ui-chat-surface-background,var(--ui-base,Canvas)))}
 `
 
 // "1–3" for three options, "1" for one, capped at the nine digit keys.
@@ -1243,7 +1609,7 @@ const CHOICE_CSS = `
 .huic[data-card-type="choice"] .huic-tile-desc{color:var(--ui-text-secondary);font-size:12px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .huic[data-card-type="choice"] .huic-tile>.huic-num{position:absolute;top:8px;left:8px;background:color-mix(in srgb,var(--ui-chat-surface-background,var(--ui-base,Canvas)) 82%,transparent)}
 .huic[data-card-type="choice"] .huic-tile>.huic-badge{position:absolute;top:8px;right:8px;max-width:70%;overflow:hidden;text-overflow:ellipsis;background:color-mix(in srgb,var(--ui-chat-surface-background,var(--ui-base,Canvas)) 82%,transparent)}
-.huic[data-card-type="choice"] .huic-tile[aria-checked="true"]>.huic-num{background:var(--huic-accent);border-color:var(--huic-accent);color:var(--ui-chat-surface-background,var(--ui-base,Canvas))}
+.huic[data-card-type="choice"] .huic-tile[aria-checked="true"]>.huic-num{background:var(--huic-accent);border-color:var(--huic-accent);color:var(--huic-on-accent,var(--ui-chat-surface-background,var(--ui-base,Canvas)))}
 .huic[data-card-type="choice"] .huic-opt-row{align-items:center}
 @container (max-width: 440px){.huic[data-card-type="choice"] .huic-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (prefers-reduced-motion: reduce){.huic[data-card-type="choice"] .huic-tile[aria-checked="true"]{transform:none}}
@@ -1467,24 +1833,42 @@ Object.assign(STRINGS.de, {
   checklistResumed: 'Hier geht’s weiter, wo du aufgehört hast'
 })
 
+// Long lists stay calm: eyebrow group headings with live counts, custom ticks that draw
+// in, done items fade back. Header and Done pin while a tall list scrolls past.
 const CHECKLIST_CSS = `
 .huic[data-card-type="checklist"]{overflow:visible;background:var(--ui-chat-surface-background,var(--ui-base))}
 .huic[data-card-type="checklist"]>.huic-check-head{padding:var(--huic-pad) var(--huic-pad) 8px;background:inherit;border-radius:11px 11px 0 0;display:flex;flex-direction:column;gap:8px}
 .huic[data-card-type="checklist"]>.huic-foot{background:inherit;border-radius:0 0 11px 11px}
-.huic[data-card-type="checklist"].huic-check-sticky>.huic-check-head{position:sticky;top:0;z-index:3}
+.huic[data-card-type="checklist"].huic-check-sticky>.huic-check-head{position:sticky;top:0;z-index:3;box-shadow:0 1px 0 var(--huic-line)}
 .huic[data-card-type="checklist"].huic-check-sticky>.huic-foot{position:sticky;bottom:0;z-index:2}
+.huic[data-card-type="checklist"] .huic-check-count{flex:none;color:var(--ui-text-tertiary);font-size:12px;line-height:16px;font-variant-numeric:tabular-nums}
+.huic[data-card-type="checklist"] .huic-check-list{display:flex;flex-direction:column;gap:4px}
 .huic[data-card-type="checklist"] .huic-check-group{border:0;margin:0;padding:0;min-width:0}
+.huic[data-card-type="checklist"] .huic-check-group+.huic-check-group{margin-top:4px}
 .huic[data-card-type="checklist"] .huic-check-group>legend{padding:0;width:100%}
-.huic[data-card-type="checklist"] .huic-check-heading{display:flex;align-items:center;gap:6px;min-height:28px;width:100%;border:0;border-radius:5px;padding:6px 0 2px;background:transparent;color:var(--ui-text-secondary);font:inherit;font-size:12.5px;font-weight:500;text-align:left;cursor:pointer}
-.huic[data-card-type="checklist"] .huic-check-chevron{width:12px;flex:none;transition:transform .15s}
+.huic[data-card-type="checklist"] .huic-check-heading{display:flex;align-items:center;gap:6px;min-height:32px;width:100%;margin:0 -8px;width:calc(100% + 16px);border:0;border-radius:var(--huic-r-sm);padding:6px 8px 4px;background:transparent;color:var(--ui-text-tertiary);font:inherit;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;text-align:left;cursor:pointer;transition:background .15s,color .15s}
+.huic[data-card-type="checklist"] .huic-check-heading:hover{color:var(--ui-text-secondary);background:var(--ui-row-hover-background,var(--ui-control-hover-background))}
+.huic[data-card-type="checklist"] .huic-check-chevron{width:12px;height:12px;flex:none;transition:transform .18s var(--huic-ease)}
 .huic[data-card-type="checklist"] .huic-check-heading[aria-expanded="true"] .huic-check-chevron{transform:rotate(90deg)}
-.huic[data-card-type="checklist"] .huic-check-row{align-items:flex-start;min-height:28px;padding:5px 2px;border-radius:5px;cursor:pointer;transition:background .12s,opacity .15s}
-.huic[data-card-type="checklist"] .huic-check-row:hover:has(input:not(:disabled)),.huic[data-card-type="checklist"] .huic-check-heading:hover{background:var(--ui-control-hover-background)}
+.huic[data-card-type="checklist"] .huic-check-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.huic[data-card-type="checklist"] .huic-check-gcount{margin-left:auto;padding-left:8px;font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.huic[data-card-type="checklist"] .huic-check-gcount.is-done{color:var(--ui-green,var(--huic-accent))}
+.huic[data-card-type="checklist"] .huic-check-gcount.is-done::before{content:"✓ "}
+.huic[data-card-type="checklist"] .huic-check-row{align-items:flex-start;gap:10px;min-height:32px;margin:0 -8px;padding:6px 8px;border-radius:var(--huic-r-sm);cursor:pointer;transition:background .12s}
+.huic[data-card-type="checklist"] .huic-check-row:hover:has(input:not(:disabled)),.huic[data-card-type="checklist"] .huic-check-heading:hover{background:var(--ui-row-hover-background,var(--ui-control-hover-background))}
 .huic[data-card-type="checklist"] .huic-check-row:has(input:disabled){cursor:default}
-.huic[data-card-type="checklist"] .huic-check-row.is-checked .huic-opt-text{opacity:.6}
-.huic[data-card-type="checklist"] .huic-check-row.is-checked .huic-check-text{text-decoration:line-through}
-.huic[data-card-type="checklist"] .huic-check-resumed{margin:0;color:var(--ui-text-tertiary);font-size:12px}
-@media(prefers-reduced-motion:reduce){.huic[data-card-type="checklist"] *{transition:none!important}}
+.huic[data-card-type="checklist"] .huic-check-box{appearance:none;-webkit-appearance:none;display:grid;place-items:center;flex:none;width:16px;height:16px;margin:2px 0 0;border:1.5px solid var(--ui-text-quaternary,var(--huic-line-strong));border-radius:5px;background:transparent;cursor:inherit;transition:background .15s,border-color .15s}
+.huic[data-card-type="checklist"] .huic-check-box::after{content:"";width:8px;height:4px;border-left:2px solid var(--huic-on-accent);border-bottom:2px solid var(--huic-on-accent);transform:translateY(-1px) rotate(-45deg) scale(0);transition:transform .2s var(--huic-ease)}
+.huic[data-card-type="checklist"] .huic-check-row:hover .huic-check-box:not(:checked):not(:disabled){border-color:var(--huic-accent)}
+.huic[data-card-type="checklist"] .huic-check-box:checked{background:var(--huic-accent);border-color:var(--huic-accent)}
+.huic[data-card-type="checklist"] .huic-check-box:checked::after{transform:translateY(-1px) rotate(-45deg) scale(1)}
+.huic[data-card-type="checklist"] .huic-check-box:disabled{opacity:.7}
+.huic[data-card-type="checklist"] .huic-check-text{transition:color .2s}
+.huic[data-card-type="checklist"] .huic-check-row.is-checked .huic-check-text{color:var(--ui-text-tertiary);text-decoration:line-through;text-decoration-color:var(--ui-text-quaternary,currentColor)}
+.huic[data-card-type="checklist"] .huic-check-row.is-checked .huic-opt-desc{opacity:.7}
+.huic[data-card-type="checklist"] .huic-check-resumed{display:flex;align-items:center;gap:6px;margin:0 0 4px;padding:6px 10px;border-radius:var(--huic-r-sm);background:color-mix(in srgb,var(--huic-accent) 7%,transparent);color:var(--ui-text-secondary);font-size:12px;animation:huic-fade .3s var(--huic-ease) both}
+.huic[data-card-type="checklist"] .huic-check-resumed::before{content:"↻";color:var(--huic-accent)}
+.huic[data-card-type="checklist"] .huic-foot>.huic-hint::before{content:"✓ ";color:var(--ui-green,var(--huic-accent))}
 `
 
 function groupItems(items) {
@@ -1510,27 +1894,37 @@ function ChecklistCard({ card, sessionId, display, lang }) {
   useEffect(() => {
     const frame = frameRef.current
     if (!frame) return
-    let scrollRoot = frame.parentElement
-    while (scrollRoot && !/(auto|scroll)/.test(getComputedStyle(scrollRoot).overflowY)) scrollRoot = scrollRoot.parentElement
-    const scroller = scrollRoot || window
+    // The real vertical scroller: overflow-y auto/scroll AND taller content than its box
+    // (an overflow-x wrapper computes overflow-y:auto too but never scrolls vertically).
+    const findRoot = () => {
+      for (let el = frame.parentElement; el; el = el.parentElement) {
+        if (/(auto|scroll)/.test(getComputedStyle(el).overflowY) && el.scrollHeight > el.clientHeight) return el
+      }
+      return null
+    }
+    let root = null
     const update = () => {
       const rect = frame.getBoundingClientRect()
-      const viewport = scrollRoot ? scrollRoot.getBoundingClientRect() : { top: 0, bottom: window.innerHeight }
-      const height = scrollRoot ? scrollRoot.clientHeight : window.innerHeight
+      const viewport = root ? root.getBoundingClientRect() : { top: 0, bottom: window.innerHeight }
+      const height = root ? root.clientHeight : window.innerHeight
       const head = frame.querySelector('.huic-check-head')?.offsetHeight || 0
       const foot = frame.querySelector('.huic-foot')?.offsetHeight || 0
-      // Only pin tall cards once enough of the card is visible for both controls.
-      setSticky(rect.height > height && rect.top + head + foot < viewport.bottom && rect.bottom > viewport.top)
+      // Only pin tall cards, only with room left for items, once both controls fit in view.
+      setSticky(height >= head + foot + 120 && rect.height > height && rect.top + head + foot < viewport.bottom && rect.bottom > viewport.top)
     }
-    update()
-    scroller.addEventListener('scroll', update, { passive: true })
-    window.addEventListener('resize', update)
-    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => refresh()) : null
+    const refresh = () => {
+      const next = findRoot()
+      if (next !== root) { root = next; if (root) observer?.observe(root) }
+      update()
+    }
+    refresh()
+    document.addEventListener('scroll', update, { passive: true, capture: true })
+    window.addEventListener('resize', refresh)
     observer?.observe(frame)
-    if (scrollRoot) observer?.observe(scrollRoot)
     return () => {
-      scroller.removeEventListener('scroll', update)
-      window.removeEventListener('resize', update)
+      document.removeEventListener('scroll', update, { capture: true })
+      window.removeEventListener('resize', refresh)
       observer?.disconnect()
     }
   }, [])
@@ -1572,7 +1966,7 @@ function ChecklistCard({ card, sessionId, display, lang }) {
         'aria-label': t(lang, 'progress', { done, total }),
         children: jsx('span', { style: { width: `${pct}%` } })
       }),
-      jsx('span', { className: 'huic-hint', style: { marginRight: 0, flexBasis: 'auto', flexShrink: 0 }, 'aria-hidden': true, children: t(lang, 'progress', { done, total }) })
+      jsx('span', { className: 'huic-check-count', 'aria-hidden': true, children: t(lang, 'progress', { done, total }) })
     ]
   })
 
@@ -1588,7 +1982,11 @@ function ChecklistCard({ card, sessionId, display, lang }) {
             type: 'button', className: 'huic-check-heading', 'aria-expanded': open, 'aria-controls': groupId,
             ref: el => { groupButtons.current[group.name] = el },
             onClick: () => setExpanded(prev => ({ ...prev, [group.name]: !open })),
-            children: [jsx('span', { className: 'huic-check-chevron', 'aria-hidden': true, children: '›' }), `${group.name} · ${groupDone}/${group.items.length}`]
+            children: [
+              jsx('svg', { className: 'huic-check-chevron', viewBox: '0 0 12 12', fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, 'aria-hidden': true, children: jsx('path', { d: 'm4.5 2.5 3.5 3.5-3.5 3.5', strokeLinecap: 'round', strokeLinejoin: 'round' }) }),
+              jsx('span', { className: 'huic-check-name', title: group.name, children: group.name }),
+              jsxs('span', { className: cx('huic-check-gcount', groupDone === group.items.length && 'is-done'), children: [jsx('span', { className: 'huic-sr', children: ' · ' }), `${groupDone}/${group.items.length}`] })
+            ]
           })
         }) : null,
         jsx('div', {
@@ -1600,9 +1998,8 @@ function ChecklistCard({ card, sessionId, display, lang }) {
               htmlFor: inputId, className: cx('huic-row', 'huic-check-row', on && 'is-checked'),
               children: [
                 jsx('input', {
-                  id: inputId, type: 'checkbox', checked: on, disabled: ans.locked,
-                  onChange: () => toggle(item.id),
-                  style: { accentColor: 'var(--huic-accent)', marginTop: 3, width: 15, height: 15, flex: 'none' }
+                  id: inputId, type: 'checkbox', className: 'huic-check-box', checked: on, disabled: ans.locked,
+                  onChange: () => toggle(item.id)
                 }),
                 jsxs('span', {
                   className: 'huic-opt-text',
@@ -1631,7 +2028,7 @@ function ChecklistCard({ card, sessionId, display, lang }) {
       jsxs('div', {
         className: 'huic-body', style: { paddingTop: 0 },
         children: [resumed ? jsx('p', { className: 'huic-check-resumed', role: 'status', children: t(lang, 'checklistResumed') }) : null,
-          jsx('div', { role: 'group', 'aria-labelledby': card.title ? labelId : undefined, children: groups })]
+          jsx('div', { role: 'group', className: 'huic-check-list', 'aria-labelledby': card.title ? labelId : undefined, children: groups })]
       }),
       ans.showActions ? jsx(Footer, {
         hint: ans.draft?.checked ? t(lang, 'checklistSaved', { done, total }) : undefined,
@@ -1643,42 +2040,76 @@ function ChecklistCard({ card, sessionId, display, lang }) {
 }
 
 // ── 62-compare.js ──
-Object.assign(STRINGS.en, { compareSources: 'sources', compareChecked: 'Prices checked', compareNoSources: "From the model’s knowledge, no web sources", compareUndo: 'Undo', comparePending: 'Picked {title} · sending in 4 s', compareMore: '+{count} more', compareLess: 'Show less', compareBest: 'best', compareSwitch: 'Compare options' })
-Object.assign(STRINGS.de, { compareSources: 'Quellen', compareChecked: 'Preise geprüft', compareNoSources: 'Aus dem Wissen des Modells, ohne Webquellen', compareUndo: 'Rückgängig', comparePending: 'Gewählt: {title} · wird in 4 s gesendet', compareMore: '+{count} weitere', compareLess: 'Weniger anzeigen', compareBest: 'bester Wert', compareSwitch: 'Optionen vergleichen' })
+Object.assign(STRINGS.en, { compareSources: 'sources', compareChecked: 'Prices checked', compareNoSources: "From the model’s knowledge, no web sources", compareUndo: 'Undo', comparePending: 'Picked {title} · sending in {s} s', compareMore: '+{count} more', compareLess: 'Show less', compareBest: 'best', compareSwitch: 'Compare options', compareYourPick: 'Your pick' })
+Object.assign(STRINGS.de, { compareSources: 'Quellen', compareChecked: 'Preise geprüft', compareNoSources: 'Aus dem Wissen des Modells, ohne Webquellen', compareUndo: 'Rückgängig', comparePending: 'Gewählt: {title} · wird in {s} s gesendet', compareMore: '+{count} weitere', compareLess: 'Weniger anzeigen', compareBest: 'bester Wert', compareSwitch: 'Optionen vergleichen', compareYourPick: 'Deine Wahl' })
 
+// A real table: full-bleed hairline rows, a quiet tinted column for the recommendation,
+// a dot for the best value per row, small source chips. Narrow views switch columns.
 const COMPARE_CSS = `
-.huic[data-card-type="compare"] { max-width: 960px; container-type: inline-size; }
-.huic[data-card-type="compare"] .huic-compare-table { display: grid; grid-template-columns: var(--compare-grid); }
-.huic[data-card-type="compare"] .huic-compare-row { display: contents; }
-.huic[data-card-type="compare"] .huic-compare-cell { min-width: 0; padding: 12px; border-bottom: 1px solid var(--ui-border); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
-.huic[data-card-type="compare"] .huic-compare-label { color: var(--ui-text-secondary); font-size: 12px; }
-.huic[data-card-type="compare"] .huic-compare-recommended { background: color-mix(in srgb, var(--huic-accent) 8%, transparent); }
-.huic[data-card-type="compare"] .huic-compare-best { color: var(--huic-accent); font-weight: 600; }
-.huic[data-card-type="compare"] .huic-compare-source { display: inline-block; margin: 4px 0 0 4px; font-size: 11px; color: var(--ui-text-secondary); text-decoration: underline; }
-.huic[data-card-type="compare"] .huic-compare-source:hover { color: var(--huic-accent); }
-.huic[data-card-type="compare"] .huic-compare-switch { display: none; gap: 4px; margin-bottom: 10px; }
-.huic[data-card-type="compare"] .huic-compare-switch button, .huic[data-card-type="compare"] .huic-compare-more { border: 0; background: transparent; color: var(--huic-accent); cursor: pointer; font: inherit; }
-.huic[data-card-type="compare"] .huic-compare-switch button { padding: 6px 10px; border-radius: 6px; }
-.huic[data-card-type="compare"] .huic-compare-switch button[aria-checked="true"] { background: color-mix(in srgb, var(--huic-accent) 15%, transparent); font-weight: 600; }
-.huic[data-card-type="compare"] button:focus-visible, .huic[data-card-type="compare"] a:focus-visible { outline: 2px solid var(--huic-accent); outline-offset: 2px; }
-.huic[data-card-type="compare"] .huic-compare-list { margin: 0; padding: 0; list-style: none; }
-.huic[data-card-type="compare"] .huic-compare-footer { color: var(--ui-text-secondary); font-size: 12px; padding: 10px 12px 0; }
-.huic[data-card-type="compare"] .huic-compare-pending { padding: 12px; color: var(--ui-text-secondary); }
-@container (max-width: 560px) {
- .huic[data-card-type="compare"] .huic-compare-switch { display: flex; }
- .huic[data-card-type="compare"] .huic-compare-table { grid-template-columns: minmax(90px, max-content) minmax(0, 1fr); }
- .huic[data-card-type="compare"] .huic-compare-cell[data-visible="false"] { display: none; }
+.huic[data-card-type="compare"]{max-width:960px}
+.huic[data-card-type="compare"] .huic-compare-table{display:grid;grid-template-columns:var(--compare-grid);margin:0 calc(-1 * var(--huic-pad))}
+.huic[data-card-type="compare"] .huic-compare-row{display:contents}
+.huic[data-card-type="compare"] .huic-compare-cell{min-width:0;padding:9px 12px;border-top:1px solid var(--huic-line);overflow-wrap:anywhere;font-variant-numeric:tabular-nums;line-height:18px}
+.huic[data-card-type="compare"] .huic-compare-row>:first-child{padding-left:var(--huic-pad)}
+.huic[data-card-type="compare"] .huic-compare-row>:last-child{padding-right:var(--huic-pad)}
+.huic[data-card-type="compare"] .huic-compare-row.is-head>*{border-top:0;padding-top:4px;padding-bottom:12px}
+.huic[data-card-type="compare"] .huic-compare-row.is-head+.huic-compare-row>*{border-top-color:var(--huic-line-strong)}
+.huic[data-card-type="compare"] .huic-compare-row.is-actions>*{padding-top:12px;padding-bottom:0}
+.huic[data-card-type="compare"] .huic-compare-label{min-width:84px;color:var(--ui-text-tertiary);font-size:12px;overflow-wrap:break-word;hyphens:auto}
+.huic[data-card-type="compare"] .huic-compare-recommended{background:color-mix(in srgb,var(--huic-accent) 6%,transparent)}
+.huic[data-card-type="compare"] .is-head>.huic-compare-recommended{box-shadow:inset 0 2px 0 var(--huic-accent);border-top-left-radius:2px;border-top-right-radius:2px}
+.huic[data-card-type="compare"] .is-actions>.huic-compare-recommended{padding-bottom:12px;border-bottom-left-radius:var(--huic-r-md);border-bottom-right-radius:var(--huic-r-md)}
+.huic[data-card-type="compare"] .is-actions>.huic-compare-cell{padding-bottom:12px}
+.huic[data-card-type="compare"] .huic-compare-name{display:block;font-size:13.5px;font-weight:600;line-height:19px;color:var(--ui-text-primary)}
+.huic[data-card-type="compare"] .huic-compare-subtitle{margin-top:2px;color:var(--ui-text-tertiary);font-size:12px;line-height:17px}
+.huic[data-card-type="compare"] .huic-compare-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
+.huic[data-card-type="compare"] .huic-compare-tags:empty{display:none}
+.huic[data-card-type="compare"] .huic-compare-head .huic-img{margin-bottom:8px}
+.huic[data-card-type="compare"] .huic-compare-best{font-weight:600;color:var(--ui-text-primary)}
+.huic[data-card-type="compare"] .huic-compare-dot{display:inline-block;width:6px;height:6px;margin:0 7px 0 0;border-radius:50%;background:var(--huic-accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--huic-accent) 18%,transparent);font-size:0;line-height:0;vertical-align:middle;position:relative;top:-1px}
+.huic[data-card-type="compare"] .huic-compare-yes{color:var(--ui-green,var(--huic-accent));font-weight:600}
+.huic[data-card-type="compare"] .huic-compare-none{color:var(--ui-text-quaternary,var(--ui-text-tertiary))}
+.huic[data-card-type="compare"] .huic-compare-source{display:inline-flex;align-items:center;gap:3px;max-width:100%;margin:4px 4px 0 0;padding:0 7px;border:1px solid var(--huic-line);border-radius:999px;font-size:11px;line-height:18px;font-weight:400;color:var(--ui-text-tertiary);text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;transition:color .15s,border-color .15s}
+.huic[data-card-type="compare"] .huic-compare-tags .huic-compare-source{margin:0}
+.huic[data-card-type="compare"] .huic-compare-cell>.huic-compare-source:first-of-type{margin-left:6px}
+.huic[data-card-type="compare"] .huic-compare-source:hover{color:var(--huic-accent);border-color:color-mix(in srgb,var(--huic-accent) 40%,transparent)}
+.huic[data-card-type="compare"] .huic-compare-list{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px}
+.huic[data-card-type="compare"] .huic-compare-list li{display:flex;gap:6px;margin:0;padding:0}
+.huic[data-card-type="compare"] .huic-compare-sign{flex:none;width:10px;font-weight:600}
+.huic[data-card-type="compare"] .huic-compare-sign-pros{color:var(--ui-green,var(--huic-accent))}
+.huic[data-card-type="compare"] .huic-compare-sign-cons{color:var(--ui-red,var(--ui-text-tertiary))}
+.huic[data-card-type="compare"] .huic-compare-more{margin-top:4px;padding:2px 0;border:0;background:transparent;color:var(--huic-accent);cursor:pointer;font:inherit;font-size:12px}
+.huic[data-card-type="compare"] .huic-compare-more:hover{text-decoration:underline;text-underline-offset:2px}
+.huic[data-card-type="compare"] .is-actions .huic-btn{width:100%}
+.huic[data-card-type="compare"] .huic-compare-pick{display:inline-flex;align-items:center;gap:4px}
+.huic[data-card-type="compare"] .huic-compare-pick::before{content:"✓";font-weight:700}
+.huic[data-card-type="compare"] .huic-compare-switch{display:none;gap:2px;padding:2px;border-radius:var(--huic-r-md);background:var(--ui-bg-tertiary,var(--ui-bg-quaternary))}
+.huic[data-card-type="compare"] .huic-compare-switch button{flex:1 1 0;min-width:0;min-height:30px;padding:4px 8px;border:0;border-radius:var(--huic-r-sm);background:transparent;color:var(--ui-text-secondary);cursor:pointer;font:inherit;font-size:12.5px;line-height:16px;transition:background .15s,color .15s}
+.huic[data-card-type="compare"] .huic-compare-switch button:hover{color:var(--ui-text-primary)}
+.huic[data-card-type="compare"] .huic-compare-switch button[aria-checked="true"]{background:var(--ui-chat-surface-background,var(--ui-bg-elevated));color:var(--ui-text-primary);font-weight:600;box-shadow:0 0 0 1px var(--huic-line-strong)}
+.huic[data-card-type="compare"] .huic-compare-meta{display:flex;align-items:center;gap:6px;margin:0 calc(-1 * var(--huic-pad));padding:10px var(--huic-pad) 0;border-top:1px solid var(--huic-line);color:var(--ui-text-tertiary);font-size:12px;line-height:16px}
+.huic[data-card-type="compare"] .huic-compare-meta svg{flex:none;width:13px;height:13px}
+.huic[data-card-type="compare"] .huic-compare-pending{position:relative;overflow:hidden;display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 12px;border-radius:var(--huic-r-md);background:color-mix(in srgb,var(--huic-accent) 8%,transparent);color:var(--ui-text-secondary)}
+.huic[data-card-type="compare"] .huic-compare-pending>span:first-child{flex:1;min-width:12em}
+.huic[data-card-type="compare"] .huic-compare-drain{position:absolute;left:0;bottom:0;height:2px;width:100%;background:var(--huic-accent);transform-origin:left;animation:huic-drain var(--undo-ms) linear both}
+@keyframes huic-drain{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+.huic[data-card-type="compare"] .huic-compare-row:not(.is-head):not(.is-actions):hover>.huic-compare-cell{background-image:linear-gradient(var(--ui-row-hover-background,transparent),var(--ui-row-hover-background,transparent))}
+@container (max-width: 560px){
+ .huic[data-card-type="compare"] .huic-compare-switch{display:flex}
+ .huic[data-card-type="compare"] .huic-compare-table{grid-template-columns:minmax(84px,32%) minmax(0,1fr)}
+ .huic[data-card-type="compare"] .huic-compare-cell[data-visible="false"]{display:none}
+ .huic[data-card-type="compare"] .huic-compare-cell[data-visible="true"]{padding-right:var(--huic-pad)}
 }
 `
-function displayValue(value) {
-  if (value === true) return '✓'
-  if (value === false || value == null || value === '') return '–'
+function compareValue(value) {
+  if (value === true) return jsx('span', { className: 'huic-compare-yes', children: '✓' })
+  if (value === false || value == null || value === '') return jsx('span', { className: 'huic-compare-none', children: '–' })
   return String(value)
 }
 function CompareSource({ url, label }) {
   let domain = ''
-  try { domain = new URL(url).hostname } catch { return null }
-  return jsx('a', { className: 'huic-compare-source', href: url, target: '_blank', rel: 'noopener noreferrer', onClick: e => {
+  try { domain = new URL(url).hostname.replace(/^www\./, '') } catch { return null }
+  return jsx('a', { className: 'huic-compare-source', href: url, target: '_blank', rel: 'noopener noreferrer', title: url, onClick: e => {
     if (typeof pluginCtx !== 'undefined' && pluginCtx?.os?.openExternal) { e.preventDefault(); pluginCtx.os.openExternal(url) }
   }, children: '↗ ' + (label || domain) })
 }
@@ -1690,30 +2121,94 @@ function CompareCard({ card, sessionId, display, lang }) {
   const [pending, setPending] = useState(null)
   const timer = useRef(null)
   const switchRefs = useRef([])
-  const undo = () => { clearTimeout(timer.current); timer.current = null; setPending(null) }
+  const pickRefs = useRef({})
+  const undoRef = useRef(null)
+  const returnTo = useRef(null)
+  const delay = typeof undoDelayMs === 'function' ? undoDelayMs() : 4000
+  const undo = () => {
+    if (!timer.current) return
+    clearTimeout(timer.current); timer.current = null
+    returnTo.current = pending?.id ?? null
+    setPending(null)
+  }
   useEffect(() => () => clearTimeout(timer.current), [])
+  // Focus follows the pick: to Undo while it can be taken back, then back to its Choose button.
   useEffect(() => {
-    if (!pending) return
-    const onKey = e => { if (e.key === 'Escape') { e.preventDefault(); undo() } }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    if (pending) undoRef.current?.focus()
+    else if (returnTo.current != null) { pickRefs.current[returnTo.current]?.focus(); returnTo.current = null }
   }, [pending])
+  // Escape only cancels this card's pick, and only from inside the card.
+  const onKeyDown = e => {
+    if (pending && e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); undo() }
+  }
   const pick = column => {
     if (timer.current) return
     setPending(column)
-    timer.current = setTimeout(() => { timer.current = null; setPending(null); ans.submit({ selected: column.id }) }, 4000)
+    timer.current = setTimeout(() => { timer.current = null; setPending(null); ans.submit({ selected: column.id }) }, delay)
   }
-  const cell = (column, i, content, extra = '') => jsx('div', { role: 'cell', className: cx('huic-compare-cell', column.best && 'huic-compare-recommended', extra), 'data-visible': i === selected ? 'true' : 'false', children: content }, column.id || i)
-  const row = (label, contents, key) => jsxs('div', { role: 'row', className: 'huic-compare-row', children: [jsx('div', { role: 'rowheader', className: 'huic-compare-cell huic-compare-label', children: label }), ...contents] }, key)
+  const picked = ans.answer?.selection?.selected
+  const cell = (column, i, content, extra = '', role = 'cell') => jsx('div', { role, className: cx('huic-compare-cell', column.best && 'huic-compare-recommended', extra), 'data-visible': i === selected ? 'true' : 'false', children: content }, column.id || i)
+  const row = (label, contents, key, kind) => jsxs('div', { role: 'row', className: cx('huic-compare-row', kind && `is-${kind}`), children: [jsx('div', { role: label ? 'rowheader' : 'cell', className: 'huic-compare-cell huic-compare-label', children: label }), ...contents] }, key)
   const urls = new Set(card.columns.map(c => c.source?.url).concat((card.rows || []).flatMap(r => r.sources || [])).filter(Boolean))
-  const rows = [row('', card.columns.map((c, i) => cell(c, i, jsxs('div', { children: [c.image ? jsx(CardImage, { src: c.image }) : null, jsx('strong', { children: c.title }), c.subtitle ? jsx('div', { className: 'huic-opt-desc', children: c.subtitle }) : null, c.badge ? jsx('div', { className: 'huic-badge', children: c.badge }) : null, c.best ? jsx('div', { className: 'huic-badge huic-best', children: '★ ' + t(lang, 'recommended') }) : null, c.source ? jsx('div', { children: jsx(CompareSource, { url: c.source.url, label: c.source.label }) }) : null] }))), 'header')]
-  for (const [ri, r] of (card.rows || []).entries()) rows.push(row(r.label, card.columns.map((c, i) => cell(c, i, jsxs(Fragment, { children: [r.best === i ? jsx('span', { 'aria-label': t(lang, 'compareBest'), children: '● ' }) : null, displayValue(r.values[i]), r.sources?.[i] ? jsx(CompareSource, { url: r.sources[i] }) : null] }), r.best === i ? 'huic-compare-best' : '')), `row${ri}`))
+  const head = c => jsxs('div', { className: 'huic-compare-head', children: [
+    c.image ? jsx(CardImage, { src: c.image }) : null,
+    jsx('strong', { className: 'huic-compare-name', children: c.title }),
+    c.subtitle ? jsx('div', { className: 'huic-compare-subtitle', children: c.subtitle }) : null,
+    jsxs('div', { className: 'huic-compare-tags', children: [
+      picked !== undefined && picked === c.id ? jsx('span', { className: 'huic-badge huic-best huic-compare-pick', children: t(lang, 'compareYourPick') }) : null,
+      c.best ? jsx('span', { className: 'huic-badge huic-best', children: '★ ' + t(lang, 'recommended') }) : null,
+      c.badge ? jsx('span', { className: 'huic-badge', title: c.badge, children: c.badge }) : null,
+      c.source ? jsx(CompareSource, { url: c.source.url, label: c.source.label }) : null
+    ] })
+  ] })
+  const rows = [row('', card.columns.map((c, i) => cell(c, i, head(c), '', 'columnheader')), 'header', 'head')]
+  for (const [ri, r] of (card.rows || []).entries()) rows.push(row(r.label, card.columns.map((c, i) => cell(c, i, jsxs(Fragment, { children: [
+    r.best === i ? jsx('span', { className: 'huic-compare-dot', 'aria-label': t(lang, 'compareBest'), children: '● ' }) : null,
+    compareValue(r.values[i]),
+    r.sources?.[i] ? jsx(CompareSource, { url: r.sources[i] }) : null
+  ] }), r.best === i ? 'huic-compare-best' : '')), `row${ri}`))
   for (const kind of ['pros', 'cons']) if (card.columns.some(c => c[kind]?.length)) rows.push(row(t(lang, kind), card.columns.map((c, i) => {
     const items = c[kind] || [], key = `${kind}-${i}`, more = expanded[key]
-    return cell(c, i, jsxs(Fragment, { children: [jsx('ul', { className: 'huic-compare-list', children: items.slice(0, more ? items.length : 2).map((v, j) => jsx('li', { children: (kind === 'pros' ? '+ ' : '– ') + v }, j)) }), items.length > 2 ? jsx('button', { type: 'button', className: 'huic-compare-more', 'aria-expanded': !!more, onClick: () => setExpanded({ ...expanded, [key]: !more }), children: more ? t(lang, 'compareLess') : t(lang, 'compareMore', { count: items.length - 2 }) }) : null] }))
+    return cell(c, i, items.length ? jsxs(Fragment, { children: [
+      jsx('ul', { className: 'huic-compare-list', children: items.slice(0, more ? items.length : 2).map((v, j) => jsxs('li', { children: [
+        jsx('span', { className: `huic-compare-sign huic-compare-sign-${kind}`, 'aria-hidden': true, children: kind === 'pros' ? '+' : '–' }),
+        jsx('span', { children: v })
+      ] }, j)) }),
+      items.length > 2 ? jsx('button', { type: 'button', className: 'huic-compare-more', 'aria-expanded': !!more, onClick: () => setExpanded({ ...expanded, [key]: !more }), children: more ? t(lang, 'compareLess') : t(lang, 'compareMore', { count: items.length - 2 }) }) : null
+    ] }) : compareValue(null))
   }), kind))
-  if (ans.showActions && !pending) rows.push(row('', card.columns.map((c, i) => cell(c, i, jsx(Btn, { variant: c.best ? 'primary' : 'secondary', onClick: () => pick(c), label: `${card.selectLabel || t(lang, 'pick')}: ${c.title}`, children: card.selectLabel || t(lang, 'pick') }))), 'actions'))
-  return jsx(Shell, { card, display, labelId, title: card.title, after: ans.status, children: jsxs(Fragment, { children: [jsx('style', { children: COMPARE_CSS }), jsx('div', { className: 'huic-compare-switch', role: 'radiogroup', 'aria-label': t(lang, 'compareSwitch'), children: card.columns.map((c, i) => jsx('button', { type: 'button', role: 'radio', 'aria-checked': i === selected, tabIndex: i === selected ? 0 : -1, ref: el => { switchRefs.current[i] = el }, onClick: () => setSelected(i), onKeyDown: e => { if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { e.preventDefault(); const next = (i + (e.key === 'ArrowRight' ? 1 : -1) + card.columns.length) % card.columns.length; setSelected(next); switchRefs.current[next]?.focus() } }, children: c.title }, c.id || i)) }), jsx('div', { role: 'table', className: 'huic-compare-table', 'aria-label': card.title || 'Compare', style: { '--compare-grid': `minmax(90px, max-content) repeat(${card.columns.length}, minmax(0, 1fr))` }, children: rows }), pending ? jsxs('div', { className: 'huic-compare-pending', role: 'status', 'aria-live': 'polite', children: [t(lang, 'comparePending', { title: pending.title }), ' · ', jsx('button', { type: 'button', className: 'huic-compare-more', onClick: undo, children: t(lang, 'compareUndo') })] }) : null, jsx('div', { className: 'huic-compare-footer', children: urls.size ? [card.asOf ? t(lang, 'compareChecked') + ' ' + card.asOf + ' · ' : '', `${urls.size} ${t(lang, 'compareSources')}`] : t(lang, 'compareNoSources') })] }) })
+  if (ans.showActions && !pending) rows.push(row('', card.columns.map((c, i) => cell(c, i, jsx(Btn, { ref: el => { pickRefs.current[c.id] = el }, variant: c.best ? 'primary' : 'secondary', onClick: () => pick(c), label: `${card.selectLabel || t(lang, 'pick')}: ${c.title}`, children: card.selectLabel || t(lang, 'pick') }))), 'actions', 'actions'))
+  const switcher = jsx('div', { className: 'huic-compare-switch', role: 'radiogroup', 'aria-label': t(lang, 'compareSwitch'), children: card.columns.map((c, i) => jsx('button', {
+    type: 'button', role: 'radio', 'aria-checked': i === selected, tabIndex: i === selected ? 0 : -1,
+    ref: el => { switchRefs.current[i] = el },
+    onClick: () => setSelected(i),
+    onKeyDown: e => {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
+      e.preventDefault()
+      const next = (i + (e.key === 'ArrowRight' ? 1 : -1) + card.columns.length) % card.columns.length
+      setSelected(next)
+      switchRefs.current[next]?.focus()
+    },
+    children: c.title
+  }, c.id || i)) })
+  const pendingBar = pending ? jsxs('div', { className: 'huic-compare-pending', role: 'status', 'aria-live': 'polite', style: { '--undo-ms': `${delay}ms` }, children: [
+    jsx('span', { children: t(lang, 'comparePending', { title: pending.title, s: Math.round(delay / 1000) }) }),
+    jsx(Btn, { ref: undoRef, variant: 'ghost', onClick: undo, children: t(lang, 'compareUndo') }),
+    jsx('span', { className: 'huic-compare-drain', 'aria-hidden': true })
+  ] }) : null
+  const meta = jsxs('div', { className: 'huic-compare-meta', children: [
+    jsxs('svg', { viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: 1.4, 'aria-hidden': true, children: urls.size
+      ? [jsx('path', { d: 'M6.5 9.5 9.5 6.5M7 4.5l1-1a2.5 2.5 0 0 1 3.5 3.5l-1 1M9 11.5l-1 1A2.5 2.5 0 0 1 4.5 9l1-1', strokeLinecap: 'round' }, 'l')]
+      : [jsx('circle', { cx: 8, cy: 8, r: 6.25 }, 'c'), jsx('path', { d: 'M8 7.25v3.5M8 5.1v.1', strokeLinecap: 'round' }, 'p')] }),
+    jsx('span', { children: urls.size ? [card.asOf ? t(lang, 'compareChecked') + ' ' + card.asOf + ' · ' : '', `${urls.size} ${t(lang, 'compareSources')}`] : t(lang, 'compareNoSources') })
+  ] })
+  return jsx('div', { onKeyDown, children: jsx(Shell, { card, display, labelId, title: card.title, after: ans.status, children: jsxs(Fragment, { children: [
+    jsx('style', { children: COMPARE_CSS }),
+    switcher,
+    jsx('div', { role: 'table', className: 'huic-compare-table', 'aria-label': card.title || 'Compare', style: { '--compare-grid': `fit-content(32%) repeat(${card.columns.length}, minmax(0, 1fr))` }, children: rows }),
+    pendingBar,
+    meta
+  ] }) }) })
 }
 
 // ── 63-form.js ──
@@ -1722,29 +2217,67 @@ function CompareCard({ card, sessionId, display, lang }) {
 
 Object.assign(STRINGS.en, {
   formChoose: 'Please choose', formRequiredFilled: '{done} of {total} required filled',
-  formDraftSaved: 'Draft saved', formDateFormat: 'Format: dd/mm/yyyy'
+  formDraftSaved: 'Draft saved', formDateFormat: 'Format: dd/mm/yyyy', formOptional: 'optional'
 })
 Object.assign(STRINGS.de, {
   formChoose: 'Bitte wählen', formRequiredFilled: '{done} von {total} Pflichtfeldern ausgefüllt',
-  formDraftSaved: 'Entwurf gespeichert', formDateFormat: 'Format: TT.MM.JJJJ'
+  formDraftSaved: 'Entwurf gespeichert', formDateFormat: 'Format: TT.MM.JJJJ', formOptional: 'optional'
 })
 
+// A guided intake, not a web form: numbered questions down a rail that tick off as they
+// are answered, settings-style rows (question left, answer right) and a meter for what's required.
 const FORM_CSS = `
-.huic[data-card-type="form"] .huic-form-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
-.huic[data-card-type="form"] .huic-form-wide{grid-column:1/-1}
-.huic[data-card-type="form"] .huic-field{min-width:0}
-.huic[data-card-type="form"] .huic-input{min-width:0;min-height:32px;background:color-mix(in srgb,var(--ui-bg-quaternary) 35%,transparent)}
-.huic[data-card-type="form"] input.huic-input,.huic[data-card-type="form"] select.huic-input{height:32px;padding-block:4px}
+.huic[data-card-type="form"] .huic-form-grid{display:flex;flex-direction:column;counter-reset:huic-q}
+.huic[data-card-type="form"] .huic-form-intro{margin:0 0 4px;color:var(--ui-text-secondary);font-size:13px;line-height:19px}
+.huic[data-card-type="form"] .huic-field{position:relative;display:grid;grid-template-columns:20px minmax(0,1fr);column-gap:12px;row-gap:8px;align-items:start;min-width:0;padding:12px 0;border-top:1px solid var(--huic-line)}
+.huic[data-card-type="form"] .huic-field:first-of-type{border-top:0;padding-top:4px}
+.huic[data-card-type="form"] .huic-form-intro+.huic-field{border-top:1px solid var(--huic-line);padding-top:12px}
+.huic[data-card-type="form"] .huic-field::before{content:"";position:absolute;left:9.5px;top:0;bottom:0;width:1px;background:var(--huic-line)}
+.huic[data-card-type="form"] .huic-field:first-of-type::before{top:16px}
+.huic[data-card-type="form"] .huic-field:last-of-type::before{bottom:auto;height:16px}
+.huic[data-card-type="form"] .huic-form-marker{position:relative;z-index:1;grid-row:1 / span 2;display:grid;place-items:center;width:20px;height:20px;margin-top:0;border:1px solid var(--huic-line-strong);border-radius:50%;background:var(--ui-chat-surface-background,var(--ui-base));color:var(--ui-text-tertiary);font-size:10.5px;font-weight:600;font-variant-numeric:tabular-nums;transition:background .2s,border-color .2s,color .2s}
+.huic[data-card-type="form"] .huic-form-marker::before{counter-increment:huic-q;content:counter(huic-q)}
+.huic[data-card-type="form"] [data-state="done"]>.huic-form-marker{background:var(--huic-accent);border-color:var(--huic-accent);color:var(--huic-on-accent)}
+.huic[data-card-type="form"] [data-state="done"]>.huic-form-marker::before{content:"";width:8px;height:4px;border-left:1.75px solid currentColor;border-bottom:1.75px solid currentColor;transform:translateY(-1px) rotate(-45deg)}
+.huic[data-card-type="form"] [data-state="error"]>.huic-form-marker{border-color:var(--ui-red);color:var(--ui-red);background:color-mix(in srgb,var(--ui-red) 10%,var(--ui-chat-surface-background,var(--ui-base)))}
+.huic[data-card-type="form"] [data-state="error"]>.huic-form-marker::before{content:"!"}
+.huic[data-card-type="form"] .huic-form-lead{display:flex;flex-direction:column;gap:2px;min-width:0;padding-top:1px}
+.huic[data-card-type="form"] .huic-form-control{display:flex;flex-direction:column;gap:4px;min-width:0;grid-column:2}
+.huic[data-card-type="form"] .huic-label{font-size:13px;line-height:18px;font-weight:500;color:var(--ui-text-primary)}
+.huic[data-card-type="form"] .huic-form-optional{margin-left:6px;color:var(--ui-text-tertiary);font-size:11.5px;font-weight:400}
+.huic[data-card-type="form"] .huic-input{min-width:0;min-height:34px}
+.huic[data-card-type="form"] input.huic-input,.huic[data-card-type="form"] select.huic-input{height:34px;padding-block:4px}
+.huic[data-card-type="form"] .huic-form-short{max-width:240px}
+.huic[data-card-type="form"] .huic-select{position:relative;display:block;min-width:0}
+.huic[data-card-type="form"] .huic-select>select{appearance:none;-webkit-appearance:none;padding-right:30px;cursor:pointer}
+.huic[data-card-type="form"] .huic-select::after{content:"";position:absolute;right:12px;top:50%;width:6px;height:6px;border-right:1.5px solid var(--ui-text-tertiary);border-bottom:1.5px solid var(--ui-text-tertiary);transform:translateY(-70%) rotate(45deg);pointer-events:none}
 .huic[data-card-type="form"] select.huic-input option{background:var(--ui-chat-surface-background,var(--ui-base));color:var(--ui-text-primary)}
-.huic[data-card-type="form"] .huic-switch-label{display:flex;align-items:center;gap:8px;min-height:32px;cursor:pointer}
-.huic[data-card-type="form"] .huic-switch-label:has(:disabled){cursor:default;opacity:.6}
-.huic[data-card-type="form"] input.huic-switch{appearance:none;position:relative;flex:none;width:32px;height:18px;margin:0;border:1px solid var(--ui-stroke-secondary);border-radius:999px;background:var(--ui-bg-quaternary);cursor:inherit;transition:background .15s,border-color .15s}
-.huic[data-card-type="form"] input.huic-switch::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:var(--ui-text-secondary);transition:transform .15s}
+.huic[data-card-type="form"] .huic-form-unit{flex:none;white-space:nowrap;color:var(--ui-text-tertiary);font-size:12px}
+.huic[data-card-type="form"] .huic-switch-label{grid-column:2;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:22px;cursor:pointer}
+.huic[data-card-type="form"] .huic-switch-label>span{font-weight:500;line-height:18px}
+.huic[data-card-type="form"] .huic-switch-label:has(:disabled){cursor:default;opacity:.75}
+.huic[data-card-type="form"] input.huic-switch{appearance:none;position:relative;flex:none;width:34px;height:20px;margin:0;border:1px solid var(--huic-line-strong);border-radius:999px;background:var(--ui-bg-tertiary,var(--ui-bg-quaternary));cursor:inherit;transition:background .18s,border-color .18s}
+.huic[data-card-type="form"] input.huic-switch::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--ui-text-tertiary);transition:transform .18s var(--huic-ease),background .18s}
 .huic[data-card-type="form"] input.huic-switch:checked{background:var(--huic-accent);border-color:var(--huic-accent)}
-.huic[data-card-type="form"] input.huic-switch:checked::after{transform:translateX(14px);background:var(--ui-chat-surface-background,var(--ui-base))}
-.huic[data-card-type="form"] .huic-form-feedback{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1;color:var(--ui-text-tertiary);font-size:12px}
-@container (min-width:521px){.huic[data-card-type="form"] .huic-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(prefers-reduced-motion:reduce){.huic[data-card-type="form"] *{transition:none!important}}
+.huic[data-card-type="form"] input.huic-switch:checked::after{transform:translateX(14px);background:var(--huic-on-accent)}
+.huic[data-card-type="form"] .huic-form-feedback{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1;color:var(--ui-text-tertiary);font-size:12px}
+.huic[data-card-type="form"] .huic-form-meter{display:flex;gap:3px;max-width:160px}
+.huic[data-card-type="form"] .huic-form-meter>i{flex:1;height:4px;max-width:28px;border-radius:999px;background:var(--huic-line-strong);transition:background .25s var(--huic-ease)}
+.huic[data-card-type="form"] .huic-form-meter>i.on{background:var(--huic-accent)}
+.huic[data-card-type="form"] .huic-form-status{display:flex;flex-wrap:wrap;column-gap:8px}
+.huic[data-card-type="form"] .huic-form-status>span+span::before{content:"·";margin-right:8px;color:var(--ui-text-quaternary,var(--ui-text-tertiary))}
+.huic[data-card-type="form"] .huic-form-status>.huic-err{color:var(--ui-red)}
+@container (min-width:521px){
+ .huic[data-card-type="form"] .huic-field{grid-template-columns:20px minmax(0,38%) minmax(0,1fr)}
+ .huic[data-card-type="form"] .huic-form-marker{grid-row:auto}
+ .huic[data-card-type="form"] .huic-form-control{grid-column:3}
+ .huic[data-card-type="form"] .huic-switch-label{grid-column:2 / span 2}
+ .huic[data-card-type="form"] .huic-form-lead{padding-top:7px}
+ .huic[data-card-type="form"] .huic-field>.huic-form-marker{margin-top:7px}
+ .huic[data-card-type="form"] .huic-field.is-toggle>.huic-form-marker{margin-top:0}
+ .huic[data-card-type="form"] .huic-field:first-of-type::before{top:23px}
+ .huic[data-card-type="form"] .huic-field:last-of-type::before{height:23px}
+}
 `
 
 const TEXT_MAX = { text: 300, email: 200, textarea: 1000 }
@@ -1792,11 +2325,13 @@ function formOutput(card, values) {
   return out
 }
 
-function FormField({ field, value, error, disabled, lang, onChange, baseId }) {
+function FormField({ field, value, error, disabled, lang, onChange, baseId, state, optional }) {
   const id = `${baseId}-${field.name}`
   const helpId = field.help ? `${id}-help` : undefined
   const errId = error ? `${id}-err` : undefined
-  const dateHelpId = field.kind === 'date' ? `${id}-format` : undefined
+  // No format hint for dates: the native picker shows the user's own locale format, a fixed
+  // hint (dd/mm/yyyy) would contradict it. The value sent is always ISO (YYYY-MM-DD).
+  const dateHelpId = undefined
   const describedBy = [helpId, dateHelpId, errId].filter(Boolean).join(' ') || undefined
   const common = {
     id,
@@ -1806,6 +2341,7 @@ function FormField({ field, value, error, disabled, lang, onChange, baseId }) {
     'aria-describedby': describedBy,
     'aria-required': field.required ? 'true' : undefined
   }
+  const short = ['number', 'date', 'time', 'select'].includes(field.kind)
   let control
   if (field.kind === 'toggle') {
     control = jsxs('label', {
@@ -1813,6 +2349,7 @@ function FormField({ field, value, error, disabled, lang, onChange, baseId }) {
       htmlFor: id,
       style: { cursor: disabled ? 'default' : 'pointer' },
       children: [
+        jsx('span', { children: field.label }),
         jsx('input', {
           ...common,
           type: 'checkbox',
@@ -1820,20 +2357,22 @@ function FormField({ field, value, error, disabled, lang, onChange, baseId }) {
           checked: value === true,
           onChange: e => onChange(e.target.checked),
           className: 'huic-switch'
-        }),
-        jsx('span', { children: field.label })
+        })
       ]
     })
   } else if (field.kind === 'select') {
-    control = jsxs('select', {
-      ...common,
-      className: 'huic-input',
-      value,
-      onChange: e => onChange(e.target.value),
-      children: [
-        jsx('option', { value: '', children: field.placeholder || t(lang, 'formChoose') }),
-        ...field.options.map(o => jsx('option', { value: o, children: o }, o))
-      ]
+    control = jsx('span', {
+      className: 'huic-select huic-form-short',
+      children: jsxs('select', {
+        ...common,
+        className: 'huic-input',
+        value,
+        onChange: e => onChange(e.target.value),
+        children: [
+          jsx('option', { value: '', children: field.placeholder || t(lang, 'formChoose') }),
+          ...field.options.map(o => jsx('option', { value: o, children: o }, o))
+        ]
+      })
     })
   } else if (field.kind === 'textarea') {
     control = jsx('textarea', {
@@ -1847,7 +2386,7 @@ function FormField({ field, value, error, disabled, lang, onChange, baseId }) {
   } else {
     const type = { number: 'number', date: 'date', time: 'time', email: 'email' }[field.kind] || 'text'
     control = jsxs('div', {
-      className: 'huic-row',
+      className: cx('huic-row', short && 'huic-form-short'),
       children: [
         jsx('input', {
           ...common,
@@ -1862,29 +2401,39 @@ function FormField({ field, value, error, disabled, lang, onChange, baseId }) {
           maxLength: type === 'text' || type === 'email' ? Math.min(field.maxLength || Infinity, TEXT_MAX[field.kind]) * 2 : undefined,
           onChange: e => onChange(TEXT_MAX[field.kind] ? limitText(e.target.value, Math.min(field.maxLength || Infinity, TEXT_MAX[field.kind])) : e.target.value)
         }),
-        field.unit ? jsx('span', { className: 'huic-help', children: field.unit }) : null
+        field.unit ? jsx('span', { className: 'huic-form-unit', children: field.unit }) : null
       ]
     })
   }
+  const help = [
+    field.help ? jsx('span', { className: 'huic-help', id: helpId, children: field.help }, 'help') : null,
+    null
+  ]
   return jsxs('div', {
-    className: cx('huic-field', ['text', 'textarea'].includes(field.kind) && 'huic-form-wide'),
+    className: cx('huic-field', ['text', 'textarea'].includes(field.kind) && 'huic-form-wide', field.kind === 'toggle' && 'is-toggle'),
+    'data-state': state,
     children: [
+      jsx('span', { className: 'huic-form-marker', 'aria-hidden': true }),
       field.kind === 'toggle'
-        ? null
-        : jsxs('label', {
-            className: 'huic-label',
-            htmlFor: id,
+        ? control
+        : jsxs('div', {
+            className: 'huic-form-lead',
             children: [
-              field.label,
-              field.required
-                ? jsxs('span', { className: 'huic-req', children: [' *', jsx('span', { className: 'huic-sr', children: ` (${t(lang, 'required')})` })] })
-                : null
+              jsxs('label', {
+                className: 'huic-label',
+                htmlFor: id,
+                children: [
+                  field.label,
+                  field.required ? jsx('span', { className: 'huic-sr', children: ` (${t(lang, 'required')})` }) : null,
+                  optional ? jsx('span', { className: 'huic-form-optional', children: t(lang, 'formOptional') }) : null
+                ]
+              }),
+              ...help
             ]
           }),
-      control,
-      field.help ? jsx('span', { className: 'huic-help', id: helpId, children: field.help }) : null,
-      dateHelpId ? jsx('span', { className: 'huic-help', id: dateHelpId, children: t(lang, 'formDateFormat') }) : null,
-      error ? jsx('span', { className: 'huic-err', id: errId, children: error }) : null
+      field.kind === 'toggle'
+        ? (help.some(Boolean) ? jsx('div', { className: 'huic-form-control', children: help }) : null)
+        : jsxs('div', { className: 'huic-form-control', children: [control, error ? jsx('span', { className: 'huic-err', id: errId, children: error }) : null] })
     ]
   })
 }
@@ -1917,6 +2466,9 @@ function FormCard({ card, sessionId, display, lang }) {
   const required = card.fields.filter(f => f.required)
   // A switch always has a boolean value; false is a valid answer too.
   const requiredFilled = required.filter(f => f.kind === 'toggle' || String(values[f.name] ?? '').trim() !== '').length
+  const filled = f => f.kind !== 'toggle' && String(values[f.name] ?? '').trim() !== ''
+  const shownError = f => oversizeFields.has(f.name) ? t(lang, 'shortenField') : tried ? errors[f.name] : null
+  const fieldState = f => shownError(f) ? 'error' : filled(f) && !errors[f.name] ? 'done' : 'idle'
   const reply = buildReply(card, { values: formOutput(card, values) }, lang)
   const remaining = MAX_REPLY - [...reply.text].length
   const ranked = card.fields.map(f => ({ name: f.name, size: [...JSON.stringify(formOutput(card, values)[f.name])].length }))
@@ -1964,14 +2516,16 @@ function FormCard({ card, sessionId, display, lang }) {
     'aria-labelledby': card.title ? labelId : undefined,
     className: 'huic-form-grid',
     children: [
-      card.description ? jsx('p', { className: 'huic-sub huic-form-wide', style: { margin: 0 }, children: card.description }) : null,
+      card.description ? jsx('p', { className: 'huic-form-intro', children: card.description }) : null,
       ...card.fields.map(field =>
         jsx(
           FormField,
           {
             field,
             value: values[field.name] ?? '',
-            error: oversizeFields.has(field.name) ? t(lang, 'shortenField') : tried ? errors[field.name] : null,
+            state: fieldState(field),
+            optional: required.length > 0 && !field.required && field.kind !== 'toggle',
+            error: shownError(field),
             disabled: ans.locked,
             lang,
             baseId,
@@ -1991,9 +2545,12 @@ function FormCard({ card, sessionId, display, lang }) {
         hint: jsxs('span', {
           className: 'huic-form-feedback',
           children: [
-            required.length ? jsx('span', { 'aria-live': 'polite', children: t(lang, 'formRequiredFilled', { done: requiredFilled, total: required.length }) }) : null,
-            ans.draft?.values ? jsx('span', { role: 'status', children: t(lang, 'formDraftSaved') }) : null,
-            tried && hasErrors ? jsx('span', { children: t(lang, 'errFix') }) : null
+            required.length ? jsx('span', { className: 'huic-form-meter', 'aria-hidden': true, children: required.map(f => jsx('i', { className: f.kind === 'toggle' || filled(f) ? 'on' : undefined }, f.name)) }) : null,
+            jsxs('span', { className: 'huic-form-status', children: [
+              required.length ? jsx('span', { 'aria-live': 'polite', children: t(lang, 'formRequiredFilled', { done: requiredFilled, total: required.length }) }) : null,
+              ans.draft?.values ? jsx('span', { role: 'status', children: t(lang, 'formDraftSaved') }) : null,
+              tried && hasErrors ? jsx('span', { className: 'huic-err', children: t(lang, 'errFix') }) : null
+            ] })
           ]
         }),
         children: jsx('button', {
@@ -2014,31 +2571,67 @@ function FormCard({ card, sessionId, display, lang }) {
 // prompts for dangerous commands still apply when the model then runs the command.
 
 const RISK_KEY = { low: 'riskLow', medium: 'riskMedium', high: 'riskHigh' }
-const RISK_ICON = { low: '●', medium: '▲', high: '⬣' }
+const RISK_BARS = { low: 1, medium: 2, high: 3 }
 
 Object.assign(STRINGS.en, {
   confirmApprovalHint: 'Hermes may still ask for its own approval before running it.',
+  confirmCommand: 'Command',
   confirmChangeHint: 'Ctrl/⌘+Enter to send',
   confirmApproved: 'Approved', confirmDeclined: 'Declined', confirmChanged: 'Change requested'
 })
 Object.assign(STRINGS.de, {
   confirmApprovalHint: 'Hermes fragt vor dem Ausführen möglicherweise noch nach einer eigenen Freigabe.',
+  confirmCommand: 'Befehl',
   confirmChangeHint: 'Mit Strg/⌘+Enter senden',
   confirmApproved: 'Freigegeben', confirmDeclined: 'Abgelehnt', confirmChanged: 'Änderung angefragt'
 })
 
+// Escalation ladder: low = calm accent, medium = orange outline, high = red fill and a
+// tinted panel. The exact command sits in a terminal-like block right above the decision.
 const CONFIRM_CSS = `
-.huic[data-card-type="confirm"] .huic-risk{flex-wrap:wrap;align-items:baseline;column-gap:6px;row-gap:2px}
-.huic[data-card-type="confirm"] .huic-risk-low{color:var(--ui-text-tertiary)}
-.huic[data-card-type="confirm"] .huic-risk-medium{color:var(--ui-red,var(--ui-text-primary))}
-.huic[data-card-type="confirm"] .huic-risk-high{padding:10px 12px;border-radius:8px;background:color-mix(in srgb,var(--ui-red) 8%,transparent);border:1px solid color-mix(in srgb,var(--ui-red) 18%,transparent)}
-.huic[data-card-type="confirm"] .huic-btn-danger-outline{background:transparent;color:var(--ui-red);box-shadow:inset 0 0 0 1px var(--ui-red)}
-.huic[data-card-type="confirm"] .huic-btn-danger-outline:hover{background:color-mix(in srgb,var(--ui-red) 8%,transparent)}
-.huic[data-card-type="confirm"] .huic-btn-danger{background:var(--ui-red);color:var(--ui-chat-surface-background,var(--ui-base))}
-.huic[data-card-type="confirm"] .huic-btn-danger:hover{background:color-mix(in srgb,var(--ui-red) 88%,var(--ui-text-primary))}
-.huic[data-card-type="confirm"] .huic-confirm-approval{margin:0;padding:0 var(--huic-pad) 10px;color:var(--ui-text-tertiary);font-size:11px;line-height:1.5}
-.huic[data-card-type="confirm"] .huic-confirm-receipt{display:flex;gap:8px;align-items:center;font-size:15px;font-weight:600;padding:8px 0;color:var(--ui-text-primary)}
-.huic[data-card-type="confirm"] .huic-confirm-edit{display:flex;flex-direction:column;gap:5px;margin-top:4px}
+.huic[data-card-type="confirm"]{--risk:var(--huic-accent)}
+.huic[data-card-type="confirm"]:has(.huic-risk-medium){--risk:var(--ui-orange,var(--ui-yellow,var(--huic-accent)))}
+.huic[data-card-type="confirm"]:has(.huic-risk-high){--risk:var(--ui-red,var(--huic-accent))}
+.huic[data-card-type="confirm"]{--huic-on-risk:var(--huic-on-accent)}
+.huic[data-card-type="confirm"] .huic-confirm-receipt>span:first-child{--fill:var(--ui-text-tertiary);--on-fill:var(--huic-on-accent)}
+@supports (color: oklch(from red l c h)){
+ .huic[data-card-type="confirm"]{--huic-on-risk:oklch(from var(--risk) clamp(0, (0.62 - l) * 1000, 1) 0 0)}
+ .huic[data-card-type="confirm"] .huic-confirm-receipt>span:first-child{--on-fill:oklch(from var(--fill) clamp(0, (0.62 - l) * 1000, 1) 0 0)}
+}
+.huic[data-card-type="confirm"] .huic-confirm-action{margin:0;font-size:13.5px;line-height:20px;color:var(--ui-text-primary)}
+.huic[data-card-type="confirm"] .huic-confirm-reason{margin:-8px 0 0;color:var(--ui-text-tertiary);font-size:12.5px;line-height:18px}
+.huic[data-card-type="confirm"] .huic-confirm-command{display:flex;flex-direction:column;gap:6px}
+.huic[data-card-type="confirm"] .huic-confirm-command .huic-code-block{box-shadow:inset 0 0 0 1px var(--huic-line),inset 2px 0 0 color-mix(in srgb,var(--risk) 70%,transparent)}
+.huic[data-card-type="confirm"] .huic-risk{display:flex;flex-wrap:wrap;align-items:center;column-gap:8px;row-gap:2px;font-size:12.5px;line-height:18px}
+.huic[data-card-type="confirm"] .huic-risk>b{font-weight:600}
+.huic[data-card-type="confirm"] .huic-risk-text{color:var(--ui-text-secondary);flex:1 1 12em;min-width:0}
+.huic[data-card-type="confirm"] .huic-risk-low{color:var(--ui-text-secondary)}
+.huic[data-card-type="confirm"] .huic-risk-medium,.huic[data-card-type="confirm"] .huic-risk-high{padding:10px 12px;border-radius:var(--huic-r-md);color:var(--risk);background:color-mix(in srgb,var(--risk) 9%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--risk) 22%,transparent)}
+.huic[data-card-type="confirm"] .huic-risk-meter{display:inline-flex;align-items:flex-end;gap:2px;height:12px;flex:none}
+.huic[data-card-type="confirm"] .huic-risk-meter>i{display:block;width:4px;border-radius:1px;background:color-mix(in srgb,currentColor 22%,transparent)}
+.huic[data-card-type="confirm"] .huic-risk-meter>i:nth-child(1){height:6px}
+.huic[data-card-type="confirm"] .huic-risk-meter>i:nth-child(2){height:9px}
+.huic[data-card-type="confirm"] .huic-risk-meter>i:nth-child(3){height:12px}
+.huic[data-card-type="confirm"] .huic-risk-meter>i.on{background:currentColor}
+.huic[data-card-type="confirm"] .huic-risk-low .huic-risk-meter{color:var(--ui-green,var(--huic-accent))}
+.huic[data-card-type="confirm"] .huic-confirm-foot .huic-foot>.huic-btn-ghost:first-child{margin-right:auto}
+.huic[data-card-type="confirm"] .huic-btn-danger-outline{background:transparent;color:var(--risk);box-shadow:inset 0 0 0 1px var(--risk)}
+.huic[data-card-type="confirm"] .huic-btn-danger-outline:hover:not([disabled]){background:color-mix(in srgb,var(--risk) 10%,transparent)}
+.huic[data-card-type="confirm"] .huic-btn-danger{background:var(--risk);color:var(--huic-on-risk)}
+.huic[data-card-type="confirm"] .huic-btn-danger:hover:not([disabled]){background:color-mix(in srgb,var(--risk) 86%,var(--ui-text-primary))}
+.huic[data-card-type="confirm"] .huic-confirm-approval{display:flex;gap:6px;align-items:flex-start;margin:0;padding:0 var(--huic-pad) 12px;color:var(--ui-text-tertiary);font-size:11.5px;line-height:16px}
+.huic[data-card-type="confirm"] .huic-confirm-approval svg{flex:none;width:13px;height:13px;margin-top:1px}
+.huic[data-card-type="confirm"] .huic-confirm-receipt{align-self:flex-start;display:inline-flex;gap:8px;align-items:center;padding:3px 12px 3px 3px;border-radius:999px;font-size:13px;font-weight:600;line-height:20px;color:var(--ui-text-primary);background:var(--ui-bg-tertiary,var(--ui-bg-quaternary));animation:huic-pop .3s var(--huic-ease) both}
+.huic[data-card-type="confirm"] .huic-confirm-receipt>span:first-child{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;font-size:11px;background:var(--fill);color:var(--on-fill)}
+.huic[data-card-type="confirm"] .huic-confirm-receipt.is-yes{background:color-mix(in srgb,var(--ui-green,var(--huic-accent)) 14%,transparent)}
+.huic[data-card-type="confirm"] .huic-confirm-receipt.is-yes>span:first-child{--fill:var(--ui-green,var(--huic-accent))}
+.huic[data-card-type="confirm"] .huic-confirm-receipt.is-change{background:color-mix(in srgb,var(--huic-accent) 14%,transparent)}
+.huic[data-card-type="confirm"] .huic-confirm-receipt.is-change>span:first-child{--fill:var(--huic-accent)}
+.huic[data-card-type="confirm"] .huic-confirm-edit{display:flex;flex-direction:column;gap:6px}
+@container (max-width: 440px){
+ .huic[data-card-type="confirm"] .huic-confirm-foot .huic-foot>.huic-btn-ghost:first-child:not(:last-child){order:3;flex-basis:100%;margin-right:0}
+ .huic[data-card-type="confirm"] .huic-risk-text{flex-basis:100%}
+}
 `
 
 function ConfirmCard({ card, sessionId, display, lang }) {
@@ -2062,13 +2655,16 @@ function ConfirmCard({ card, sessionId, display, lang }) {
   const receipt = { yes: ['✓', 'confirmApproved'], no: ['✗', 'confirmDeclined'], change: ['✎', 'confirmChanged'] }[decision]
   const body = [
     jsx('style', { children: CONFIRM_CSS }, 'style'),
-    receipt ? jsxs('div', { className: 'huic-confirm-receipt', children: [
+    receipt ? jsxs('div', { className: cx('huic-confirm-receipt', `is-${decision}`), children: [
       jsx('span', { 'aria-hidden': true, children: receipt[0] }),
       jsx('span', { children: t(lang, receipt[1]) })
     ] }, 'receipt') : null,
-    jsx('p', { style: { margin: 0 }, children: card.action }, 'action'),
-    card.reason ? jsx('p', { className: 'huic-sub', style: { margin: 0 }, children: card.reason }, 'reason') : null,
-    card.command ? jsx(CodeBlock, { code: card.command, lang }, 'cmd') : null,
+    jsx('p', { className: 'huic-confirm-action', children: card.action }, 'action'),
+    card.reason ? jsx('p', { className: 'huic-confirm-reason', children: card.reason }, 'reason') : null,
+    card.command ? jsxs('div', { className: 'huic-confirm-command', children: [
+      jsx('span', { className: 'huic-eyebrow', children: t(lang, 'confirmCommand') }),
+      jsx(CodeBlock, { code: card.command, lang, prompt: true })
+    ] }, 'cmd') : null,
     card.details && card.details.length
       ? jsx(KeyValues, { rows: card.details, lang }, 'details')
       : null,
@@ -2078,9 +2674,9 @@ function ConfirmCard({ card, sessionId, display, lang }) {
           {
             className: cx('huic-risk', `huic-risk-${risk.level}`),
             children: [
-              jsx('span', { 'aria-hidden': true, children: RISK_ICON[risk.level] }),
+              jsx('span', { className: 'huic-risk-meter', 'aria-hidden': true, children: [1, 2, 3].map(n => jsx('i', { className: n <= RISK_BARS[risk.level] ? 'on' : undefined }, n)) }),
               jsx('b', { children: t(lang, RISK_KEY[risk.level]) }),
-              risk.text ? jsx('span', { style: { color: 'var(--ui-text-secondary)' }, children: risk.text }) : null
+              risk.text ? jsx('span', { className: 'huic-risk-text', children: risk.text }) : null
             ]
           },
           'risk'
@@ -2149,9 +2745,15 @@ function ConfirmCard({ card, sessionId, display, lang }) {
     labelId,
     title: card.title,
     children: body,
-    footer: ans.showActions ? jsxs('div', { children: [
+    footer: ans.showActions ? jsxs('div', { className: 'huic-confirm-foot', children: [
       jsx(Footer, { children: buttons }),
-      card.command ? jsx('p', { className: 'huic-confirm-approval', children: t(lang, 'confirmApprovalHint') }) : null
+      card.command ? jsxs('p', { className: 'huic-confirm-approval', children: [
+        jsxs('svg', { viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: 1.4, 'aria-hidden': true, children: [
+          jsx('path', { d: 'M8 1.75 3 3.5v4c0 3.1 2.1 5.4 5 6.75 2.9-1.35 5-3.65 5-6.75v-4z', strokeLinejoin: 'round' }),
+          jsx('path', { d: 'm5.75 8 1.6 1.6 2.9-3.2', strokeLinecap: 'round', strokeLinejoin: 'round' })
+        ] }),
+        jsx('span', { children: t(lang, 'confirmApprovalHint') })
+      ] }) : null
     ] }) : null,
     after: ans.status
   })
@@ -2178,7 +2780,7 @@ const RATING_CSS = `
 .huic[data-card-type="rating"] .huic-segbtn:last-child{border-right:0}
 .huic[data-card-type="rating"] .huic-segbtn:hover:not([disabled]){background:var(--ui-control-hover-background)}
 .huic[data-card-type="rating"] .huic-segbtn:focus-visible{outline-offset:-2px}
-.huic[data-card-type="rating"] .huic-segbtn[aria-checked="true"]{background:var(--huic-accent);color:var(--ui-chat-surface-background,var(--ui-base,Canvas));font-weight:600}
+.huic[data-card-type="rating"] .huic-segbtn[aria-checked="true"]{background:var(--huic-accent);color:var(--huic-on-accent,var(--ui-chat-surface-background,var(--ui-base,Canvas)));font-weight:600}
 .huic[data-card-type="rating"] .huic-segbtn[disabled]{cursor:default}
 .huic[data-card-type="rating"] .huic-rate-meta{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 12px;min-height:1.45em}
 .huic[data-card-type="rating"] .huic-rate-echo{font-weight:600}
@@ -2296,7 +2898,7 @@ Object.assign(STRINGS.de, { keySlider: 'Wert eintippen oder ziehen · Enter send
 
 // Snap relative to min, just like the native range input, without float noise.
 function sliderInitialValue(card) {
-  if (card.default !== undefined) return card.default
+  if (card.default !== undefined) return sliderSnap(card, card.default)
   const step = card.step || 1
   const value = card.min + Math.round(((card.max - card.min) / 2) / step) * step
   return Number(Math.min(card.max, Math.max(card.min, value)).toPrecision(12))
@@ -2305,8 +2907,11 @@ function sliderInitialValue(card) {
 function sliderSnap(card, raw) {
   const step = card.step || 1
   const clamped = Math.min(card.max, Math.max(card.min, raw))
-  const snapped = card.min + Math.round((clamped - card.min) / step) * step
-  return Number(Math.min(card.max, Math.max(card.min, snapped)).toPrecision(12))
+  // Snap to a step index that stays inside the range (min 0, max 11, step 3 → 9, never 11 or 12),
+  // so the typed value always matches what the native range control can show.
+  const lastIndex = Math.floor((card.max - card.min) / step + 1e-9)
+  const index = Math.min(lastIndex, Math.max(0, Math.round((clamped - card.min) / step)))
+  return Number((card.min + index * step).toPrecision(12))
 }
 
 function sliderParse(text) {
@@ -2598,19 +3203,40 @@ Object.assign(STRINGS.de, {
   stepsNotePlaceholder: 'Sag Hermes, wo du festhängst'
 })
 
+// A calm guide: one connected track (the progress bar is its line), the current step as
+// an eyebrow + title, content that fades in per step, Next carries an arrow.
 const STEPS_CSS = `
-.huic[data-card-type="steps"] .huic-steps-map{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 6px;padding:0;list-style:none}
+.huic[data-card-type="steps"] .huic-steps-track{--dot:26px;position:relative;margin:0 0 4px}
+.huic[data-card-type="steps"] .huic-steps-track>.huic-progress{position:absolute;left:calc(var(--dot) / 2);right:calc(var(--dot) / 2);top:calc(var(--dot) / 2 - 1px);height:2px}
+.huic[data-card-type="steps"] .huic-steps-map{position:relative;display:flex;justify-content:space-between;gap:4px;margin:0;padding:0;list-style:none}
 .huic[data-card-type="steps"] .huic-steps-map li{display:block;padding:0;margin:0}
-.huic[data-card-type="steps"] .huic-steps-dot{display:grid;place-items:center;min-width:27px;height:27px;border:1px solid var(--ui-stroke-tertiary);border-radius:999px;background:transparent;color:var(--ui-text-secondary);font:inherit;font-size:11px;font-variant-numeric:tabular-nums;cursor:pointer}
-.huic[data-card-type="steps"] .huic-steps-dot:hover:not(:disabled){background:var(--ui-control-hover-background)}
-.huic[data-card-type="steps"] .huic-steps-dot[aria-current="step"]{background:var(--huic-accent);border-color:var(--huic-accent);color:var(--ui-chat-surface-background,var(--ui-base));font-weight:600}
-.huic[data-card-type="steps"] .huic-steps-dot:disabled{color:var(--ui-text-secondary);opacity:.65;cursor:default}
-.huic[data-card-type="steps"] .huic-steps-done{border-color:color-mix(in srgb,var(--huic-accent) 40%,var(--ui-stroke-tertiary));color:var(--huic-accent);background:color-mix(in srgb,var(--huic-accent) 7%,transparent)}
+.huic[data-card-type="steps"] .huic-steps-dot{position:relative;display:grid;place-items:center;width:var(--dot);height:var(--dot);padding:0;border:1px solid var(--huic-line-strong);border-radius:999px;background:var(--ui-chat-surface-background,var(--ui-base));color:var(--ui-text-tertiary);font:inherit;font-size:11px;font-weight:500;font-variant-numeric:tabular-nums;cursor:pointer;transition:background .2s,border-color .2s,color .2s,box-shadow .2s}
+.huic[data-card-type="steps"] .huic-steps-dot:hover:not(:disabled){border-color:var(--huic-accent);color:var(--ui-text-primary)}
+.huic[data-card-type="steps"] .huic-steps-dot[aria-current="step"]{background:var(--huic-accent);border-color:var(--huic-accent);color:var(--huic-on-accent);font-weight:600;box-shadow:0 0 0 4px color-mix(in srgb,var(--huic-accent) 16%,transparent)}
+.huic[data-card-type="steps"] .huic-steps-dot:disabled{cursor:default}
+.huic[data-card-type="steps"] .huic-steps-dot.huic-steps-done{border-color:color-mix(in srgb,var(--huic-accent) 45%,var(--huic-line));color:var(--huic-accent);background:color-mix(in srgb,var(--huic-accent) 10%,var(--ui-chat-surface-background,var(--ui-base)));font-size:0}
+.huic[data-card-type="steps"] .huic-steps-done::before{content:"";width:8px;height:4px;border-left:1.75px solid currentColor;border-bottom:1.75px solid currentColor;transform:translate(0,-1px) rotate(-45deg)}
+.huic[data-card-type="steps"] .huic-steps-content{display:flex;flex-direction:column;gap:8px;animation:huic-fade .28s var(--huic-ease) both}
+.huic[data-card-type="steps"] .huic-steps-content>.huic-code-block,.huic[data-card-type="steps"] .huic-steps-content>.huic-img{margin-top:4px}
+.huic[data-card-type="steps"] .huic-steps-title{margin:-6px 0 0;font-size:15px;line-height:22px;font-weight:600;letter-spacing:-.01em;outline:none}
+.huic[data-card-type="steps"] .huic-steps-body{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ui-text-secondary);line-height:1.6}
 .huic[data-card-type="steps"] .huic-steps-left{margin-right:auto;min-width:0}
-.huic[data-card-type="steps"] .huic-steps-left button::before{content:'⚠';margin-right:6px}
+.huic[data-card-type="steps"] .huic-steps-left button::before{content:"?";display:grid;place-items:center;width:15px;height:15px;border-radius:50%;border:1.25px solid currentColor;font-size:10px;font-weight:700;line-height:1}
 .huic[data-card-type="steps"] .huic-steps-nav{display:flex;gap:8px;align-items:center;margin-left:auto}
-.huic[data-card-type="steps"] .huic-steps-report{padding:12px var(--huic-pad);border-top:1px solid var(--ui-stroke-tertiary);display:flex;flex-direction:column;gap:7px}
+.huic[data-card-type="steps"] .huic-steps-next::after{content:"→";transition:transform .15s var(--huic-ease)}
+.huic[data-card-type="steps"] .huic-steps-next:hover::after{transform:translateX(2px)}
+.huic[data-card-type="steps"] .huic-steps-report{padding:12px var(--huic-pad);border-top:1px solid var(--huic-line);background:color-mix(in srgb,var(--ui-orange,var(--huic-accent)) 5%,transparent);box-shadow:inset 3px 0 0 var(--ui-orange,var(--huic-accent));display:flex;flex-direction:column;gap:8px;animation:huic-fade .2s var(--huic-ease) both}
 .huic[data-card-type="steps"] .huic-steps-report-actions{display:flex;justify-content:flex-end;gap:8px}
+@container (max-width: 440px){
+ .huic[data-card-type="steps"] .huic-steps-track{--dot:22px}
+ .huic-steps-frame[data-many] .huic-steps-map{gap:2px}
+ .huic[data-card-type="steps"] .huic-foot{flex-wrap:nowrap}
+ .huic[data-card-type="steps"] .huic-steps-left{flex:none;margin-right:0}
+ .huic[data-card-type="steps"] .huic-steps-left .huic-btn{padding-inline:8px}
+ .huic[data-card-type="steps"] .huic-steps-nav{flex:1;min-width:0}
+ .huic[data-card-type="steps"] .huic-steps-nav>.huic-btn{flex:1}
+}
+@container (max-width: 340px){.huic-steps-frame[data-many] .huic-steps-track{--dot:18px}.huic-steps-frame[data-many] .huic-steps-dot{font-size:9.5px}}
 `
 
 function StepsCard({ card, sessionId, display, lang }) {
@@ -2654,29 +3280,33 @@ function StepsCard({ card, sessionId, display, lang }) {
   const step = card.steps[index]
   const progressText = t(lang, 'stepOf', { n: index + 1, total: card.steps.length })
   const canNavigate = ans.showActions || ans.answered
-  return jsx('div', { onKeyDown: navigate, children: jsx(Shell, {
+  return jsx('div', { onKeyDown: navigate, 'data-many': card.steps.length > 8 ? '' : undefined, className: 'huic-steps-frame', children: jsx(Shell, {
     card, display, labelId, title: card.title,
     children: [
       jsx('style', { children: STEPS_CSS }),
-      jsx('span', { className: 'huic-sub', children: progressText }),
-      jsx('div', {
-        className: 'huic-progress', role: 'progressbar', 'aria-label': progressText,
-        'aria-valuemin': 0, 'aria-valuemax': card.steps.length, 'aria-valuenow': index + 1,
-        children: jsx('span', { style: { width: `${((index + 1) / card.steps.length) * 100}%` } })
-      }),
-      jsx('ol', { className: 'huic-steps-map', 'aria-label': t(lang, 'stepsMap'), children: card.steps.map((item, i) =>
-        jsx('li', { children: jsx('button', {
-          type: 'button', className: cx('huic-steps-dot', i < index && 'huic-steps-done'),
-          title: item.title, 'aria-label': `${t(lang, 'stepOf', { n: i + 1, total: card.steps.length })}: ${item.title}`,
-          'aria-current': i === index ? 'step' : undefined,
-          disabled: !canNavigate || i > index,
-          onClick: () => move(i), children: i + 1
-        }) }, i)
-      ) }),
-      jsx('h4', { ref: headingRef, tabIndex: -1, className: 'huic-title', children: step.title }),
-      step.body ? jsx('p', { style: { margin: 0, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }, children: step.body }) : null,
-      step.command ? jsx(CodeBlock, { code: step.command, lang }) : null,
-      step.image ? jsx(CardImage, { src: step.image }, index) : null
+      jsxs('div', { className: 'huic-steps-track', children: [
+        jsx('div', {
+          className: 'huic-progress', role: 'progressbar', 'aria-label': progressText,
+          'aria-valuemin': 0, 'aria-valuemax': card.steps.length, 'aria-valuenow': index + 1,
+          children: jsx('span', { style: { width: `${(index / (card.steps.length - 1)) * 100}%` } })
+        }),
+        jsx('ol', { className: 'huic-steps-map', 'aria-label': t(lang, 'stepsMap'), children: card.steps.map((item, i) =>
+          jsx('li', { children: jsx('button', {
+            type: 'button', className: cx('huic-steps-dot', i < index && 'huic-steps-done'),
+            title: item.title, 'aria-label': `${t(lang, 'stepOf', { n: i + 1, total: card.steps.length })}: ${item.title}`,
+            'aria-current': i === index ? 'step' : undefined,
+            disabled: !canNavigate || i > index,
+            onClick: () => move(i), children: i + 1
+          }) }, i)
+        ) })
+      ] }),
+      jsxs('div', { className: 'huic-steps-content', children: [
+        jsx('span', { className: 'huic-eyebrow', children: progressText }),
+        jsx('h4', { ref: headingRef, tabIndex: -1, className: 'huic-title huic-steps-title', children: step.title }),
+        step.body ? jsx('p', { className: 'huic-steps-body', children: step.body }) : null,
+        step.command ? jsx(CodeBlock, { code: step.command, lang, prompt: true }) : null,
+        step.image ? jsx(CardImage, { src: step.image }, index) : null
+      ] }, index)
     ],
     footer: canNavigate ? (reporting && ans.showActions
       ? jsxs('div', { className: 'huic-steps-report', children: [
@@ -2701,7 +3331,7 @@ function StepsCard({ card, sessionId, display, lang }) {
             index > 0 ? jsx(Btn, { onClick: () => move(index - 1), children: t(lang, 'back') }) : null,
             index === card.steps.length - 1
               ? (ans.showActions ? jsx(Btn, { variant: 'primary', onClick: () => ans.submit({ completed: true }), children: card.finishLabel || t(lang, 'finish') }) : null)
-              : jsx(Btn, { variant: 'primary', onClick: () => move(index + 1), children: t(lang, 'next') })
+              : jsx(Btn, { variant: 'primary', className: 'huic-steps-next', onClick: () => move(index + 1), children: t(lang, 'next') })
           ] })
         ] }) })) : null,
     after: ans.status
@@ -2925,12 +3555,23 @@ function parseResult(result) {
 }
 
 function sanitizeDisplay(display) {
-  const out = { compact: false, accent: 'app' }
+  const out = { compact: false, accent: 'app', undo: 4 }
   if (display && typeof display === 'object') {
     if (display.compact === true) out.compact = true
     if (typeof display.accent === 'string' && ACCENT_VARS[display.accent]) out.accent = display.accent
+    if ([0, 4, 8].includes(display.undo)) out.undo = display.undo
   }
   return out
+}
+
+// Read the current display settings from the backend once, when the first card is on screen
+// (set by register(); a no-op without the backend route).
+let loadDisplay = null
+let displayRequested = false
+function requestDisplayOnce() {
+  if (displayRequested || !loadDisplay) return
+  displayRequested = true
+  loadDisplay()
 }
 
 function cardFromResult(result) {
@@ -2940,25 +3581,2342 @@ function cardFromResult(result) {
   if (typeof cardId !== 'string' || !CARD_ID_RE.test(cardId)) return null
   const checked = validateCard(rest)
   if (!checked.card) return null
-  return { card: { cardId, ...checked.card }, display: sanitizeDisplay(parsed.display) }
+  const hasUndo = Boolean(parsed.display && [0, 4, 8].includes(parsed.display.undo))
+  return { card: { cardId, ...checked.card }, display: sanitizeDisplay(parsed.display), hasUndo }
 }
 
 function CardView({ result, sessionId, fallback }) {
   const parsed = useMemo(() => cardFromResult(result), [result])
+  const display = useLiveDisplay(parsed ? parsed.display : null)
   const Component = parsed && CARD_COMPONENTS[parsed.card.type]
+  useEffect(() => {
+    if (!Component) return
+    if (parsed.hasUndo) lastResultDisplay = parsed.display
+    requestDisplayOnce()
+  }, [Component, parsed])
   if (!Component) return fallback ?? null
   const lang = cardLang(parsed.card)
   return jsx(
     Component,
     {
       card: parsed.card,
-      display: parsed.display,
+      display,
       sessionId: typeof sessionId === 'string' && sessionId ? sessionId : null,
       lang
     },
     `${sessionId || ''}\u0000${parsed.card.cardId}`
   )
 }
+
+// ── 81-plan.js ──
+// plan: the agent's plan before it runs. Optional steps can be switched off, every step
+// can be moved (drag the number, Alt+↑/↓ or the arrow buttons) and get a note for Hermes.
+// "Run plan" sends the final order. Edits are kept as a draft until the plan is sent.
+
+Object.assign(STRINGS.en, {
+  planRun: 'Run plan',
+  planCount: '{n} of {total} steps will run',
+  planReordered: 'reordered',
+  planOptional: 'optional',
+  planSkipped: 'skipped',
+  planInclude: 'Run step: {x}',
+  planMoveUp: 'Move up: {x}',
+  planMoveDown: 'Move down: {x}',
+  planMoved: '{x} moved to position {n} of {total}.',
+  planNote: 'Note',
+  planNoteFor: 'Note for step {n}: {x}',
+  planNotePlaceholder: 'Tell Hermes something about this step',
+  planNoteShown: 'Note',
+  planKeys: '{keys} moves the step you are on',
+  planDrag: 'Drag to move',
+  planHighRisk: 'includes a high-risk step',
+  planNothing: 'Switch on at least one step',
+  planStepsLabel: 'Steps of the plan',
+  rPlan: 'Run the plan: {n} of {total} steps',
+  rPlanSkipped: 'skipped: {x}',
+  rPlanReordered: 'reordered'
+})
+Object.assign(STRINGS.de, {
+  planRun: 'Plan ausführen',
+  planCount: '{n} von {total} Schritten werden ausgeführt',
+  planReordered: 'neu geordnet',
+  planOptional: 'optional',
+  planSkipped: 'übersprungen',
+  planInclude: 'Schritt ausführen: {x}',
+  planMoveUp: 'Nach oben: {x}',
+  planMoveDown: 'Nach unten: {x}',
+  planMoved: '{x} ist jetzt an Position {n} von {total}.',
+  planNote: 'Notiz',
+  planNoteFor: 'Notiz zu Schritt {n}: {x}',
+  planNotePlaceholder: 'Hinweis für Hermes zu diesem Schritt',
+  planNoteShown: 'Notiz',
+  planKeys: '{keys} verschiebt den Schritt, auf dem du bist',
+  planDrag: 'Zum Verschieben ziehen',
+  planHighRisk: 'mit riskantem Schritt',
+  planNothing: 'Mindestens einen Schritt einschalten',
+  planStepsLabel: 'Schritte des Plans',
+  rPlan: 'Plan ausführen: {n} von {total} Schritten',
+  rPlanSkipped: 'übersprungen: {x}',
+  rPlanReordered: 'neu geordnet'
+})
+
+const PLAN_NOTE_MAX = 200
+const PLAN_RISK = { low: ['●', 'riskLow'], medium: ['▲', 'riskMedium'], high: ['⬣', 'riskHigh'] }
+
+const PLAN_CSS = `
+.huic[data-card-type="plan"],.huic[data-card-type="review"]{background:var(--ui-chat-surface-background,var(--ui-base))}
+.huic[data-card-type="plan"]>.huic-foot,.huic[data-card-type="review"]>.huic-foot{background:inherit;border-radius:0 0 11px 11px}
+.huic[data-card-type="plan"].huic-pinned>.huic-foot,.huic[data-card-type="review"].huic-pinned>.huic-foot{position:sticky;bottom:0;z-index:2;box-shadow:0 -10px 14px -14px var(--ui-text-primary)}
+.huic[data-card-type="plan"] .huic-plan-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.huic[data-card-type="plan"] .huic-plan-step{position:relative;display:grid;grid-template-columns:26px minmax(0,1fr) auto;column-gap:12px;row-gap:4px;padding:7px 0 11px;margin:0;align-items:start}
+.huic[data-card-type="plan"] .huic-plan-step::before{content:"";position:absolute;left:12.25px;top:0;bottom:0;width:1.5px;background:var(--ui-stroke-tertiary)}
+.huic[data-card-type="plan"] .huic-plan-step:first-child::before{top:20px}
+.huic[data-card-type="plan"] .huic-plan-step:last-child::before{bottom:calc(100% - 20px)}
+.huic[data-card-type="plan"] .huic-plan-step:only-child::before{display:none}
+.huic[data-card-type="plan"] .huic-plan-node{position:relative;z-index:1;display:grid;place-items:center;width:26px;height:26px;border-radius:50%;border:1.5px solid var(--huic-accent);background:var(--ui-chat-surface-background,var(--ui-base));color:var(--huic-accent);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;user-select:none;transition:box-shadow .15s,background .15s}
+.huic[data-card-type="plan"] .huic-plan-node[draggable="true"]{cursor:grab}
+.huic[data-card-type="plan"] .huic-plan-node[draggable="true"]:hover{background:color-mix(in srgb,var(--huic-accent) 14%,var(--ui-chat-surface-background,var(--ui-base)))}
+.huic[data-card-type="plan"] .huic-plan-step:focus-within .huic-plan-node{box-shadow:0 0 0 4px color-mix(in srgb,var(--huic-accent) 22%,transparent)}
+.huic[data-card-type="plan"] .huic-plan-step.is-risk-high .huic-plan-node{border-color:var(--ui-red,var(--huic-accent));color:var(--ui-red,var(--huic-accent))}
+.huic[data-card-type="plan"] .huic-plan-step.is-off .huic-plan-node{border-style:dashed;border-color:var(--ui-stroke-secondary);color:var(--ui-text-tertiary)}
+.huic[data-card-type="plan"] .huic-plan-step.is-off .huic-plan-title{text-decoration:line-through;color:var(--ui-text-tertiary)}
+.huic[data-card-type="plan"] .huic-plan-step.is-off .huic-plan-detail,.huic[data-card-type="plan"] .huic-plan-step.is-off .huic-code-block{opacity:.5}
+.huic[data-card-type="plan"] .huic-plan-step.is-dragging{opacity:.4}
+.huic[data-card-type="plan"] .huic-plan-step.is-drop-before::after,.huic[data-card-type="plan"] .huic-plan-step.is-drop-after::after{content:"";position:absolute;left:34px;right:0;height:2px;border-radius:2px;background:var(--huic-accent)}
+.huic[data-card-type="plan"] .huic-plan-step.is-drop-before::after{top:-1px}
+.huic[data-card-type="plan"] .huic-plan-step.is-drop-after::after{bottom:-1px}
+.huic[data-card-type="plan"] .huic-plan-step.is-moved-a .huic-plan-main{animation:huic-plan-moved-a .7s ease-out}
+.huic[data-card-type="plan"] .huic-plan-step.is-moved-b .huic-plan-main{animation:huic-plan-moved-b .7s ease-out}
+@keyframes huic-plan-moved-a{from{background:color-mix(in srgb,var(--huic-accent) 16%,transparent)}to{background:transparent}}
+@keyframes huic-plan-moved-b{from{background:color-mix(in srgb,var(--huic-accent) 16%,transparent)}to{background:transparent}}
+.huic[data-card-type="plan"] .huic-plan-main{display:flex;flex-direction:column;gap:6px;min-width:0;padding-top:3px;border-radius:6px}
+.huic[data-card-type="plan"] .huic-plan-titlerow{display:flex;flex-wrap:wrap;align-items:baseline;gap:3px 8px}
+.huic[data-card-type="plan"] .huic-plan-title{font-weight:600}
+.huic[data-card-type="plan"] .huic-plan-detail{margin:0;color:var(--ui-text-secondary);font-size:12.5px;white-space:pre-wrap}
+.huic[data-card-type="plan"] .huic-plan-chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;line-height:16px;padding:0 7px;border-radius:999px;border:1px solid var(--ui-stroke-tertiary);color:var(--ui-text-tertiary);white-space:nowrap}
+.huic[data-card-type="plan"] .huic-plan-chip-low{color:var(--ui-green,var(--ui-text-secondary))}
+.huic[data-card-type="plan"] .huic-plan-chip-medium{color:var(--ui-orange,var(--ui-yellow,var(--ui-text-secondary)));border-color:color-mix(in srgb,var(--ui-orange,var(--ui-text-secondary)) 35%,transparent)}
+.huic[data-card-type="plan"] .huic-plan-chip-high{color:var(--ui-red,var(--ui-text-primary));border-color:color-mix(in srgb,var(--ui-red,var(--ui-text-primary)) 40%,transparent);background:color-mix(in srgb,var(--ui-red,transparent) 9%,transparent);font-weight:600}
+.huic[data-card-type="plan"] .huic-plan-main .huic-code{max-height:11.5em;overflow:auto}
+.huic[data-card-type="plan"] .huic-plan-ctrl{display:flex;align-items:center;gap:2px}
+.huic[data-card-type="plan"] .huic-plan-icon{display:grid;place-items:center;width:28px;height:28px;padding:0;border:0;border-radius:7px;background:transparent;color:var(--ui-text-tertiary);cursor:pointer;font:inherit}
+.huic[data-card-type="plan"] .huic-plan-icon:hover:not(:disabled){background:var(--ui-control-hover-background);color:var(--ui-text-primary)}
+.huic[data-card-type="plan"] .huic-plan-icon:disabled{opacity:.28;cursor:default}
+.huic[data-card-type="plan"] .huic-plan-icon[aria-expanded="true"],.huic[data-card-type="plan"] .huic-plan-icon.has-note{color:var(--huic-accent)}
+.huic[data-card-type="plan"] .huic-plan-switch-wrap{display:grid;place-items:center;width:42px;height:28px}
+.huic[data-card-type="plan"] input.huic-plan-switch{appearance:none;position:relative;flex:none;width:32px;height:18px;margin:0;border:1px solid var(--ui-stroke-secondary);border-radius:999px;background:var(--ui-bg-quaternary);cursor:pointer;transition:background .15s,border-color .15s}
+.huic[data-card-type="plan"] input.huic-plan-switch::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:var(--ui-text-secondary);transition:transform .15s}
+.huic[data-card-type="plan"] input.huic-plan-switch:checked{background:var(--huic-accent);border-color:var(--huic-accent)}
+.huic[data-card-type="plan"] input.huic-plan-switch:checked::after{transform:translateX(14px);background:var(--ui-chat-surface-background,var(--ui-base))}
+.huic[data-card-type="plan"] .huic-plan-note{min-height:30px;padding:5px 8px;font-size:12.5px;background:color-mix(in srgb,var(--ui-bg-quaternary) 35%,transparent)}
+.huic[data-card-type="plan"] .huic-plan-note-text{margin:0;padding:2px 0 2px 9px;border-left:2px solid var(--huic-accent);color:var(--ui-text-secondary);font-size:12.5px;white-space:pre-wrap}
+.huic[data-card-type="plan"] .huic-plan-keys{margin:0 0 0 38px;color:var(--ui-text-tertiary);font-size:11.5px}
+.huic[data-card-type="plan"] kbd,.huic[data-card-type="review"] kbd{font:inherit;font-size:10.5px;padding:0 4px;border:1px solid var(--ui-stroke-secondary);border-bottom-width:2px;border-radius:4px;color:var(--ui-text-secondary)}
+.huic[data-card-type="plan"] .huic-plan-warn{color:var(--ui-red,var(--ui-text-secondary))}
+@container (max-width: 440px){
+  .huic[data-card-type="plan"] .huic-plan-step{grid-template-columns:26px minmax(0,1fr)}
+  .huic[data-card-type="plan"] .huic-plan-ctrl{grid-column:2;margin-left:-6px}
+  .huic[data-card-type="plan"] .huic-plan-switch-wrap:empty{display:none}
+  .huic[data-card-type="plan"] .huic-plan-keys{display:none}
+}
+@media (prefers-reduced-motion: reduce){.huic[data-card-type="plan"] *{transition:none!important;animation:none!important}}
+`
+
+// Pin the footer (and an optional head) of tall cards while they scroll through the chat,
+// like the checklist does. Shared with the review card.
+function planUsePinned(frameRef) {
+  const [pinned, setPinned] = useState(false)
+  useEffect(() => {
+    const frame = frameRef.current
+    if (!frame) return
+    let scrollRoot = frame.parentElement
+    while (scrollRoot && !/(auto|scroll)/.test(getComputedStyle(scrollRoot).overflowY)) scrollRoot = scrollRoot.parentElement
+    const scroller = scrollRoot || window
+    const update = () => {
+      const rect = frame.getBoundingClientRect()
+      const viewport = scrollRoot ? scrollRoot.getBoundingClientRect() : { top: 0, bottom: window.innerHeight }
+      const height = scrollRoot ? scrollRoot.clientHeight : window.innerHeight
+      const head = frame.querySelector('.huic-pin-head')?.offsetHeight || 0
+      const foot = frame.querySelector(':scope>.huic-foot')?.offsetHeight || 0
+      setPinned(rect.height > height && rect.top + head + foot < viewport.bottom && rect.bottom > viewport.top)
+    }
+    update()
+    scroller.addEventListener('scroll', update, { passive: true })
+    window.addEventListener('resize', update)
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null
+    observer?.observe(frame)
+    if (scrollRoot) observer?.observe(scrollRoot)
+    return () => {
+      scroller.removeEventListener('scroll', update)
+      window.removeEventListener('resize', update)
+      observer?.disconnect()
+    }
+  }, [])
+  return pinned
+}
+
+// Like Shell, plus a ref and the pinned state for tall cards.
+function PlanFrame({ card, display, labelId, frameRef, pinned, css, head, children, footer, after }) {
+  return jsxs('section', {
+    ref: frameRef,
+    className: cx('huic', display?.compact && 'huic-compact', pinned && 'huic-pinned'),
+    style: { '--huic-accent': ACCENT_VARS[display?.accent || 'app'] || ACCENT_VARS.app },
+    'data-card-type': card.type,
+    'aria-labelledby': labelId,
+    children: [
+      jsx(Style, {}),
+      jsx('style', { children: PLAN_CSS }),
+      css ? jsx('style', { children: css }) : null,
+      head,
+      jsx('div', { className: 'huic-body', children }),
+      footer || null,
+      after || null
+    ]
+  })
+}
+
+const PLAN_ICONS = {
+  up: 'm4 10 4-4 4 4',
+  down: 'm4 6 4 4 4-4',
+  note: 'M2.5 13.5h3l7.2-7.2a1.4 1.4 0 0 0 0-2l-1-1a1.4 1.4 0 0 0-2 0L2.5 10.5v3Z',
+  check: 'm3.5 8.5 3 3 6-7',
+  cross: 'm4.5 4.5 7 7m0-7-7 7',
+  chevron: 'm6 4 4 4-4 4'
+}
+
+function planIcon(kind) {
+  return jsx('svg', {
+    viewBox: '0 0 16 16', width: 14, height: 14, fill: 'none', stroke: 'currentColor', strokeWidth: 1.6,
+    strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true, focusable: 'false',
+    children: jsx('path', { d: PLAN_ICONS[kind] })
+  })
+}
+
+function planKeysHint(lang) {
+  const text = t(lang, 'planKeys', { keys: '\u0000' }).split('\u0000')
+  return [text[0], jsx('kbd', { children: 'Alt' }, 'a'), '+', jsx('kbd', { children: '↑' }, 'u'), '/', jsx('kbd', { children: '↓' }, 'd'), text[1]]
+}
+
+function planState(card, source) {
+  const ids = card.steps.map(s => s.id)
+  const optional = new Set(card.steps.filter(s => s.optional).map(s => s.id))
+  const src = source && typeof source === 'object' ? source : {}
+  const order = Array.isArray(src.order) ? src.order.filter((id, i, all) => ids.includes(id) && all.indexOf(id) === i) : []
+  for (const id of ids) if (!order.includes(id)) order.push(id)
+  const off = Array.isArray(src.off) ? src.off.filter(id => optional.has(id)) : []
+  const notes = {}
+  if (src.notes && typeof src.notes === 'object') {
+    for (const id of ids) if (typeof src.notes[id] === 'string' && src.notes[id]) notes[id] = limitText(src.notes[id], PLAN_NOTE_MAX)
+  }
+  return { order, off, notes }
+}
+
+// The sent answer (steps in their final order) back into the editing state, for the locked view.
+function planFromAnswer(card, answer) {
+  const steps = answer?.selection?.steps || answer?.data?.steps
+  if (!Array.isArray(steps)) return null
+  return {
+    order: steps.map(s => s.id).filter(id => card.steps.some(s => s.id === id)),
+    off: steps.filter(s => s.included === false).map(s => s.id),
+    notes: Object.fromEntries(steps.filter(s => s.note).map(s => [s.id, s.note]))
+  }
+}
+
+function PlanCard({ card, sessionId, display, lang }) {
+  const labelId = useId()
+  const frameRef = useRef(null)
+  const pinned = planUsePinned(frameRef)
+  const ans = useCardAnswer(card, sessionId, lang)
+  const [state, setState] = useState(() => planState(card, ans.draft))
+  const view = (ans.answer && planFromAnswer(card, ans.answer)) || state
+  const [openNotes, setOpenNotes] = useState({})
+  const [announce, setAnnounce] = useState('')
+  const [drag, setDrag] = useState(null)
+  const [moved, setMoved] = useState(null)
+  const focusAfter = useRef(null)
+  const rowRefs = useRef({})
+  const byId = useMemo(() => Object.fromEntries(card.steps.map(s => [s.id, s])), [card])
+  const editable = ans.showActions
+
+  // Reordering moves DOM nodes, which can drop focus: put it back on the same control.
+  useEffect(() => {
+    const target = focusAfter.current
+    if (!target) return
+    focusAfter.current = null
+    const row = rowRefs.current[target.id]
+    if (!row) return
+    let el = row.querySelector(`[data-plan-focus="${target.which}"]`)
+    if (!el || el.disabled) el = row.querySelector('[data-plan-focus="up"]:not(:disabled),[data-plan-focus="down"]:not(:disabled)')
+    el?.focus()
+  })
+
+  const update = next => {
+    setState(next)
+    ans.saveDraft(next)
+  }
+
+  const moveTo = (id, to, which) => {
+    const from = state.order.indexOf(id)
+    if (from < 0 || to < 0 || to >= state.order.length || to === from) return
+    const order = state.order.filter(x => x !== id)
+    order.splice(to, 0, id)
+    update({ ...state, order })
+    focusAfter.current = which ? { id, which } : null
+    setMoved({ id, n: (moved?.n || 0) + 1 })
+    setAnnounce(t(lang, 'planMoved', { x: byId[id].title, n: to + 1, total: order.length }))
+  }
+
+  const toggle = id => update({ ...state, off: state.off.includes(id) ? state.off.filter(x => x !== id) : [...state.off, id] })
+  const setNote = (id, text) => {
+    const notes = { ...state.notes }
+    const value = limitText(text, PLAN_NOTE_MAX)
+    if (value) notes[id] = value
+    else delete notes[id]
+    update({ ...state, notes })
+  }
+  const noteButton = (id, open) => {
+    if (!open) {
+      setOpenNotes(prev => ({ ...prev, [id]: true }))
+      focusAfter.current = { id, which: 'note' }
+    } else if (!state.notes[id]) {
+      setOpenNotes(prev => ({ ...prev, [id]: false }))
+    } else {
+      rowRefs.current[id]?.querySelector('[data-plan-focus="note"]')?.focus()
+    }
+  }
+
+  const onRowKey = (id, index) => e => {
+    if (!editable || !e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.nativeEvent?.isComposing) return
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
+    e.preventDefault()
+    const which = e.target.closest?.('[data-plan-focus]')?.dataset.planFocus || (e.key === 'ArrowUp' ? 'up' : 'down')
+    moveTo(id, index + (e.key === 'ArrowUp' ? -1 : 1), which)
+  }
+
+  const dropAt = targetId => {
+    if (!drag || !drag.id || targetId === drag.id) { setDrag(null); return }
+    const rest = state.order.filter(x => x !== drag.id)
+    let to = rest.indexOf(targetId) + (drag.after ? 1 : 0)
+    if (to < 0) to = rest.length
+    setDrag(null)
+    moveTo(drag.id, to, null)
+  }
+
+  const total = view.order.length
+  const included = view.order.filter(id => !view.off.includes(id))
+  const reordered = view.order.some((id, i) => id !== card.steps[i].id)
+  const highRisk = included.some(id => byId[id].risk === 'high')
+
+  const rows = view.order.map((id, i) => {
+    const step = byId[id]
+    const on = !view.off.includes(id)
+    const note = view.notes[id] || ''
+    const noteOpen = editable && Boolean(openNotes[id] || note)
+    const titleId = `${labelId}-${id}`
+    const noteId = `${labelId}-${id}-note`
+    const risk = step.risk && PLAN_RISK[step.risk]
+    const isDropTarget = drag?.id && drag.over === id && drag.id !== id
+    return jsxs('li', {
+      ref: el => { rowRefs.current[id] = el },
+      className: cx('huic-plan-step', !on && 'is-off', step.risk === 'high' && 'is-risk-high',
+        drag?.id === id && 'is-dragging', isDropTarget && (drag.after ? 'is-drop-after' : 'is-drop-before'),
+        moved?.id === id && (moved.n % 2 ? 'is-moved-a' : 'is-moved-b')),
+      'data-step': id,
+      'aria-labelledby': titleId,
+      onKeyDown: onRowKey(id, i),
+      onDragOver: editable && drag?.id ? e => {
+        e.preventDefault()
+        const r = e.currentTarget.getBoundingClientRect()
+        const after = e.clientY > r.top + r.height / 2
+        if (drag.over !== id || drag.after !== after) setDrag({ ...drag, over: id, after })
+      } : undefined,
+      onDrop: editable && drag?.id ? e => { e.preventDefault(); dropAt(id) } : undefined,
+      children: [
+        jsx('span', {
+          className: 'huic-plan-node', 'aria-hidden': true,
+          draggable: editable ? 'true' : undefined,
+          title: editable && total > 1 ? t(lang, 'planDrag') : undefined,
+          onDragStart: editable ? e => {
+            e.dataTransfer.effectAllowed = 'move'
+            try { e.dataTransfer.setData('text/plain', step.title) } catch {}
+            if (rowRefs.current[id] && e.dataTransfer.setDragImage) e.dataTransfer.setDragImage(rowRefs.current[id], 14, 14)
+            setDrag({ id })
+          } : undefined,
+          onDragEnd: editable ? () => setDrag(null) : undefined,
+          children: i + 1
+        }),
+        jsxs('div', {
+          className: 'huic-plan-main',
+          children: [
+            jsxs('div', { className: 'huic-plan-titlerow', children: [
+              jsx('span', { id: titleId, className: 'huic-plan-title', children: step.title }),
+              !on ? jsx('span', { className: 'huic-plan-chip', children: t(lang, 'planSkipped') }) : step.optional ? jsx('span', { className: 'huic-plan-chip', children: t(lang, 'planOptional') }) : null,
+              risk ? jsxs('span', { className: cx('huic-plan-chip', `huic-plan-chip-${step.risk}`), children: [jsx('span', { 'aria-hidden': true, children: risk[0] }), t(lang, risk[1])] }) : null
+            ] }),
+            step.detail ? jsx('p', { className: 'huic-plan-detail', children: step.detail }) : null,
+            step.command ? jsx(CodeBlock, { code: step.command, lang }) : null,
+            noteOpen
+              ? jsx('input', {
+                  id: noteId, className: 'huic-input huic-plan-note', type: 'text', value: note,
+                  'data-plan-focus': 'note', maxLength: PLAN_NOTE_MAX * 2,
+                  placeholder: t(lang, 'planNotePlaceholder'),
+                  'aria-label': t(lang, 'planNoteFor', { n: i + 1, x: step.title }),
+                  onChange: e => setNote(id, e.target.value),
+                  onKeyDown: e => {
+                    if (e.key === 'Escape' && !note) { e.preventDefault(); noteButton(id, true); rowRefs.current[id]?.querySelector('[data-plan-focus="notebtn"]')?.focus() }
+                  }
+                })
+              : !editable && note
+                ? jsxs('p', { className: 'huic-plan-note-text', children: [jsx('span', { className: 'huic-sr', children: t(lang, 'planNoteShown') + ': ' }), note] })
+                : null
+          ]
+        }),
+        editable ? jsxs('div', {
+          className: 'huic-plan-ctrl',
+          children: [
+            jsx('span', { className: 'huic-plan-switch-wrap', children: step.optional ? jsx('input', {
+              type: 'checkbox', role: 'switch', className: 'huic-plan-switch', checked: on,
+              'data-plan-focus': 'switch', 'aria-label': t(lang, 'planInclude', { x: step.title }),
+              title: t(lang, 'planInclude', { x: step.title }),
+              onChange: () => toggle(id)
+            }) : null }),
+            jsx('button', {
+              type: 'button', className: cx('huic-plan-icon', note && 'has-note'), 'data-plan-focus': 'notebtn',
+              'aria-label': t(lang, 'planNoteFor', { n: i + 1, x: step.title }), title: t(lang, 'planNote'),
+              'aria-expanded': noteOpen, 'aria-controls': noteOpen ? noteId : undefined,
+              onClick: () => noteButton(id, noteOpen),
+              children: planIcon('note')
+            }),
+            total > 1 ? jsx('button', {
+              type: 'button', className: 'huic-plan-icon', 'data-plan-focus': 'up', disabled: i === 0,
+              'aria-label': t(lang, 'planMoveUp', { x: step.title }), title: 'Alt+↑', 'aria-keyshortcuts': 'Alt+ArrowUp',
+              onClick: () => moveTo(id, i - 1, 'up'), children: planIcon('up')
+            }) : null,
+            total > 1 ? jsx('button', {
+              type: 'button', className: 'huic-plan-icon', 'data-plan-focus': 'down', disabled: i === total - 1,
+              'aria-label': t(lang, 'planMoveDown', { x: step.title }), title: 'Alt+↓', 'aria-keyshortcuts': 'Alt+ArrowDown',
+              onClick: () => moveTo(id, i + 1, 'down'), children: planIcon('down')
+            }) : null
+          ]
+        }) : null
+      ]
+    }, id)
+  })
+
+  const send = () => ans.submit({
+    steps: view.order.map(id => {
+      const note = (view.notes[id] || '').trim()
+      return { id, title: byId[id].title, included: !view.off.includes(id), ...(note ? { note } : {}) }
+    })
+  })
+
+  const hint = included.length
+    ? jsxs(Fragment, { children: [
+        t(lang, 'planCount', { n: included.length, total }),
+        reordered ? ` · ${t(lang, 'planReordered')}` : '',
+        highRisk ? jsxs('span', { className: 'huic-plan-warn', children: [' · ', t(lang, 'planHighRisk')] }) : null
+      ] })
+    : t(lang, 'planNothing')
+
+  return jsx(PlanFrame, {
+    card, display, labelId, frameRef, pinned,
+    head: jsxs('header', { className: 'huic-head', children: [
+      jsx('h3', { className: 'huic-title', id: labelId, style: { margin: 0 }, children: card.title }),
+      card.summary ? jsx('p', { className: 'huic-sub', style: { margin: '2px 0 0' }, children: card.summary }) : null
+    ] }),
+    children: [
+      jsx('ol', { className: 'huic-plan-list', 'aria-label': t(lang, 'planStepsLabel'), children: rows }, 'list'),
+      editable && total > 1 ? jsx('p', { className: 'huic-plan-keys', children: planKeysHint(lang) }, 'keys') : null,
+      jsx('div', { className: 'huic-sr', role: 'status', 'aria-live': 'polite', children: announce }, 'live')
+    ],
+    footer: editable ? jsx(Footer, {
+      hint,
+      children: jsx(Btn, { variant: highRisk ? 'danger' : 'primary', disabled: !included.length, onClick: send, children: card.runLabel || t(lang, 'planRun') })
+    }) : null,
+    after: ans.status
+  })
+}
+
+CARD_COMPONENTS.plan = PlanCard
+REPLY_BUILDERS.plan = (card, answer, lang, data) => {
+  data.steps = answer.steps.map(s => {
+    const out = { id: s.id, title: s.title, included: s.included !== false }
+    const note = String(s.note ?? '').trim()
+    if (note) out.note = note
+    return out
+  })
+  const on = data.steps.filter(s => s.included).length
+  const skipped = data.steps.filter(s => !s.included).map(s => s.title)
+  let summary = t(lang, 'rPlan', { n: on, total: data.steps.length })
+  if (skipped.length) summary += ` · ${t(lang, 'rPlanSkipped', { x: joinList(skipped) })}`
+  if (data.steps.some((s, i) => s.id !== card.steps[i]?.id)) summary += ` · ${t(lang, 'rPlanReordered')}`
+  return { summary }
+}
+
+// ── 82-review.js ──
+// review: many small keep/drop decisions in one card. Each row has a Keep/Drop switch
+// (arrow keys move between the two), an optional comment and a preview; the head with the
+// tally and the bulk actions stays in reach on long lists. Decisions are kept as a draft.
+
+Object.assign(STRINGS.en, {
+  reviewKeep: 'Keep',
+  reviewDrop: 'Drop',
+  reviewApply: 'Apply',
+  reviewOpen: 'Open',
+  reviewKeepAll: 'Keep all',
+  reviewDropAll: 'Drop all',
+  reviewKeepRest: 'Keep the other {n}',
+  reviewAllAs: '{x} all',
+  reviewRestAs: '{x} the other {n}',
+  reviewReset: 'Reset',
+  reviewDecision: 'Decision for {x}',
+  reviewComment: 'Comment',
+  reviewCommentFor: 'Comment on {x}',
+  reviewCommentPlaceholder: 'Why? (optional, for Hermes)',
+  reviewMore: 'Show all',
+  reviewLess: 'Show less',
+  reviewStillOpen: '{n} still open, sent as undecided',
+  reviewAllDecided: 'All {n} decided',
+  reviewBulkDone: 'All {n} set to {x}.',
+  reviewRestDone: '{n} more set to {x}.',
+  reviewResetDone: 'Decisions reset.',
+  reviewItemsLabel: 'Items to review',
+  reviewKept: 'Kept', reviewDropped: 'Dropped', reviewUndecided: 'Undecided',
+  rReview: 'Review done: keep {keep}, drop {drop}',
+  rReviewOpen: ', {n} undecided'
+})
+Object.assign(STRINGS.de, {
+  reviewKeep: 'Behalten',
+  reviewDrop: 'Verwerfen',
+  reviewApply: 'Übernehmen',
+  reviewOpen: 'Offen',
+  reviewKeepAll: 'Alle behalten',
+  reviewDropAll: 'Alle verwerfen',
+  reviewKeepRest: 'Restliche {n} behalten',
+  reviewAllAs: 'Alle: {x}',
+  reviewRestAs: 'Restliche {n}: {x}',
+  reviewReset: 'Zurücksetzen',
+  reviewDecision: 'Entscheidung für {x}',
+  reviewComment: 'Kommentar',
+  reviewCommentFor: 'Kommentar zu {x}',
+  reviewCommentPlaceholder: 'Warum? (optional, für Hermes)',
+  reviewMore: 'Alles zeigen',
+  reviewLess: 'Weniger zeigen',
+  reviewStillOpen: '{n} noch offen, gehen als offen raus',
+  reviewAllDecided: 'Alle {n} entschieden',
+  reviewBulkDone: 'Alle {n} auf {x} gesetzt.',
+  reviewRestDone: 'Weitere {n} auf {x} gesetzt.',
+  reviewResetDone: 'Entscheidungen zurückgesetzt.',
+  reviewItemsLabel: 'Einträge zum Durchsehen',
+  reviewKept: 'Behalten', reviewDropped: 'Verworfen', reviewUndecided: 'Offen',
+  rReview: 'Durchgesehen: {keep} behalten, {drop} verwerfen',
+  rReviewOpen: ', {n} offen'
+})
+
+const REVIEW_NOTE_MAX = 200
+
+const REVIEW_CSS = `
+.huic[data-card-type="review"]>.huic-pin-head{padding:var(--huic-pad) var(--huic-pad) 10px;background:inherit;border-radius:11px 11px 0 0;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--ui-stroke-tertiary)}
+.huic[data-card-type="review"].huic-pinned>.huic-pin-head{position:sticky;top:0;z-index:3;box-shadow:0 10px 14px -14px var(--ui-text-primary)}
+.huic[data-card-type="review"] .huic-rev-tally{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.huic[data-card-type="review"] .huic-rev-bar{display:flex;flex:1 1 140px;height:6px;border-radius:999px;overflow:hidden;background:var(--ui-bg-quaternary)}
+.huic[data-card-type="review"] .huic-rev-bar>span{display:block;height:100%;transition:width .2s}
+.huic[data-card-type="review"] .huic-rev-bar>.is-keep{background:var(--ui-green,var(--huic-accent))}
+.huic[data-card-type="review"] .huic-rev-bar>.is-drop{background:var(--ui-red,var(--ui-text-secondary))}
+.huic[data-card-type="review"] .huic-rev-counts{display:flex;gap:10px;font-size:12px;color:var(--ui-text-secondary);font-variant-numeric:tabular-nums;white-space:nowrap}
+.huic[data-card-type="review"] .huic-rev-counts b{font-weight:600;color:var(--ui-text-primary)}
+.huic[data-card-type="review"] .huic-rev-counts i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;vertical-align:1px;font-style:normal}
+.huic[data-card-type="review"] .huic-rev-counts .is-keep i{background:var(--ui-green,var(--huic-accent))}
+.huic[data-card-type="review"] .huic-rev-counts .is-drop i{background:var(--ui-red,var(--ui-text-secondary))}
+.huic[data-card-type="review"] .huic-rev-counts .is-open i{border:1.5px solid var(--ui-stroke-secondary)}
+.huic[data-card-type="review"] .huic-rev-bulk{display:flex;gap:6px;flex-wrap:wrap}
+.huic[data-card-type="review"] .huic-rev-bulk .huic-btn{padding:3px 10px;font-size:12px}
+.huic[data-card-type="review"] .huic-rev-bulk .huic-rev-reset{margin-left:auto}
+.huic[data-card-type="review"]>.huic-body{padding-top:2px}
+.huic[data-card-type="review"] .huic-rev-list{list-style:none;margin:0 calc(var(--huic-pad) * -1);padding:0}
+.huic[data-card-type="review"] .huic-rev-item{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 14px;align-items:start;margin:0;padding:9px var(--huic-pad) 9px calc(var(--huic-pad) + 2px);border-bottom:1px solid var(--ui-stroke-tertiary);transition:background .15s}
+.huic[data-card-type="review"] .huic-rev-item:last-child{border-bottom:0}
+.huic[data-card-type="review"] .huic-rev-item::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:transparent;transition:background .15s}
+.huic[data-card-type="review"] .huic-rev-item[data-decision="keep"]::before{background:var(--ui-green,var(--huic-accent))}
+.huic[data-card-type="review"] .huic-rev-item[data-decision="drop"]::before{background:var(--ui-red,var(--ui-text-secondary))}
+.huic[data-card-type="review"] .huic-rev-item[data-decision="drop"]{background:color-mix(in srgb,var(--ui-red,var(--ui-text-secondary)) 4%,transparent)}
+.huic[data-card-type="review"] .huic-rev-item[data-decision="drop"] .huic-rev-title{text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--ui-red,currentColor) 60%,transparent);color:var(--ui-text-secondary)}
+.huic[data-card-type="review"] .huic-rev-item[data-decision="drop"] .huic-rev-preview{opacity:.6}
+.huic[data-card-type="review"] .huic-rev-main{display:flex;flex-direction:column;gap:4px;min-width:0}
+.huic[data-card-type="review"] .huic-rev-titlerow{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px}
+.huic[data-card-type="review"] .huic-rev-title{font-weight:600}
+.huic[data-card-type="review"] .huic-rev-detail{margin:0;color:var(--ui-text-secondary);font-size:12.5px;white-space:pre-wrap}
+.huic[data-card-type="review"] .huic-rev-preview{margin:2px 0 0;font-family:var(--font-mono,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:11.5px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;padding:6px 9px;border-radius:7px;background:var(--ui-inline-code-background,var(--ui-bg-quaternary));color:var(--ui-inline-code-foreground,var(--ui-text-secondary))}
+.huic[data-card-type="review"] .huic-rev-preview.is-clamped{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
+.huic[data-card-type="review"] .huic-rev-link{align-self:flex-start;padding:0;border:0;background:transparent;color:var(--huic-accent);font:inherit;font-size:12px;cursor:pointer}
+.huic[data-card-type="review"] .huic-rev-link:hover{text-decoration:underline}
+.huic[data-card-type="review"] .huic-rev-note{min-height:30px;padding:5px 8px;font-size:12.5px;background:color-mix(in srgb,var(--ui-bg-quaternary) 35%,transparent)}
+.huic[data-card-type="review"] .huic-rev-note-text{margin:0;padding:1px 0 1px 9px;border-left:2px solid var(--huic-accent);color:var(--ui-text-secondary);font-size:12.5px;white-space:pre-wrap}
+.huic[data-card-type="review"] .huic-rev-side{display:flex;align-items:center;gap:4px}
+.huic[data-card-type="review"] .huic-rev-seg{display:inline-flex;padding:2px;gap:2px;border-radius:8px;background:var(--ui-bg-quaternary)}
+.huic[data-card-type="review"] .huic-rev-seg button{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:26px;padding:3px 10px;border:0;border-radius:6px;background:transparent;color:var(--ui-text-secondary);font:inherit;font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap;transition:background .12s,color .12s}
+.huic[data-card-type="review"] .huic-rev-seg button:hover{color:var(--ui-text-primary)}
+.huic[data-card-type="review"] .huic-rev-seg button[aria-checked="true"].is-keep{background:var(--ui-green,var(--huic-accent));color:var(--ui-chat-surface-background,var(--ui-base))}
+.huic[data-card-type="review"] .huic-rev-seg button[aria-checked="true"].is-drop{background:var(--ui-red,var(--ui-text-secondary));color:var(--ui-chat-surface-background,var(--ui-base))}
+.huic[data-card-type="review"] .huic-rev-icon{display:grid;place-items:center;width:28px;height:28px;padding:0;border:0;border-radius:7px;background:transparent;color:var(--ui-text-tertiary);cursor:pointer}
+.huic[data-card-type="review"] .huic-rev-icon:hover{background:var(--ui-control-hover-background);color:var(--ui-text-primary)}
+.huic[data-card-type="review"] .huic-rev-icon[aria-expanded="true"],.huic[data-card-type="review"] .huic-rev-icon.has-note{color:var(--huic-accent)}
+.huic[data-card-type="review"] .huic-rev-stamp{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:600;padding:1px 8px;border-radius:999px;white-space:nowrap;color:var(--ui-text-tertiary);background:var(--ui-bg-quaternary)}
+.huic[data-card-type="review"] .huic-rev-stamp.is-keep{color:var(--ui-green,var(--huic-accent));background:color-mix(in srgb,var(--ui-green,var(--huic-accent)) 12%,transparent)}
+.huic[data-card-type="review"] .huic-rev-stamp.is-drop{color:var(--ui-red,var(--ui-text-secondary));background:color-mix(in srgb,var(--ui-red,var(--ui-text-secondary)) 12%,transparent)}
+.huic-compact[data-card-type="review"] .huic-rev-item{padding-block:6px}
+@container (max-width: 440px){
+  .huic[data-card-type="review"] .huic-rev-item{grid-template-columns:minmax(0,1fr)}
+  .huic[data-card-type="review"] .huic-rev-side{justify-content:space-between}
+  .huic[data-card-type="review"] .huic-rev-seg{flex:1}
+  .huic[data-card-type="review"] .huic-rev-seg button{flex:1}
+  .huic[data-card-type="review"] .huic-rev-bulk .huic-rev-reset{margin-left:0}
+}
+@media (prefers-reduced-motion: reduce){.huic[data-card-type="review"] *{transition:none!important}}
+`
+
+function reviewDefaults(card) {
+  const d = card.defaultDecision
+  return d === 'keep' || d === 'drop' ? Object.fromEntries(card.items.map(i => [i.id, d])) : {}
+}
+
+function reviewState(card, source) {
+  const src = source && typeof source === 'object' ? source : null
+  const decisions = {}
+  const notes = {}
+  if (src && src.decisions && typeof src.decisions === 'object') {
+    for (const item of card.items) if (src.decisions[item.id] === 'keep' || src.decisions[item.id] === 'drop') decisions[item.id] = src.decisions[item.id]
+  } else Object.assign(decisions, reviewDefaults(card))
+  if (src && src.notes && typeof src.notes === 'object') {
+    for (const item of card.items) if (typeof src.notes[item.id] === 'string' && src.notes[item.id]) notes[item.id] = limitText(src.notes[item.id], REVIEW_NOTE_MAX)
+  }
+  return { decisions, notes }
+}
+
+function reviewFromAnswer(answer) {
+  const a = answer?.selection || answer?.data
+  if (!a || !Array.isArray(a.keep)) return null
+  const decisions = {}
+  for (const id of a.keep) decisions[id] = 'keep'
+  for (const id of a.drop || []) decisions[id] = 'drop'
+  return { decisions, notes: a.notes && typeof a.notes === 'object' ? a.notes : {} }
+}
+
+function reviewLong(text) {
+  return [...text].length > 220 || text.split('\n').length > 3
+}
+
+function ReviewCard({ card, sessionId, display, lang }) {
+  const labelId = useId()
+  const frameRef = useRef(null)
+  const pinned = planUsePinned(frameRef)
+  const ans = useCardAnswer(card, sessionId, lang)
+  const [state, setState] = useState(() => reviewState(card, ans.draft))
+  const view = (ans.answer && reviewFromAnswer(ans.answer)) || state
+  const [openNotes, setOpenNotes] = useState({})
+  const [expanded, setExpanded] = useState({})
+  const [announce, setAnnounce] = useState('')
+  const focusNote = useRef(null)
+  const rowRefs = useRef({})
+  const editable = ans.showActions
+  const keepLabel = card.keepLabel || t(lang, 'reviewKeep')
+  const dropLabel = card.dropLabel || t(lang, 'reviewDrop')
+
+  useEffect(() => {
+    if (!focusNote.current) return
+    rowRefs.current[focusNote.current]?.querySelector('.huic-rev-note')?.focus()
+    focusNote.current = null
+  })
+
+  const update = next => {
+    setState(next)
+    ans.saveDraft(next)
+  }
+  const decide = (id, decision) => update({ ...state, decisions: { ...state.decisions, [id]: decision } })
+  const bulk = decision => {
+    update({ ...state, decisions: Object.fromEntries(card.items.map(i => [i.id, decision])) })
+    setAnnounce(t(lang, 'reviewBulkDone', { n: card.items.length, x: decision === 'keep' ? keepLabel : dropLabel }))
+  }
+  const keepRest = () => {
+    const open = card.items.filter(i => !state.decisions[i.id])
+    update({ ...state, decisions: { ...state.decisions, ...Object.fromEntries(open.map(i => [i.id, 'keep'])) } })
+    setAnnounce(t(lang, 'reviewRestDone', { n: open.length, x: keepLabel }))
+  }
+  const reset = () => {
+    update({ ...state, decisions: reviewDefaults(card) })
+    setAnnounce(t(lang, 'reviewResetDone'))
+  }
+  const setNote = (id, text) => {
+    const notes = { ...state.notes }
+    const value = limitText(text, REVIEW_NOTE_MAX)
+    if (value) notes[id] = value
+    else delete notes[id]
+    update({ ...state, notes })
+  }
+  const noteButton = (id, open) => {
+    if (!open) {
+      setOpenNotes(prev => ({ ...prev, [id]: true }))
+      focusNote.current = id
+    } else if (!state.notes[id]) setOpenNotes(prev => ({ ...prev, [id]: false }))
+    else rowRefs.current[id]?.querySelector('.huic-rev-note')?.focus()
+  }
+
+  const keep = card.items.filter(i => view.decisions[i.id] === 'keep')
+  const drop = card.items.filter(i => view.decisions[i.id] === 'drop')
+  const open = card.items.length - keep.length - drop.length
+  const total = card.items.length
+  const defaults = reviewDefaults(card)
+  const changed = card.items.some(i => (state.decisions[i.id] || null) !== (defaults[i.id] || null))
+
+  // Two options in a radio group: one tab stop, arrow keys switch and select.
+  const segment = (item, decision) => {
+    const titleId = `${labelId}-${item.id}`
+    const radio = (value, label, icon) => jsxs('button', {
+      type: 'button', role: 'radio', className: `is-${value}`,
+      'aria-checked': decision === value,
+      tabIndex: decision === value || (!decision && value === 'keep') ? 0 : -1,
+      onClick: () => decide(item.id, value),
+      onKeyDown: e => {
+        if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key) || e.altKey || e.ctrlKey || e.metaKey) return
+        e.preventDefault()
+        const other = value === 'keep' ? 'drop' : 'keep'
+        decide(item.id, other)
+        e.currentTarget.parentElement.querySelector(`.is-${other}`)?.focus()
+      },
+      children: [planIcon(icon), label]
+    }, value)
+    return jsxs('div', {
+      className: 'huic-rev-seg', role: 'radiogroup',
+      'aria-label': t(lang, 'reviewDecision', { x: item.title }),
+      'aria-describedby': titleId,
+      children: [radio('keep', keepLabel, 'check'), radio('drop', dropLabel, 'cross')]
+    })
+  }
+
+  const rows = card.items.map(item => {
+    const decision = view.decisions[item.id] || null
+    const note = view.notes[item.id] || ''
+    const noteOpen = editable && Boolean(openNotes[item.id] || note)
+    const titleId = `${labelId}-${item.id}`
+    const noteId = `${labelId}-${item.id}-note`
+    const previewId = `${labelId}-${item.id}-preview`
+    const long = item.preview && reviewLong(item.preview)
+    const isOpen = expanded[item.id]
+    return jsxs('li', {
+      ref: el => { rowRefs.current[item.id] = el },
+      className: 'huic-rev-item', 'data-decision': decision || 'none', 'data-item': item.id,
+      children: [
+        jsxs('div', { className: 'huic-rev-main', children: [
+          jsxs('div', { className: 'huic-rev-titlerow', children: [
+            jsx('span', { id: titleId, className: 'huic-rev-title', children: item.title }),
+            item.tag ? jsx('span', { className: 'huic-badge', children: item.tag }) : null
+          ] }),
+          item.detail ? jsx('p', { className: 'huic-rev-detail', children: item.detail }) : null,
+          item.preview ? jsx('pre', { id: previewId, className: cx('huic-rev-preview', long && !isOpen && 'is-clamped'), children: item.preview }) : null,
+          long ? jsx('button', {
+            type: 'button', className: 'huic-rev-link', 'aria-expanded': Boolean(isOpen), 'aria-controls': previewId,
+            onClick: () => setExpanded(prev => ({ ...prev, [item.id]: !isOpen })),
+            children: t(lang, isOpen ? 'reviewLess' : 'reviewMore')
+          }) : null,
+          noteOpen
+            ? jsx('input', {
+                id: noteId, className: 'huic-input huic-rev-note', type: 'text', value: note, maxLength: REVIEW_NOTE_MAX * 2,
+                placeholder: t(lang, 'reviewCommentPlaceholder'), 'aria-label': t(lang, 'reviewCommentFor', { x: item.title }),
+                onChange: e => setNote(item.id, e.target.value),
+                onKeyDown: e => {
+                  if (e.key === 'Escape' && !note) { e.preventDefault(); setOpenNotes(prev => ({ ...prev, [item.id]: false })); rowRefs.current[item.id]?.querySelector('.huic-rev-icon')?.focus() }
+                }
+              })
+            : !editable && note
+              ? jsxs('p', { className: 'huic-rev-note-text', children: [jsx('span', { className: 'huic-sr', children: t(lang, 'reviewComment') + ': ' }), note] })
+              : null
+        ] }),
+        editable
+          ? jsxs('div', { className: 'huic-rev-side', children: [
+              segment(item, decision),
+              jsx('button', {
+                type: 'button', className: cx('huic-rev-icon', note && 'has-note'),
+                'aria-label': t(lang, 'reviewCommentFor', { x: item.title }), title: t(lang, 'reviewComment'),
+                'aria-expanded': noteOpen, 'aria-controls': noteOpen ? noteId : undefined,
+                onClick: () => noteButton(item.id, noteOpen),
+                children: planIcon('note')
+              })
+            ] })
+          : jsx('div', { className: 'huic-rev-side', children: jsxs('span', {
+              className: cx('huic-rev-stamp', decision && `is-${decision}`),
+              children: decision ? [planIcon(decision === 'keep' ? 'check' : 'cross'), t(lang, decision === 'keep' ? 'reviewKept' : 'reviewDropped')] : [t(lang, 'reviewUndecided')]
+            }) })
+      ]
+    }, item.id)
+  })
+
+  const send = () => {
+    const notes = {}
+    for (const item of card.items) {
+      const note = (view.notes[item.id] || '').trim()
+      if (note) notes[item.id] = note
+    }
+    ans.submit({
+      keep: keep.map(i => i.id),
+      drop: drop.map(i => i.id),
+      undecided: card.items.filter(i => !view.decisions[i.id]).map(i => i.id),
+      notes
+    })
+  }
+
+  const pct = n => `${(n / total) * 100}%`
+  const head = jsxs('header', { className: 'huic-pin-head', children: [
+    jsxs('div', { children: [
+      jsx('h3', { className: 'huic-title', id: labelId, style: { margin: 0 }, children: card.title }),
+      card.summary ? jsx('p', { className: 'huic-sub', style: { margin: '2px 0 0' }, children: card.summary }) : null
+    ] }),
+    jsxs('div', { className: 'huic-rev-tally', children: [
+      jsxs('div', { className: 'huic-rev-bar', 'aria-hidden': true, children: [
+        jsx('span', { className: 'is-keep', style: { width: pct(keep.length) } }),
+        jsx('span', { className: 'is-drop', style: { width: pct(drop.length) } })
+      ] }),
+      jsxs('div', { className: 'huic-rev-counts', children: [
+        jsxs('span', { className: 'is-keep', children: [jsx('i', {}), jsx('b', { children: keep.length }), ' ', keepLabel] }),
+        jsxs('span', { className: 'is-drop', children: [jsx('i', {}), jsx('b', { children: drop.length }), ' ', dropLabel] }),
+        jsxs('span', { className: 'is-open', children: [jsx('i', {}), jsx('b', { children: open }), ' ', t(lang, 'reviewOpen')] })
+      ] })
+    ] }),
+    editable && total > 1 ? jsxs('div', { className: 'huic-rev-bulk', children: [
+      jsx(Btn, { onClick: () => bulk('keep'), children: card.keepLabel ? t(lang, 'reviewAllAs', { x: keepLabel }) : t(lang, 'reviewKeepAll') }),
+      jsx(Btn, { onClick: () => bulk('drop'), children: card.dropLabel ? t(lang, 'reviewAllAs', { x: dropLabel }) : t(lang, 'reviewDropAll') }),
+      open && open < total ? jsx(Btn, { variant: 'ghost', onClick: keepRest, children: card.keepLabel ? t(lang, 'reviewRestAs', { x: keepLabel, n: open }) : t(lang, 'reviewKeepRest', { n: open }) }) : null,
+      changed ? jsx('span', { className: 'huic-rev-reset', children: jsx(Btn, { variant: 'ghost', onClick: reset, children: t(lang, 'reviewReset') }) }) : null
+    ] }) : null
+  ] })
+
+  return jsx(PlanFrame, {
+    card, display, labelId, frameRef, pinned, css: REVIEW_CSS, head,
+    children: [
+      jsx('ul', { className: 'huic-rev-list', 'aria-label': t(lang, 'reviewItemsLabel'), children: rows }, 'list'),
+      jsx('div', { className: 'huic-sr', role: 'status', 'aria-live': 'polite', children: announce }, 'live')
+    ],
+    footer: editable ? jsx(Footer, {
+      hint: open ? t(lang, 'reviewStillOpen', { n: open }) : t(lang, 'reviewAllDecided', { n: total }),
+      children: jsx(Btn, { variant: 'primary', onClick: send, children: card.applyLabel || t(lang, 'reviewApply') })
+    }) : null,
+    after: ans.status
+  })
+}
+
+CARD_COMPONENTS.review = ReviewCard
+REPLY_BUILDERS.review = (card, answer, lang, data) => {
+  const ids = new Set(card.items.map(i => i.id))
+  data.keep = answer.keep.filter(id => ids.has(id))
+  data.drop = answer.drop.filter(id => ids.has(id))
+  data.undecided = (answer.undecided || []).filter(id => ids.has(id))
+  data.notes = {}
+  for (const [id, text] of Object.entries(answer.notes || {})) {
+    const note = String(text ?? '').trim()
+    if (ids.has(id) && note) data.notes[id] = note
+  }
+  let summary = t(lang, 'rReview', { keep: data.keep.length, drop: data.drop.length })
+  if (data.undecided.length) summary += t(lang, 'rReviewOpen', { n: data.undecided.length })
+  // Titles help the model, but only while the whole reply stays under the cap.
+  const titles = Object.fromEntries(card.items.map(i => [i.id, i.title]))
+  const withTitles = `✓ ${summary}\n${REPLY_TAG} ${JSON.stringify({ ...data, titles })}`
+  if ([...withTitles].length <= MAX_REPLY) data.titles = titles
+  return { summary }
+}
+
+// ── 83-calc.js ──
+// calc: a live calculator. Inputs (number, slider, select, toggle) feed the outputs, which
+// recompute on every change with calcParse/calcEval (10-validate.js, never eval). Impossible
+// results (division by zero, sqrt of a negative, log ≤ 0) show "–". "Send" sends inputs and
+// outputs. Inputs are kept as a draft until then.
+
+Object.assign(STRINGS.en, {
+  calcSend: 'Send',
+  calcLive: 'Live',
+  calcLiveHint: 'Updates as you change the inputs',
+  calcInputs: 'Inputs',
+  calcResults: 'Results',
+  calcNotPossible: 'Not possible with these values',
+  calcFix: 'Fix the marked input to see the result',
+  calcRange: '{min} to {max}',
+  rCalc: 'Calculated: {x}'
+})
+Object.assign(STRINGS.de, {
+  calcSend: 'Senden',
+  calcLive: 'Live',
+  calcLiveHint: 'Rechnet bei jeder Änderung neu',
+  calcInputs: 'Eingaben',
+  calcResults: 'Ergebnis',
+  calcNotPossible: 'Mit diesen Werten nicht möglich',
+  calcFix: 'Markierte Eingabe korrigieren, dann gibt es ein Ergebnis',
+  calcRange: '{min} bis {max}',
+  rCalc: 'Berechnet: {x}'
+})
+
+const CALC_SYMBOLS = { EUR: '€', USD: '$', GBP: '£' }
+
+const CALC_CSS = `
+.huic[data-card-type="calc"] .huic-calc{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
+@container (min-width: 540px){.huic[data-card-type="calc"] .huic-calc{grid-template-columns:minmax(0,1.1fr) minmax(210px,.9fr)}}
+.huic[data-card-type="calc"] .huic-calc-inputs{display:flex;flex-direction:column;gap:13px;min-width:0}
+.huic[data-card-type="calc"] .huic-calc-field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.huic[data-card-type="calc"] .huic-calc-labelrow{display:flex;justify-content:space-between;align-items:center;gap:10px;min-width:0}
+.huic[data-card-type="calc"] .huic-calc-label{font-weight:500;font-size:12.5px;color:var(--ui-text-secondary)}
+.huic[data-card-type="calc"] .huic-calc-box{display:flex;align-items:center;min-width:0;border:1px solid var(--ui-stroke-secondary);border-radius:8px;background:color-mix(in srgb,var(--ui-bg-quaternary) 35%,transparent);transition:border-color .12s,box-shadow .12s}
+.huic[data-card-type="calc"] .huic-calc-box:focus-within{border-color:var(--huic-accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--huic-accent) 18%,transparent)}
+.huic[data-card-type="calc"] .huic-calc-box[data-invalid="true"]{border-color:var(--ui-red)}
+.huic[data-card-type="calc"] .huic-calc-box input{flex:1;min-width:0;height:34px;margin:0;padding:0 10px;border:0;background:transparent;color:inherit;font:inherit;font-size:14px;font-variant-numeric:tabular-nums;outline:none}
+.huic[data-card-type="calc"] .huic-calc-box input:disabled{color:var(--ui-text-secondary)}
+.huic[data-card-type="calc"] .huic-calc-unit{flex:none;padding:0 10px 0 0;color:var(--ui-text-tertiary);font-size:12.5px;white-space:nowrap}
+.huic[data-card-type="calc"] .huic-calc-box.is-small{flex:none;width:clamp(96px,38%,150px)}
+.huic[data-card-type="calc"] .huic-calc-box.is-small input{height:28px;padding:0 8px;text-align:right;font-size:13px;font-weight:600}
+.huic[data-card-type="calc"] .huic-calc-box.is-small .huic-calc-unit{padding-right:8px}
+.huic[data-card-type="calc"] .huic-calc-range{-webkit-appearance:none;appearance:none;display:block;width:100%;height:6px;margin:8px 0 2px;padding:0;border-radius:999px;background:linear-gradient(to right,var(--huic-accent) var(--fill),var(--ui-bg-quaternary) var(--fill));accent-color:var(--huic-accent);cursor:pointer}
+.huic[data-card-type="calc"] .huic-calc-range::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--huic-accent);border:3px solid var(--ui-chat-surface-background,var(--ui-base,Canvas));box-shadow:0 0 0 1px var(--huic-accent);transition:transform .1s}
+.huic[data-card-type="calc"] .huic-calc-range::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:var(--huic-accent);border:3px solid var(--ui-chat-surface-background,var(--ui-base,Canvas));box-shadow:0 0 0 1px var(--huic-accent)}
+.huic[data-card-type="calc"] .huic-calc-range::-moz-range-track{background:transparent}
+.huic[data-card-type="calc"] .huic-calc-range:hover:not(:disabled)::-webkit-slider-thumb{transform:scale(1.12)}
+.huic[data-card-type="calc"] .huic-calc-range:disabled{cursor:default;opacity:.7}
+.huic[data-card-type="calc"] .huic-calc-range:focus-visible{outline-offset:6px}
+.huic[data-card-type="calc"] .huic-calc-ends{display:flex;justify-content:space-between;color:var(--ui-text-tertiary);font-size:11px;font-variant-numeric:tabular-nums}
+.huic[data-card-type="calc"] .huic-calc-seg{display:flex;flex-wrap:wrap;padding:2px;gap:2px;border-radius:8px;background:var(--ui-bg-quaternary)}
+.huic[data-card-type="calc"] .huic-calc-seg button{flex:1 1 auto;min-height:28px;padding:3px 10px;border:0;border-radius:6px;background:transparent;color:var(--ui-text-secondary);font:inherit;font-size:12.5px;font-weight:500;cursor:pointer;transition:background .12s,color .12s}
+.huic[data-card-type="calc"] .huic-calc-seg button:hover:not(:disabled){color:var(--ui-text-primary)}
+.huic[data-card-type="calc"] .huic-calc-seg button[aria-checked="true"]{background:var(--ui-chat-surface-background,var(--ui-base));color:var(--ui-text-primary);box-shadow:0 0 0 1px var(--ui-stroke-tertiary),0 1px 2px color-mix(in srgb,var(--ui-text-primary) 12%,transparent)}
+.huic[data-card-type="calc"] .huic-calc-seg button:disabled{cursor:default}
+.huic[data-card-type="calc"] select.huic-input{height:34px;border-radius:8px;background:color-mix(in srgb,var(--ui-bg-quaternary) 35%,transparent)}
+.huic[data-card-type="calc"] select.huic-input option{background:var(--ui-chat-surface-background,var(--ui-base));color:var(--ui-text-primary)}
+.huic[data-card-type="calc"] .huic-calc-toggle{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:32px;cursor:pointer}
+.huic[data-card-type="calc"] .huic-calc-toggle:has(:disabled){cursor:default}
+.huic[data-card-type="calc"] input.huic-calc-switch{appearance:none;position:relative;flex:none;width:32px;height:18px;margin:0;border:1px solid var(--ui-stroke-secondary);border-radius:999px;background:var(--ui-bg-quaternary);cursor:inherit;transition:background .15s,border-color .15s}
+.huic[data-card-type="calc"] input.huic-calc-switch::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:var(--ui-text-secondary);transition:transform .15s}
+.huic[data-card-type="calc"] input.huic-calc-switch:checked{background:var(--huic-accent);border-color:var(--huic-accent)}
+.huic[data-card-type="calc"] input.huic-calc-switch:checked::after{transform:translateX(14px);background:var(--ui-chat-surface-background,var(--ui-base))}
+.huic[data-card-type="calc"] .huic-calc-out{position:relative;display:flex;flex-direction:column;gap:12px;min-width:0;padding:14px 16px 12px;border-radius:12px;border:1px solid color-mix(in srgb,var(--huic-accent) 26%,var(--ui-stroke-tertiary));background:linear-gradient(155deg,color-mix(in srgb,var(--huic-accent) 12%,transparent),color-mix(in srgb,var(--huic-accent) 3%,transparent) 70%)}
+.huic[data-card-type="calc"] .huic-calc-live{position:absolute;top:11px;right:13px;display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--huic-accent)}
+.huic[data-card-type="calc"] .huic-calc-live::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;animation:huic-calc-pulse 2.4s ease-in-out infinite}
+@keyframes huic-calc-pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.huic[data-card-type="calc"] .huic-calc-hero{display:flex;flex-direction:column;gap:2px;min-width:0}
+.huic[data-card-type="calc"] .huic-calc-hero+.huic-calc-hero{padding-top:10px;border-top:1px solid color-mix(in srgb,var(--huic-accent) 18%,var(--ui-stroke-tertiary))}
+.huic[data-card-type="calc"] .huic-calc-hero-label{font-size:12px;color:var(--ui-text-secondary);padding-right:52px}
+.huic[data-card-type="calc"] .huic-calc-hero+.huic-calc-hero .huic-calc-hero-label{padding-right:0}
+.huic[data-card-type="calc"] .huic-calc-hero-value{display:block;font-size:30px;font-weight:650;line-height:1.15;letter-spacing:-.02em;font-variant-numeric:tabular-nums;color:var(--ui-text-primary)}
+.huic.huic-compact[data-card-type="calc"] .huic-calc-hero-value{font-size:24px}
+.huic[data-card-type="calc"] .huic-calc-hero-value .huic-calc-suffix{font-size:15px;font-weight:500;letter-spacing:0;color:var(--ui-text-secondary);margin-left:1px}
+.huic[data-card-type="calc"] .huic-calc-rows{display:flex;flex-direction:column}
+.huic[data-card-type="calc"] .huic-calc-row{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:6px 0;border-top:1px solid color-mix(in srgb,var(--huic-accent) 18%,var(--ui-stroke-tertiary))}
+.huic[data-card-type="calc"] .huic-calc-row>span:first-child{color:var(--ui-text-secondary);min-width:0}
+.huic[data-card-type="calc"] .huic-calc-row>span:last-child{font-weight:600;font-variant-numeric:tabular-nums;text-align:right;flex:none;max-width:60%}
+.huic[data-card-type="calc"] .huic-calc-na{color:var(--ui-text-tertiary);font-weight:500}
+.huic[data-card-type="calc"] .huic-calc-why{margin:0;color:var(--ui-text-tertiary);font-size:11.5px}
+.huic[data-card-type="calc"] .huic-calc-pop{animation:huic-calc-pop .3s ease-out}
+@keyframes huic-calc-pop{from{opacity:.4;transform:translateY(3px)}to{opacity:1;transform:none}}
+.huic[data-card-type="calc"] .huic-calc-note{margin:0;color:var(--ui-text-tertiary);font-size:12px;white-space:pre-wrap}
+@media (prefers-reduced-motion: reduce){.huic[data-card-type="calc"] *{transition:none!important;animation:none!important}}
+`
+
+function calcLocale(lang) {
+  return lang === 'de' ? 'de-DE' : 'en-US'
+}
+
+function calcDecimals(output) {
+  return output.decimals ?? ((output.format || 'number') === 'integer' ? 0 : 2)
+}
+
+// Decimal rounding, half away from zero, without binary noise (30.075 → 30.08).
+function calcRoundTo(v, d) {
+  const f = 10 ** d
+  return (Math.sign(v) * Math.round(Number((Math.abs(v) * f).toPrecision(12)))) / f
+}
+
+// Same text as the CLI fallback: fixed decimals, then " %", the currency symbol or code, the unit.
+function calcFormat(output, value, card, lang) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return { num: '–', suffix: '', text: '–', ok: false }
+  const fmt = output.format || 'number'
+  const d = calcDecimals(output)
+  let v = calcRoundTo(fmt === 'percent' ? value * 100 : value, d)
+  if (v === 0) v = 0
+  const num = new Intl.NumberFormat(calcLocale(lang), { minimumFractionDigits: d, maximumFractionDigits: d }).format(v)
+  const parts = []
+  if (fmt === 'percent') parts.push('%')
+  if (fmt === 'currency') { const code = card.currency || 'EUR'; parts.push(CALC_SYMBOLS[code] || code) }
+  if (output.unit) parts.push(output.unit)
+  const suffix = parts.join(' ')
+  return { num, suffix, text: suffix ? `${num} ${suffix}` : num, ok: true }
+}
+
+// The value the model gets: rounded like the display (percent stays a fraction).
+function calcRound(output, value) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return null
+  const d = calcDecimals(output) + ((output.format || 'number') === 'percent' ? 2 : 0)
+  return calcRoundTo(value, Math.min(12, d))
+}
+
+function calcShow(n, lang) {
+  if (typeof n !== 'number' || !Number.isFinite(n)) return ''
+  const s = String(Number(n.toPrecision(12)))
+  return lang === 'de' ? s.replace('.', ',') : s
+}
+
+// Number fields show grouped values ("250,000") when not being edited.
+function calcShowGrouped(n, lang) {
+  if (typeof n !== 'number' || !Number.isFinite(n)) return ''
+  return new Intl.NumberFormat(calcLocale(lang), { maximumFractionDigits: 10 }).format(Number(n.toPrecision(12)))
+}
+
+function calcShowNice(n, lang) {
+  return new Intl.NumberFormat(calcLocale(lang), { maximumFractionDigits: 6 }).format(n)
+}
+
+// Typed numbers: "4.5", "4,5", "1,234.5", "1.234,5", "250 000".
+function calcNumber(text, lang) {
+  let s = String(text ?? '').trim().replace(/[\s  '’_]/g, '')
+  if (!s) return null
+  const comma = s.lastIndexOf(','), dot = s.lastIndexOf('.')
+  if (comma >= 0 && dot >= 0) s = comma > dot ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '')
+  else if (comma >= 0) s = lang !== 'de' && /^[-+]?\d{1,3}(,\d{3})+$/.test(s) ? s.replace(/,/g, '') : s.replace(',', '.')
+  else if (lang === 'de' && /^[-+]?\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, '')
+  s = s.replace(/^\+/, '').replace(/^−/, '-')
+  if (!/^-?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(s)) return null
+  const n = Number(s)
+  return Number.isFinite(n) ? n : null
+}
+
+function calcNiceStep(x) {
+  if (!(x > 0)) return 1
+  const p = 10 ** Math.floor(Math.log10(x))
+  const m = x / p
+  return Number(((m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p).toPrecision(6))
+}
+
+function calcRangeOf(input) {
+  const d = input.default
+  const min = input.min ?? Math.min(0, d)
+  let max = input.max ?? (d > min ? min + (d - min) * 2 : min + 100)
+  if (!(max > min)) max = min + 100
+  return { min, max, step: input.step ?? calcNiceStep((max - min) / 200) }
+}
+
+function calcKind(input) {
+  return input.kind || 'number'
+}
+
+function calcInitial(card, source, lang) {
+  const raw = {}
+  const src = source && typeof source === 'object' ? source : {}
+  for (const input of card.inputs) {
+    const kind = calcKind(input)
+    const v = src[input.name]
+    if (kind === 'select') raw[input.name] = typeof v === 'number' && input.options.some(o => o.value === v) ? v : input.default
+    else if (kind === 'toggle') raw[input.name] = v === 0 || v === 1 ? v : input.default
+    else {
+      const show = kind === 'slider' ? calcShow : calcShowGrouped
+      raw[input.name] = typeof v === 'string' ? v : show(typeof v === 'number' ? v : input.default, lang)
+    }
+  }
+  return raw
+}
+
+function calcCheck(input, raw, lang) {
+  const kind = calcKind(input)
+  if (kind === 'select' || kind === 'toggle') return { value: raw, error: null }
+  const n = calcNumber(raw, lang)
+  if (n === null) return { value: null, error: t(lang, 'errNumber') }
+  if (input.min !== undefined && n < input.min) return { value: null, error: t(lang, 'errMin', { min: calcShowNice(input.min, lang) }) }
+  if (input.max !== undefined && n > input.max) return { value: null, error: t(lang, 'errMax', { max: calcShowNice(input.max, lang) }) }
+  return { value: n, error: null }
+}
+
+function calcCompute(card, asts, values) {
+  return card.outputs.map((o, i) => (Array.isArray(asts[i]) ? calcEval(asts[i], values) : null))
+}
+
+function calcHeroIndexes(card) {
+  const marked = card.outputs.map((o, i) => (o.emphasis ? i : -1)).filter(i => i >= 0)
+  return marked.length ? marked : [0]
+}
+
+function CalcSegments({ input, value, disabled, labelId, onChange }) {
+  const pick = (v, el) => { onChange(v); el?.focus() }
+  return jsx('div', {
+    className: 'huic-calc-seg', role: 'radiogroup', 'aria-labelledby': labelId,
+    children: input.options.map((o, i) => jsx('button', {
+      type: 'button', role: 'radio', 'aria-checked': o.value === value, disabled,
+      tabIndex: o.value === value ? 0 : -1,
+      onClick: () => onChange(o.value),
+      onKeyDown: e => {
+        const dir = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[e.key]
+        if (!dir || e.altKey || e.ctrlKey || e.metaKey) return
+        e.preventDefault()
+        const n = input.options.length
+        const next = (i + dir + n) % n
+        pick(input.options[next].value, e.currentTarget.parentElement.children[next])
+      },
+      children: o.label
+    }, i))
+  })
+}
+
+function CalcInput({ input, raw, error, disabled, lang, baseId, onChange }) {
+  const kind = calcKind(input)
+  const id = `${baseId}-${input.name}`
+  const labelId = `${id}-label`
+  const errId = `${id}-err`
+  const label = jsx('label', { id: labelId, htmlFor: kind === 'select' && input.options.length <= 4 ? undefined : id, className: 'huic-calc-label', children: input.label })
+  const unit = input.unit ? jsx('span', { className: 'huic-calc-unit', 'aria-hidden': true, children: input.unit }) : null
+  const err = error ? jsx('span', { id: errId, className: 'huic-err', children: error }) : null
+
+  if (kind === 'toggle') {
+    return jsx('div', { className: 'huic-calc-field', children: jsxs('label', {
+      className: 'huic-calc-toggle', htmlFor: id,
+      children: [
+        jsx('span', { className: 'huic-calc-label', children: input.label }),
+        jsx('input', {
+          id, type: 'checkbox', role: 'switch', className: 'huic-calc-switch', checked: raw === 1, disabled,
+          onChange: e => onChange(e.target.checked ? 1 : 0)
+        })
+      ]
+    }) })
+  }
+
+  if (kind === 'select') {
+    const short = input.options.length <= 4 && input.options.every(o => [...o.label].length <= 18)
+    return jsxs('div', { className: 'huic-calc-field', children: [
+      jsx('span', { className: 'huic-calc-labelrow', children: short ? jsx('span', { id: labelId, className: 'huic-calc-label', children: input.label }) : label }),
+      short
+        ? jsx(CalcSegments, { input, value: raw, disabled, labelId, onChange })
+        : jsx('select', {
+            id, className: 'huic-input', disabled, value: String(input.options.findIndex(o => o.value === raw)),
+            onChange: e => onChange(input.options[Number(e.target.value)].value),
+            children: input.options.map((o, i) => jsx('option', { value: String(i), children: o.label }, i))
+          })
+    ] })
+  }
+
+  const step = input.step ?? (kind === 'slider' ? calcRangeOf(input).step : 1)
+  const nudge = e => {
+    if ((e.key !== 'ArrowUp' && e.key !== 'ArrowDown') || e.altKey || e.ctrlKey || e.metaKey || e.nativeEvent.isComposing) return
+    const current = calcNumber(raw, lang)
+    if (current === null) return
+    e.preventDefault()
+    let next = current + (e.key === 'ArrowUp' ? 1 : -1) * step * (e.shiftKey ? 10 : 1)
+    if (input.min !== undefined) next = Math.max(input.min, next)
+    if (input.max !== undefined) next = Math.min(input.max, next)
+    onChange(calcShow(Number(next.toPrecision(12)), lang))
+  }
+  const box = small => jsxs('span', {
+    className: cx('huic-calc-box', small && 'is-small'), 'data-invalid': error ? 'true' : undefined,
+    children: [
+      jsx('input', {
+        id, type: 'text', inputMode: 'decimal', autoComplete: 'off', spellCheck: false, value: raw, disabled,
+        'aria-invalid': error ? 'true' : undefined, 'aria-describedby': error ? errId : undefined,
+        'aria-label': input.unit ? `${input.label} (${input.unit})` : undefined,
+        onChange: e => onChange(e.target.value.slice(0, 40)), onKeyDown: nudge,
+        onBlur: kind === 'number' ? () => {
+          const n = calcNumber(raw, lang)
+          if (n !== null && calcShowGrouped(n, lang) !== raw) onChange(calcShowGrouped(n, lang))
+        } : undefined
+      }),
+      unit
+    ]
+  })
+
+  if (kind === 'slider') {
+    const range = calcRangeOf(input)
+    const n = calcNumber(raw, lang)
+    const pos = n === null ? range.min : Math.min(range.max, Math.max(range.min, n))
+    const fill = `${((pos - range.min) / (range.max - range.min)) * 100}%`
+    const shownMin = calcShowNice(range.min, lang), shownMax = calcShowNice(range.max, lang)
+    return jsxs('div', { className: 'huic-calc-field', children: [
+      jsxs('span', { className: 'huic-calc-labelrow', children: [label, box(true)] }),
+      jsx('input', {
+        type: 'range', className: 'huic-calc-range', min: range.min, max: range.max, step: range.step, value: pos, disabled,
+        style: { '--fill': fill }, 'aria-labelledby': labelId,
+        'aria-valuetext': n === null ? undefined : `${calcShowNice(n, lang)}${input.unit ? ' ' + input.unit : ''}`,
+        onChange: e => onChange(calcShow(Number(e.target.value), lang))
+      }),
+      jsxs('span', { className: 'huic-calc-ends', 'aria-hidden': true, children: [
+        jsx('span', { children: input.unit ? `${shownMin} ${input.unit}` : shownMin }),
+        jsx('span', { children: input.unit ? `${shownMax} ${input.unit}` : shownMax })
+      ] }),
+      err
+    ] })
+  }
+
+  return jsxs('div', { className: 'huic-calc-field', children: [jsx('span', { className: 'huic-calc-labelrow', children: label }), box(false), err] })
+}
+
+function CalcCard({ card, sessionId, display, lang }) {
+  const labelId = useId()
+  const baseId = useId()
+  const ans = useCardAnswer(card, sessionId, lang)
+  const sent = ans.answer?.selection?.inputs || ans.answer?.data?.inputs
+  const [localRaw, setRaw] = useState(() => calcInitial(card, ans.draft?.inputs, lang))
+  const raw = sent ? calcInitial(card, sent, lang) : localRaw
+  const [announce, setAnnounce] = useState('')
+  const names = useMemo(() => card.inputs.map(i => i.name), [card])
+  const asts = useMemo(() => card.outputs.map(o => calcParse(o.expr, names)), [card, names])
+  const editable = ans.showActions
+
+  const checks = card.inputs.map(input => calcCheck(input, raw[input.name], lang))
+  const invalid = checks.some(c => c.error)
+  const values = {}
+  card.inputs.forEach((input, i) => { if (!checks[i].error) values[input.name] = checks[i].value })
+  const results = calcCompute(card, asts, values)
+  const shown = card.outputs.map((o, i) => calcFormat(o, results[i], card, lang))
+  const heroes = calcHeroIndexes(card)
+  const rest = card.outputs.map((o, i) => i).filter(i => !heroes.includes(i))
+  const impossible = !invalid && shown.some(s => !s.ok)
+
+  // Screen readers hear the new results once typing pauses, not on every keystroke.
+  const spoken = card.outputs.map((o, i) => `${o.label}: ${shown[i].text}`).join('; ')
+  const firstRender = useRef(true)
+  useEffect(() => {
+    if (firstRender.current) { firstRender.current = false; return }
+    const timer = setTimeout(() => setAnnounce(spoken), 600)
+    return () => clearTimeout(timer)
+  }, [spoken])
+
+  const change = (name, value) => {
+    if (!editable) return
+    const next = { ...localRaw, [name]: value }
+    setRaw(next)
+    ans.saveDraft({ inputs: next })
+  }
+
+  const send = () => ans.submit({
+    inputs: Object.fromEntries(card.inputs.map(i => [i.name, values[i.name]])),
+    outputs: card.outputs.map((o, i) => ({ label: o.label, value: calcRound(o, results[i]) }))
+  })
+
+  const valueNode = (i, big) => {
+    const s = shown[i]
+    return jsxs('span', {
+      className: cx(big ? 'huic-calc-hero-value' : null, 'huic-calc-pop', !s.ok && 'huic-calc-na'),
+      children: [s.num, s.ok && s.suffix ? ' ' : null, s.ok && s.suffix ? jsx('span', { className: 'huic-calc-suffix', children: s.suffix }) : null]
+    }, s.text)
+  }
+
+  const panel = jsxs('div', {
+    className: 'huic-calc-out', role: 'group', 'aria-label': t(lang, 'calcResults'),
+    children: [
+      editable ? jsx('span', { className: 'huic-calc-live', title: t(lang, 'calcLiveHint'), children: t(lang, 'calcLive') }) : null,
+      ...heroes.map(i => jsxs('div', { className: 'huic-calc-hero', children: [
+        jsx('span', { className: 'huic-calc-hero-label', children: card.outputs[i].label }),
+        valueNode(i, true)
+      ] }, `h${i}`)),
+      rest.length ? jsx('div', { className: 'huic-calc-rows', children: rest.map(i => jsxs('div', {
+        className: 'huic-calc-row',
+        children: [jsx('span', { children: card.outputs[i].label }), valueNode(i, false)]
+      }, i)) }, 'rows') : null,
+      invalid ? jsx('p', { className: 'huic-calc-why', children: t(lang, 'calcFix') }, 'why')
+        : impossible ? jsx('p', { className: 'huic-calc-why', children: t(lang, 'calcNotPossible') }, 'why') : null
+    ]
+  })
+
+  return jsx(Shell, {
+    card, display, labelId, title: card.title,
+    children: [
+      jsx('style', { children: CALC_CSS }, 'css'),
+      jsxs('div', { className: 'huic-calc', children: [
+        jsx('div', { className: 'huic-calc-inputs', role: 'group', 'aria-label': t(lang, 'calcInputs'), children: card.inputs.map((input, i) => jsx(CalcInput, {
+          input, raw: raw[input.name], error: checks[i].error, disabled: !editable, lang, baseId,
+          onChange: value => change(input.name, value)
+        }, input.name)) }),
+        panel
+      ] }, 'calc'),
+      card.note ? jsx('p', { className: 'huic-calc-note', children: card.note }, 'note') : null,
+      jsx('div', { className: 'huic-sr', role: 'status', 'aria-live': 'polite', children: announce }, 'live')
+    ],
+    footer: editable ? jsx(Footer, {
+      hint: invalid ? t(lang, 'errFix') : undefined,
+      children: jsx(Btn, { variant: 'primary', disabled: invalid, onClick: send, children: card.sendLabel || t(lang, 'calcSend') })
+    }) : null,
+    after: ans.status
+  })
+}
+
+CARD_COMPONENTS.calc = CalcCard
+REPLY_BUILDERS.calc = (card, answer, lang, data) => {
+  data.inputs = { ...answer.inputs }
+  data.outputs = answer.outputs.map(o => ({ label: o.label, value: o.value ?? null }))
+  const i = calcHeroIndexes(card)[0]
+  const output = card.outputs[i]
+  const value = answer.outputs[i]?.value
+  return { summary: t(lang, 'rCalc', { x: `${clip(output.label, 40)} ${calcFormat(output, value, card, lang).text}` }) }
+}
+
+// ── 84-decision.js ──
+// decision: weight the criteria, watch the options re-rank live, then pick one or send the weights.
+
+Object.assign(STRINGS.en, {
+  decCriteria: 'What matters to you',
+  decRanking: 'Ranking',
+  decWeight: 'Weight {n} of 10',
+  decLeader: 'Leader',
+  decTied: 'Tied',
+  decTiedNote: 'Tied at the top for these weights',
+  decScoreOf: 'Score {s} of 10',
+  decRankOf: 'Rank {n} of {total}',
+  decNoWeights: 'All weights are 0. Raise at least one to rank.',
+  decHint: 'Move the sliders and the ranking updates. Tap an option to pick it.',
+  decSendWeights: 'Send weights',
+  decChoose: 'Choose {x}',
+  decPicked: 'Picked',
+  decReset: 'Reset weights',
+  rDecision: 'Decision: {a} ({as}) ahead of {b} ({bs})',
+  rDecisionPicked: 'Picked: {x} ({s})'
+})
+Object.assign(STRINGS.de, {
+  decCriteria: 'Was dir wichtig ist',
+  decRanking: 'Rangfolge',
+  decWeight: 'Gewicht {n} von 10',
+  decLeader: 'Vorn',
+  decTied: 'Gleichauf',
+  decTiedNote: 'Mit diesen Gewichten gleichauf an der Spitze',
+  decScoreOf: 'Wert {s} von 10',
+  decRankOf: 'Platz {n} von {total}',
+  decNoWeights: 'Alle Gewichte sind 0. Erhöhe mindestens eines, um zu ordnen.',
+  decHint: 'Verschiebe die Regler, die Rangfolge passt sich an. Tippe eine Option an, um sie zu wählen.',
+  decSendWeights: 'Gewichte senden',
+  decChoose: '{x} wählen',
+  decPicked: 'Gewählt',
+  decReset: 'Gewichte zurücksetzen',
+  rDecision: 'Entscheidung: {a} ({as}) vor {b} ({bs})',
+  rDecisionPicked: 'Gewählt: {x} ({s})'
+})
+
+const DECISION_CSS = `
+.huic[data-card-type="decision"] .huic-dec-section{margin:0;padding:0;border:0;display:flex;flex-direction:column;gap:2px;min-width:0}
+.huic[data-card-type="decision"] .huic-dec-h{margin:0 0 4px;padding:0;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ui-text-tertiary)}
+.huic[data-card-type="decision"] .huic-dec-crit{display:grid;grid-template-columns:minmax(0,11fr) minmax(0,12fr) 3ch;align-items:center;gap:4px 12px;padding:4px 0}
+.huic[data-card-type="decision"] .huic-dec-crit-label{font-weight:500;min-width:0}
+.huic[data-card-type="decision"] .huic-dec-crit-val{white-space:nowrap;font-weight:600;font-variant-numeric:tabular-nums;text-align:right;color:var(--huic-accent)}
+.huic[data-card-type="decision"] .huic-dec-range{-webkit-appearance:none;appearance:none;display:block;width:100%;height:6px;margin:8px 0;padding:0;border-radius:999px;background:linear-gradient(to right,var(--huic-accent) var(--fill),var(--ui-bg-quaternary) var(--fill));accent-color:var(--huic-accent);cursor:pointer}
+.huic[data-card-type="decision"] .huic-dec-range::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:var(--huic-accent);border:3px solid var(--ui-chat-surface-background,var(--ui-base,Canvas));box-shadow:0 0 0 1px var(--huic-accent);transition:transform .1s}
+.huic[data-card-type="decision"] .huic-dec-range::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:var(--huic-accent);border:3px solid var(--ui-chat-surface-background,var(--ui-base,Canvas));box-shadow:0 0 0 1px var(--huic-accent)}
+.huic[data-card-type="decision"] .huic-dec-range::-moz-range-track{background:transparent}
+.huic[data-card-type="decision"] .huic-dec-range:hover:not(:disabled)::-webkit-slider-thumb{transform:scale(1.12)}
+.huic[data-card-type="decision"] .huic-dec-range:disabled{cursor:default}
+.huic[data-card-type="decision"] .huic-dec-range:focus-visible{outline-offset:6px}
+.huic[data-card-type="decision"] .huic-dec-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.huic[data-card-type="decision"] .huic-dec-list>li{margin:0;padding:0;display:block}
+.huic[data-card-type="decision"] .huic-dec-opt{position:relative;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:2px 10px;width:100%;padding:9px 11px;border-radius:10px;border:1px solid var(--ui-stroke-tertiary);background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;transition:background .12s,border-color .12s}
+.huic[data-card-type="decision"] .huic-dec-opt:hover:not([disabled]){background:var(--ui-control-hover-background)}
+.huic[data-card-type="decision"] .huic-dec-opt[disabled]{cursor:default}
+.huic[data-card-type="decision"] .huic-dec-opt[aria-pressed="true"]{border-color:var(--huic-accent);background:color-mix(in srgb,var(--huic-accent) 10%,transparent)}
+.huic[data-card-type="decision"] .huic-dec-lead{border-color:color-mix(in srgb,var(--huic-accent) 55%,var(--ui-stroke-tertiary))}
+.huic[data-card-type="decision"] .huic-dec-rank{grid-row:1/3;align-self:start;display:inline-grid;place-items:center;width:22px;height:22px;margin-top:1px;border-radius:50%;border:1px solid var(--ui-stroke-secondary);font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--ui-text-tertiary)}
+.huic[data-card-type="decision"] .huic-dec-lead .huic-dec-rank{background:var(--huic-accent);border-color:var(--huic-accent);color:var(--ui-chat-surface-background,var(--ui-base,Canvas))}
+.huic[data-card-type="decision"] .huic-dec-name{display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;min-width:0;font-weight:600}
+.huic[data-card-type="decision"] .huic-dec-score{font-size:18px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums;text-align:right}
+.huic[data-card-type="decision"] .huic-dec-score small{font-size:11px;font-weight:500;color:var(--ui-text-tertiary)}
+.huic[data-card-type="decision"] .huic-dec-lead .huic-dec-score{color:var(--huic-accent)}
+.huic[data-card-type="decision"] .huic-dec-bar{grid-column:2/4;height:6px;border-radius:999px;background:var(--ui-bg-quaternary);overflow:hidden;margin-top:2px}
+.huic[data-card-type="decision"] .huic-dec-bar>span{display:block;height:100%;border-radius:999px;background:color-mix(in srgb,var(--huic-accent) 45%,var(--ui-text-tertiary));transition:width .25s ease}
+.huic[data-card-type="decision"] .huic-dec-lead .huic-dec-bar>span{background:var(--huic-accent)}
+.huic[data-card-type="decision"] .huic-dec-note{grid-column:2/4;color:var(--ui-text-tertiary);font-size:12px}
+.huic[data-card-type="decision"] .huic-dec-warn{margin:0;color:var(--ui-text-tertiary);font-size:12px}
+@container (max-width: 440px){
+  .huic[data-card-type="decision"] .huic-dec-crit{grid-template-columns:minmax(0,1fr) 3ch}
+  .huic[data-card-type="decision"] .huic-dec-crit-label{grid-column:1}
+  .huic[data-card-type="decision"] .huic-dec-crit-val{grid-column:2;grid-row:1}
+  .huic[data-card-type="decision"] .huic-dec-range{grid-column:1/3;grid-row:2;margin:4px 0 6px}
+  .huic[data-card-type="decision"] .huic-dec-score{font-size:16px}
+}
+@media (prefers-reduced-motion: reduce){.huic[data-card-type="decision"] .huic-dec-bar>span,.huic[data-card-type="decision"] .huic-dec-range::-webkit-slider-thumb{transition:none !important}}
+`
+
+function decScoreNumber(value) { return Math.round(value * 10) / 10 }
+
+function decScoreText(value, lang) {
+  const text = decScoreNumber(value).toFixed(1)
+  return lang === 'de' ? text.replace('.', ',') : text
+}
+
+// weights: {criterionId: int}. Sum(weight * score) / sum(weight); 0 when every weight is 0.
+function decRank(card, weights) {
+  const total = card.criteria.reduce((sum, c) => sum + (weights[c.id] || 0), 0)
+  const rows = card.options.map((o, index) => {
+    const raw = total > 0 ? card.criteria.reduce((sum, c) => sum + (weights[c.id] || 0) * (o.scores[c.id] || 0), 0) / total : 0
+    return { option: o, index, raw, score: decScoreNumber(raw) }
+  })
+  rows.sort((a, b) => b.raw - a.raw || a.index - b.index)
+  return { rows, total }
+}
+
+function decCleanWeights(card, source) {
+  const out = {}
+  for (const c of card.criteria) {
+    const v = source && typeof source === 'object' ? source[c.id] : undefined
+    out[c.id] = Number.isInteger(v) && v >= 0 && v <= 10 ? v : c.weight
+  }
+  return out
+}
+
+function DecisionCard({ card, sessionId, display, lang }) {
+  const labelId = useId()
+  const headId = useId()
+  const ans = useCardAnswer(card, sessionId, lang)
+  const sent = ans.answer && ans.answer.data
+  const [state, setState] = useState(() => {
+    const picked = ans.draft?.picked
+    return {
+      weights: decCleanWeights(card, ans.draft?.weights),
+      picked: card.options.some(o => o.id === picked) ? picked : null
+    }
+  })
+  const weights = sent ? decCleanWeights(card, sent.weights) : state.weights
+  const picked = sent ? (sent.picked || null) : state.picked
+  const { rows, total } = decRank(card, weights)
+  const tied = rows.length > 1 && rows[0].raw - rows[1].raw < 1e-9 && total > 0
+  const changed = card.criteria.some(c => weights[c.id] !== c.weight)
+
+  const update = next => {
+    setState(next)
+    ans.saveDraft({ weights: next.weights, picked: next.picked })
+  }
+  const setWeight = (id, value) => {
+    if (ans.locked) return
+    update({ ...state, weights: { ...state.weights, [id]: value } })
+  }
+  const pick = id => {
+    if (ans.locked) return
+    update({ ...state, picked: state.picked === id ? null : id })
+  }
+
+  // FLIP: rows glide to their new place when the ranking changes (skipped for reduced motion).
+  const itemRefs = useRef(new Map())
+  const lastTops = useRef(new Map())
+  const orderKey = rows.map(r => r.option.id).join(',')
+  useEffect(() => {
+    const reduce = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const next = new Map()
+    for (const [id, el] of itemRefs.current) {
+      if (!el) continue
+      const top = el.getBoundingClientRect().top
+      next.set(id, top)
+      const before = lastTops.current.get(id)
+      if (!reduce && before !== undefined && Math.abs(before - top) > 1 && typeof el.animate === 'function') {
+        el.animate([{ transform: `translateY(${before - top}px)` }, { transform: 'none' }], { duration: 220, easing: 'ease-out' })
+      }
+    }
+    lastTops.current = next
+  }, [orderKey])
+
+  const send = () => {
+    const ranking = rows.map(r => ({ id: r.option.id, label: r.option.label, score: r.score }))
+    ans.submit({ weights, ranking, ...(picked ? { picked } : {}) })
+  }
+  const pickedRow = rows.find(r => r.option.id === picked)
+
+  return jsx(Shell, {
+    card, display, labelId, title: card.title, subtitle: card.note,
+    children: [
+      jsx('style', { children: DECISION_CSS }),
+      jsxs('fieldset', {
+        className: 'huic-dec-section',
+        children: [
+          jsx('legend', { className: 'huic-dec-h', id: headId, children: t(lang, 'decCriteria') }),
+          ...card.criteria.map(c => {
+            const w = weights[c.id]
+            return jsxs('div', {
+              className: 'huic-dec-crit',
+              children: [
+                jsx('span', { className: 'huic-dec-crit-label', 'aria-hidden': true, children: c.label }),
+                jsx('input', {
+                  type: 'range', className: 'huic-dec-range', min: 0, max: 10, step: 1, value: w,
+                  disabled: ans.locked, 'aria-label': c.label,
+                  'aria-valuetext': t(lang, 'decWeight', { n: w }),
+                  style: { '--fill': `${w * 10}%` },
+                  onChange: e => setWeight(c.id, Number(e.target.value))
+                }),
+                jsx('span', { className: 'huic-dec-crit-val', 'aria-hidden': true, children: w })
+              ]
+            }, c.id)
+          })
+        ]
+      }, 'criteria'),
+      jsxs('div', {
+        className: 'huic-dec-section',
+        children: [
+          jsx('h4', { className: 'huic-dec-h', children: t(lang, 'decRanking') }),
+          total === 0 ? jsx('p', { className: 'huic-dec-warn', role: 'status', children: t(lang, 'decNoWeights') }) : null,
+          jsx('ol', {
+            className: 'huic-dec-list', 'aria-label': t(lang, 'decRanking'),
+            children: rows.map((r, i) => {
+              const lead = i === 0 && total > 0 && !tied
+              const o = r.option
+              return jsx('li', {
+                ref: el => { if (el) itemRefs.current.set(o.id, el); else itemRefs.current.delete(o.id) },
+                children: jsxs('button', {
+                  type: 'button',
+                  className: cx('huic-dec-opt', lead && 'huic-dec-lead'),
+                  'aria-pressed': picked === o.id,
+                  disabled: ans.locked,
+                  onClick: () => pick(o.id),
+                  children: [
+                    jsx('span', { className: 'huic-dec-rank', 'aria-hidden': true, children: i + 1 }),
+                    jsxs('span', { className: 'huic-dec-name', children: [
+                      jsx('span', { children: o.label }),
+                      lead ? jsx('span', { className: 'huic-badge huic-best', children: t(lang, 'decLeader') }) : null,
+                      i === 0 && tied ? jsx('span', { className: 'huic-badge', children: t(lang, 'decTied') }) : null,
+                      picked === o.id ? jsx('span', { className: 'huic-badge huic-best', children: `✓ ${t(lang, 'decPicked')}` }) : null
+                    ] }),
+                    jsxs('span', { className: 'huic-dec-score', 'aria-hidden': true, children: [
+                      decScoreText(r.raw, lang), jsx('small', { children: ' /10' })
+                    ] }),
+                    jsx('span', { className: 'huic-sr', children: `${t(lang, 'decRankOf', { n: i + 1, total: rows.length })}. ${t(lang, 'decScoreOf', { s: decScoreText(r.raw, lang) })}` }),
+                    jsx('span', { className: 'huic-dec-bar', 'aria-hidden': true, children: jsx('span', { style: { width: `${r.raw * 10}%` } }) }),
+                    o.note ? jsx('span', { className: 'huic-dec-note', children: o.note }) : null
+                  ]
+                })
+              }, o.id)
+            })
+          })
+        ]
+      }, 'ranking')
+    ],
+    footer: ans.showActions ? jsx(Footer, {
+      hint: t(lang, 'decHint'),
+      children: jsxs(Fragment, { children: [
+        changed ? jsx(Btn, {
+          variant: 'ghost',
+          onClick: () => update({ ...state, weights: decCleanWeights(card, null) }),
+          children: t(lang, 'decReset')
+        }) : null,
+        jsx(Btn, {
+          variant: 'primary', onClick: send,
+          children: pickedRow ? t(lang, 'decChoose', { x: pickedRow.option.label }) : (card.submitLabel || t(lang, 'decSendWeights'))
+        })
+      ] })
+    }) : null,
+    after: ans.status
+  })
+}
+
+REPLY_BUILDERS.decision = (card, answer, lang, data) => {
+  const optionById = new Map(card.options.map(o => [o.id, o]))
+  data.weights = {}
+  for (const c of card.criteria) data.weights[c.id] = answer.weights[c.id]
+  data.ranking = answer.ranking.map(r => ({ id: r.id, label: r.label, score: r.score }))
+  if (answer.picked && optionById.has(answer.picked)) data.picked = answer.picked
+  const sc = r => decScoreText(r.score, lang)
+  if (data.picked) {
+    const row = data.ranking.find(r => r.id === data.picked)
+    return { mark: '✓', summary: t(lang, 'rDecisionPicked', { x: clip(row.label), s: sc(row) }) }
+  }
+  const [a, b] = data.ranking
+  return { mark: '✓', summary: t(lang, 'rDecision', { a: clip(a.label, 30), as: sc(a), b: clip(b.label, 30), bs: sc(b) }) }
+}
+CARD_COMPONENTS.decision = DecisionCard
+
+// ── 85-rank.js ──
+// rank: put items in order. Drag the grip, press Alt+↑/↓, or use the move buttons; every move is announced.
+
+Object.assign(STRINGS.en, {
+  rankList: 'Your order',
+  rankMoveUp: 'Move {x} up',
+  rankMoveDown: 'Move {x} down',
+  rankMoved: '{x} moved to position {n} of {total}.',
+  rankGrabbed: 'Dragging {x}. Position {n} of {total}.',
+  rankRank: 'Position {n} of {total}',
+  rankHint: 'Drag, or Alt+↑/↓ to move',
+  rankSend: 'Send order',
+  rankReset: 'Reset order',
+  rRanked: 'Ranked: {x}'
+})
+Object.assign(STRINGS.de, {
+  rankList: 'Deine Reihenfolge',
+  rankMoveUp: '{x} nach oben',
+  rankMoveDown: '{x} nach unten',
+  rankMoved: '{x} auf Platz {n} von {total}.',
+  rankGrabbed: '{x} wird verschoben. Platz {n} von {total}.',
+  rankRank: 'Platz {n} von {total}',
+  rankHint: 'Ziehen oder Alt+↑/↓ zum Verschieben',
+  rankSend: 'Reihenfolge senden',
+  rankReset: 'Zurücksetzen',
+  rRanked: 'Reihenfolge: {x}'
+})
+
+const RANK_CSS = `
+.huic[data-card-type="rank"] .huic-rank-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.huic[data-card-type="rank"] .huic-rank-item{position:relative;display:flex;align-items:center;gap:10px;margin:0;padding:8px 8px 8px 6px;border:1px solid var(--ui-stroke-tertiary);border-radius:10px;background:var(--ui-chat-surface-background,var(--ui-base,Canvas));transition:border-color .12s,box-shadow .12s}
+.huic[data-card-type="rank"] .huic-rank-item:focus-within{border-color:var(--ui-stroke-secondary)}
+.huic[data-card-type="rank"] .huic-rank-item.huic-rank-drag{z-index:2;border-color:var(--huic-accent);box-shadow:0 6px 18px color-mix(in srgb,var(--ui-text-primary) 18%,transparent);transition:none}
+.huic[data-card-type="rank"] .huic-rank-grip{flex:none;display:grid;place-items:center;width:22px;align-self:stretch;margin:-2px 0;border-radius:6px;color:var(--ui-text-quaternary,var(--ui-text-tertiary));cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+.huic[data-card-type="rank"] .huic-rank-grip:hover{color:var(--ui-text-secondary);background:var(--ui-control-hover-background)}
+.huic[data-card-type="rank"] .huic-rank-drag .huic-rank-grip{cursor:grabbing}
+.huic[data-card-type="rank"] .huic-rank-grip svg{width:12px;height:16px}
+.huic[data-card-type="rank"] .huic-rank-pos{flex:none;display:inline-grid;place-items:center;min-width:24px;height:24px;border-radius:50%;background:var(--ui-bg-quaternary);color:var(--ui-text-secondary);font-size:12px;font-weight:700;font-variant-numeric:tabular-nums}
+.huic[data-card-type="rank"] .huic-rank-item[data-pos="1"] .huic-rank-pos{background:var(--huic-accent);color:var(--ui-chat-surface-background,var(--ui-base,Canvas))}
+.huic[data-card-type="rank"] .huic-rank-text{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
+.huic[data-card-type="rank"] .huic-rank-label{font-weight:500}
+.huic[data-card-type="rank"] .huic-rank-detail{color:var(--ui-text-tertiary);font-size:12px}
+.huic[data-card-type="rank"] .huic-rank-moves{flex:none;display:flex;flex-direction:column;gap:2px}
+.huic[data-card-type="rank"] .huic-rank-move{display:grid;place-items:center;width:28px;height:22px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--ui-text-secondary);cursor:pointer}
+.huic[data-card-type="rank"] .huic-rank-move:hover:not([aria-disabled="true"]){background:var(--ui-control-hover-background);color:var(--ui-text-primary)}
+.huic[data-card-type="rank"] .huic-rank-move[aria-disabled="true"]{opacity:.3;cursor:default}
+.huic[data-card-type="rank"] .huic-rank-move svg{width:12px;height:12px}
+.huic[data-card-type="rank"] .huic-rank-locked .huic-rank-item{padding-left:10px}
+@container (max-width: 440px){
+  .huic[data-card-type="rank"] .huic-rank-moves{flex-direction:row;gap:4px}
+  .huic[data-card-type="rank"] .huic-rank-move{width:34px;height:34px;border:1px solid var(--ui-stroke-tertiary)}
+  .huic[data-card-type="rank"] .huic-rank-item{gap:8px}
+}
+@media (prefers-reduced-motion: reduce){.huic[data-card-type="rank"] .huic-rank-item{transition:none !important}}
+`
+
+// A saved or sent order must be a permutation of the card's items; anything else falls back to the card order.
+function rankCleanOrder(card, order) {
+  const ids = card.items.map(i => i.id)
+  if (Array.isArray(order) && order.length === ids.length && ids.every(id => order.includes(id)) && new Set(order).size === ids.length) return [...order]
+  return ids
+}
+
+function rankMoved(order, id, to) {
+  const from = order.indexOf(id)
+  if (from < 0 || to < 0 || to >= order.length || from === to) return order
+  const next = order.filter(x => x !== id)
+  next.splice(to, 0, id)
+  return next
+}
+
+function RankChevron({ down }) {
+  return jsx('svg', {
+    viewBox: '0 0 12 12', fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, 'aria-hidden': true,
+    children: jsx('path', { d: down ? 'm2.5 4.5 3.5 3.5 3.5-3.5' : 'm2.5 7.5 3.5-3.5 3.5 3.5', strokeLinecap: 'round', strokeLinejoin: 'round' })
+  })
+}
+
+function RankCard({ card, sessionId, display, lang }) {
+  const labelId = useId()
+  const ans = useCardAnswer(card, sessionId, lang)
+  const sent = ans.answer && ans.answer.data
+  const [order, setOrder] = useState(() => rankCleanOrder(card, ans.draft?.order))
+  const shown = sent ? rankCleanOrder(card, sent.order) : order
+  const byId = useMemo(() => new Map(card.items.map(i => [i.id, i])), [card])
+  const [announce, setAnnounce] = useState('')
+  const [dragId, setDragId] = useState(null)
+  const rowRefs = useRef(new Map())
+  const lastTops = useRef(new Map())
+  const focusReq = useRef(null)
+  const drag = useRef(null)
+  const interactive = !ans.locked
+
+  const apply = (next, id, message) => {
+    if (next === order) return
+    setOrder(next)
+    ans.saveDraft({ order: next })
+    if (message) setAnnounce(t(lang, 'rankMoved', { x: byId.get(id).label, n: next.indexOf(id) + 1, total: next.length }))
+  }
+  const moveTo = (id, to, e) => {
+    const next = rankMoved(order, id, to)
+    if (next === order) return
+    const active = typeof document !== 'undefined' ? document.activeElement : null
+    if (e && e.currentTarget && e.currentTarget.contains && e.currentTarget.contains(active)) {
+      focusReq.current = { id, move: active.getAttribute && active.getAttribute('data-move') }
+    }
+    apply(next, id, true)
+  }
+  const onKeyDown = (e, id) => {
+    if (!interactive || !e.altKey || e.ctrlKey || e.metaKey || e.nativeEvent.isComposing) return
+    const index = order.indexOf(id)
+    const to = e.key === 'ArrowUp' ? index - 1 : e.key === 'ArrowDown' ? index + 1 : e.key === 'Home' ? 0 : e.key === 'End' ? order.length - 1 : null
+    if (to === null) return
+    e.preventDefault()
+    moveTo(id, to, e)
+  }
+
+  // Keep keyboard focus on the same button after the row moved (React may re-insert the node).
+  // FLIP: other rows glide to their new place (skipped for reduced motion, and for the row under the pointer).
+  const orderKey = shown.join(',')
+  useEffect(() => {
+    const req = focusReq.current
+    focusReq.current = null
+    if (req) {
+      const row = rowRefs.current.get(req.id)
+      const target = row && (row.querySelector(`[data-move="${req.move}"]`) || row.querySelector('[data-move]'))
+      if (target && document.activeElement !== target) target.focus()
+    }
+    const reduce = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const next = new Map()
+    for (const [id, el] of rowRefs.current) {
+      if (!el || (drag.current && drag.current.id === id)) continue
+      const top = el.getBoundingClientRect().top
+      next.set(id, top)
+      const before = lastTops.current.get(id)
+      if (!reduce && before !== undefined && Math.abs(before - top) > 1 && typeof el.animate === 'function') {
+        el.animate([{ transform: `translateY(${before - top}px)` }, { transform: 'none' }], { duration: 180, easing: 'ease-out' })
+      }
+    }
+    lastTops.current = next
+    place()
+  }, [orderKey])
+
+  // Pointer drag on the grip: the row follows the pointer, the others make room.
+  const place = () => {
+    const d = drag.current
+    const el = d && rowRefs.current.get(d.id)
+    if (!el) return
+    el.style.transform = 'none'
+    const natural = el.getBoundingClientRect().top
+    el.style.transform = `translateY(${d.y - d.grab - natural}px)`
+  }
+  const dragStart = (e, id) => {
+    if (!interactive || (e.button !== undefined && e.button !== 0)) return
+    const el = rowRefs.current.get(id)
+    if (!el) return
+    try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* not capturable: drag still follows move events */ }
+    drag.current = { id, grab: e.clientY - el.getBoundingClientRect().top, y: e.clientY }
+    setDragId(id)
+    setAnnounce(t(lang, 'rankGrabbed', { x: byId.get(id).label, n: order.indexOf(id) + 1, total: order.length }))
+    e.preventDefault()
+  }
+  const dragMove = e => {
+    const d = drag.current
+    if (!d) return
+    d.y = e.clientY
+    let to = 0
+    for (const id of order) {
+      if (id === d.id) continue
+      const r = rowRefs.current.get(id).getBoundingClientRect()
+      if (d.y > r.top + r.height / 2) to++
+    }
+    const next = rankMoved(order, d.id, to)
+    if (next !== order) apply(next, d.id, false)
+    else place()
+  }
+  const dragEnd = () => {
+    const d = drag.current
+    if (!d) return
+    drag.current = null
+    const el = rowRefs.current.get(d.id)
+    if (el) el.style.transform = ''
+    setDragId(null)
+    setAnnounce(t(lang, 'rankMoved', { x: byId.get(d.id).label, n: order.indexOf(d.id) + 1, total: order.length }))
+  }
+
+  const changed = shown.some((id, i) => id !== card.items[i].id)
+  const send = () => ans.submit({ order, labels: order.map(id => byId.get(id).label) })
+
+  return jsx(Shell, {
+    card, display, labelId, title: card.title, subtitle: card.prompt,
+    children: [
+      jsx('style', { children: RANK_CSS }),
+      jsx('ol', {
+        className: cx('huic-rank-list', !interactive && 'huic-rank-locked'),
+        'aria-label': t(lang, 'rankList'),
+        children: shown.map((id, i) => {
+          const item = byId.get(id)
+          return jsxs('li', {
+            ref: el => { if (el) rowRefs.current.set(id, el); else rowRefs.current.delete(id) },
+            className: cx('huic-rank-item', dragId === id && 'huic-rank-drag'),
+            'data-pos': i + 1,
+            onKeyDown: e => onKeyDown(e, id),
+            children: [
+              interactive ? jsx('div', {
+                className: 'huic-rank-grip', 'aria-hidden': true,
+                onPointerDown: e => dragStart(e, id), onPointerMove: dragMove, onPointerUp: dragEnd, onPointerCancel: dragEnd,
+                children: jsx('svg', {
+                  viewBox: '0 0 12 16', fill: 'currentColor',
+                  children: [3, 8, 13].flatMap(y => [3, 9].map(x => jsx('circle', { cx: x, cy: y, r: 1.3 }, `${x}-${y}`)))
+                })
+              }) : null,
+              jsx('span', { className: 'huic-rank-pos', 'aria-hidden': true, children: i + 1 }),
+              jsxs('span', { className: 'huic-rank-text', children: [
+                jsx('span', { className: 'huic-rank-label', children: item.label }),
+                item.detail ? jsx('span', { className: 'huic-rank-detail', children: item.detail }) : null
+              ] }),
+              interactive ? jsxs('span', { className: 'huic-rank-moves', children: [
+                jsx('button', {
+                  type: 'button', className: 'huic-rank-move', 'data-move': 'up',
+                  'aria-label': t(lang, 'rankMoveUp', { x: item.label }), 'aria-disabled': i === 0 ? 'true' : undefined,
+                  onClick: e => { if (i > 0) moveTo(id, i - 1, e) },
+                  children: jsx(RankChevron, {})
+                }),
+                jsx('button', {
+                  type: 'button', className: 'huic-rank-move', 'data-move': 'down',
+                  'aria-label': t(lang, 'rankMoveDown', { x: item.label }), 'aria-disabled': i === shown.length - 1 ? 'true' : undefined,
+                  onClick: e => { if (i < shown.length - 1) moveTo(id, i + 1, e) },
+                  children: jsx(RankChevron, { down: true })
+                })
+              ] }) : null,
+              jsx('span', { className: 'huic-sr', children: t(lang, 'rankRank', { n: i + 1, total: shown.length }) })
+            ]
+          }, id)
+        })
+      }),
+      jsx('div', { className: 'huic-sr', role: 'status', 'aria-live': 'polite', children: announce })
+    ],
+    footer: ans.showActions ? jsx(Footer, {
+      hint: t(lang, 'rankHint'),
+      children: jsxs(Fragment, { children: [
+        changed ? jsx(Btn, { variant: 'ghost', onClick: () => { const next = card.items.map(i => i.id); setOrder(next); ans.saveDraft({ order: next }); setAnnounce('') }, children: t(lang, 'rankReset') }) : null,
+        jsx(Btn, { variant: 'primary', onClick: send, children: card.submitLabel || t(lang, 'rankSend') })
+      ] })
+    }) : null,
+    after: ans.status
+  })
+}
+
+REPLY_BUILDERS.rank = (card, answer, lang, data) => {
+  const byId = new Map(card.items.map(i => [i.id, i]))
+  const order = rankCleanOrder(card, answer.order)
+  data.order = order
+  data.labels = order.map(id => byId.get(id).label)
+  const labels = data.labels.slice(0, 5).map(x => clip(x, 30))
+  return { mark: '✓', summary: t(lang, 'rRanked', { x: labels.join(' > ') + (data.labels.length > 5 ? ' > …' : '') }) }
+}
+CARD_COMPONENTS.rank = RankCard
+
+// ── 86-recipe.js ──
+// recipe: scale the servings, tick what is already at home, send the shopping list for the rest.
+
+Object.assign(STRINGS.en, {
+  rcpServings: 'Servings',
+  rcpFewer: 'Fewer servings',
+  rcpMore: 'More servings',
+  rcpServingsN: '{n} servings',
+  rcpServingsOne: '1 serving',
+  rcpOriginal: 'Original: {n}',
+  rcpIngredients: 'Ingredients',
+  rcpHaveHint: 'Tick what you already have',
+  rcpToBuy: '{n} of {total} still to buy',
+  rcpAllHave: 'You have everything',
+  rcpSteps: 'Steps',
+  rcpOther: 'Also',
+  rcpMinutes: '{n} min',
+  rcpTotalTime: 'about {x}',
+  rcpHave: 'have',
+  rcpShopping: 'Shopping list',
+  rcpHaveShort: 'Have everything',
+  rShopping: 'Shopping list for {n}: {x}',
+  rHaveAll: 'Have everything for {n} servings'
+})
+Object.assign(STRINGS.de, {
+  rcpServings: 'Portionen',
+  rcpFewer: 'Weniger Portionen',
+  rcpMore: 'Mehr Portionen',
+  rcpServingsN: '{n} Portionen',
+  rcpServingsOne: '1 Portion',
+  rcpOriginal: 'Original: {n}',
+  rcpIngredients: 'Zutaten',
+  rcpHaveHint: 'Hake ab, was du schon hast',
+  rcpToBuy: '{n} von {total} noch einzukaufen',
+  rcpAllHave: 'Du hast alles da',
+  rcpSteps: 'Zubereitung',
+  rcpOther: 'Außerdem',
+  rcpMinutes: '{n} Min.',
+  rcpTotalTime: 'etwa {x}',
+  rcpHave: 'vorhanden',
+  rcpShopping: 'Einkaufsliste',
+  rcpHaveShort: 'Alles da',
+  rShopping: 'Einkaufsliste für {n}: {x}',
+  rHaveAll: 'Alles da für {n} Portionen'
+})
+
+const RECIPE_CSS = `
+.huic[data-card-type="recipe"] .huic-rcp-bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px}
+.huic[data-card-type="recipe"] .huic-rcp-stepper{display:inline-flex;align-items:center;border:1px solid var(--ui-stroke-secondary);border-radius:999px;overflow:hidden}
+.huic[data-card-type="recipe"] .huic-rcp-step{display:grid;place-items:center;width:34px;height:32px;padding:0;border:0;background:transparent;color:var(--ui-text-primary);font:inherit;font-size:18px;line-height:1;cursor:pointer}
+.huic[data-card-type="recipe"] .huic-rcp-step:hover:not([disabled]){background:var(--ui-control-hover-background)}
+.huic[data-card-type="recipe"] .huic-rcp-step[disabled]{opacity:.35;cursor:default}
+.huic[data-card-type="recipe"] .huic-rcp-count{min-width:9ch;padding:0 6px;text-align:center;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.huic[data-card-type="recipe"] .huic-rcp-h{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:2px 10px;margin:6px 0 0;padding:0;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ui-text-tertiary)}
+.huic[data-card-type="recipe"] .huic-rcp-h span{letter-spacing:0;text-transform:none;font-weight:400;font-size:12px}
+.huic[data-card-type="recipe"] .huic-rcp-groups{columns:2 250px;column-gap:20px}
+.huic[data-card-type="recipe"] .huic-rcp-group{break-inside:avoid;margin:0 0 8px}
+.huic[data-card-type="recipe"] .huic-rcp-gname{margin:0 0 2px;padding:0 0 3px;border-bottom:1px solid var(--ui-stroke-tertiary);font-size:12px;font-weight:600;color:var(--ui-text-secondary)}
+.huic[data-card-type="recipe"] .huic-rcp-list{list-style:none;margin:0;padding:0}
+.huic[data-card-type="recipe"] .huic-rcp-list>li{margin:0;padding:0;display:block}
+.huic[data-card-type="recipe"] .huic-rcp-ing{display:flex;align-items:flex-start;gap:9px;padding:5px 2px;border-radius:7px;cursor:pointer}
+.huic[data-card-type="recipe"] .huic-rcp-ing:hover{background:var(--ui-control-hover-background)}
+.huic[data-card-type="recipe"] .huic-rcp-ing input{flex:none;width:16px;height:16px;margin:2px 0 0;accent-color:var(--huic-accent);cursor:pointer}
+.huic[data-card-type="recipe"] .huic-rcp-ing input:disabled{cursor:default}
+.huic[data-card-type="recipe"] .huic-rcp-qty{flex:none;min-width:7ch;font-weight:600;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.huic[data-card-type="recipe"] .huic-rcp-item{min-width:0;flex:1}
+.huic[data-card-type="recipe"] .huic-rcp-note{display:block;color:var(--ui-text-tertiary);font-size:12px}
+.huic[data-card-type="recipe"] .huic-rcp-ing.huic-rcp-have .huic-rcp-qty,.huic[data-card-type="recipe"] .huic-rcp-ing.huic-rcp-have .huic-rcp-name{color:var(--ui-text-tertiary);text-decoration:line-through;text-decoration-color:var(--ui-text-quaternary,var(--ui-stroke-secondary))}
+.huic[data-card-type="recipe"] .huic-rcp-steps{list-style:none;counter-reset:rcp;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.huic[data-card-type="recipe"] .huic-rcp-steps>li{counter-increment:rcp;display:flex;gap:10px;align-items:flex-start;margin:0;padding:0}
+.huic[data-card-type="recipe"] .huic-rcp-steps>li::before{content:counter(rcp);flex:none;display:grid;place-items:center;width:22px;height:22px;margin-top:1px;border-radius:50%;background:var(--ui-bg-quaternary);color:var(--ui-text-secondary);font-size:11px;font-weight:700;font-variant-numeric:tabular-nums}
+.huic[data-card-type="recipe"] .huic-rcp-steptext{min-width:0;flex:1;white-space:pre-wrap}
+.huic[data-card-type="recipe"] .huic-rcp-time{flex:none;display:inline-flex;align-items:center;gap:4px;padding:1px 8px;border-radius:999px;background:color-mix(in srgb,var(--huic-accent) 12%,transparent);color:var(--huic-accent);font-size:11.5px;font-weight:600;white-space:nowrap}
+.huic[data-card-type="recipe"] .huic-rcp-time svg{width:11px;height:11px}
+@container (max-width: 440px){
+  .huic[data-card-type="recipe"] .huic-rcp-groups{columns:1}
+  .huic[data-card-type="recipe"] .huic-rcp-step{width:40px;height:38px}
+  .huic[data-card-type="recipe"] .huic-rcp-steps>li{flex-wrap:wrap}
+  .huic[data-card-type="recipe"] .huic-rcp-steps>li .huic-rcp-time{margin-left:32px}
+}
+`
+
+const RCP_FRACTIONS = { 0.125: '⅛', 0.25: '¼', 0.375: '⅜', 0.5: '½', 0.625: '⅝', 0.75: '¾', 0.875: '⅞' }
+
+// Cooking-friendly rounding: tiny amounts to eighths, small ones to quarters, up to 10 to halves, above that whole numbers.
+function rcpNice(value) {
+  if (!(value > 0)) return 0
+  if (value > 10) return Math.round(value)
+  if (value < 0.5) return Math.max(0.125, Math.round(value * 8) / 8)
+  if (value < 5) return Math.round(value * 4) / 4
+  return Math.round(value * 2) / 2
+}
+
+function rcpScaled(qty, servings, base) {
+  if (qty === undefined || qty === null) return undefined
+  return servings === base ? qty : rcpNice(qty * servings / base)
+}
+
+// 1.5 → "1½", 0.25 → "¼", 400 → "400", 0.3 → "0.3" (comma in German).
+function rcpFormat(value, lang) {
+  const whole = Math.floor(value + 1e-9)
+  const frac = Math.round((value - whole) * 1000) / 1000
+  if (frac < 0.001) return String(whole)
+  if (RCP_FRACTIONS[frac]) return (whole ? String(whole) : '') + RCP_FRACTIONS[frac]
+  const text = String(Math.round(value * 100) / 100)
+  return lang === 'de' ? text.replace('.', ',') : text
+}
+
+function rcpAmount(qty, unit, lang) {
+  if (qty === undefined || qty === null) return ''
+  return unit ? `${rcpFormat(qty, lang)} ${unit}` : rcpFormat(qty, lang)
+}
+
+function rcpMinutes(minutes, lang) {
+  if (minutes < 60) return t(lang, 'rcpMinutes', { n: minutes })
+  const h = Math.floor(minutes / 60), m = minutes % 60
+  return m ? `${h} h ${t(lang, 'rcpMinutes', { n: m })}` : `${h} h`
+}
+
+function rcpServingsText(n, lang) {
+  return t(lang, n === 1 ? 'rcpServingsOne' : 'rcpServingsN', { n })
+}
+
+function rcpCleanDraft(card, draft, sent) {
+  const source = sent || draft || {}
+  const servings = Number.isInteger(source.servings) && source.servings >= 1 && source.servings <= 50 ? source.servings : card.servings
+  const ids = new Set(card.ingredients.map(i => i.id))
+  const have = Array.isArray(source.have) ? source.have.filter(id => ids.has(id)) : []
+  return { servings, have: [...new Set(have)] }
+}
+
+function RecipeCard({ card, sessionId, display, lang }) {
+  const labelId = useId()
+  const haveHintId = useId()
+  const ans = useCardAnswer(card, sessionId, lang)
+  const sent = ans.answer && ans.answer.data
+  const [local, setLocal] = useState(() => rcpCleanDraft(card, ans.draft, null))
+  const { servings, have } = sent ? rcpCleanDraft(card, null, sent) : local
+  const interactive = !ans.locked
+  const haveSet = new Set(have)
+
+  const update = next => {
+    setLocal(next)
+    ans.saveDraft(next)
+  }
+  const setServings = n => { if (interactive && n >= 1 && n <= 50) update({ ...local, servings: n }) }
+  const toggle = id => {
+    if (!interactive) return
+    update({ ...local, have: haveSet.has(id) ? have.filter(x => x !== id) : [...have, id] })
+  }
+
+  const rows = card.ingredients.map(ing => ({ ing, qty: rcpScaled(ing.qty, servings, card.servings) }))
+  const missing = rows.filter(r => !haveSet.has(r.ing.id))
+  // Groups in order of first appearance; items without a group sit under no heading.
+  const groups = []
+  for (const row of rows) {
+    const name = row.ing.group || ''
+    let g = groups.find(x => x.name === name)
+    if (!g) groups.push((g = { name, rows: [] }))
+    g.rows.push(row)
+  }
+  const totalMinutes = (card.steps || []).reduce((sum, s) => sum + (s.minutes || 0), 0)
+
+  const send = () => ans.submit({
+    servings,
+    missing: missing.map(r => ({ id: r.ing.id, item: r.ing.item, ...(r.qty !== undefined ? { qty: r.qty } : {}), ...(r.ing.unit ? { unit: r.ing.unit } : {}) })),
+    have: rows.filter(r => haveSet.has(r.ing.id)).map(r => r.ing.id)
+  })
+
+  return jsx(Shell, {
+    card, display, labelId, title: card.title,
+    children: [
+      jsx('style', { children: RECIPE_CSS }),
+      jsxs('div', { className: 'huic-rcp-bar', role: 'group', 'aria-label': t(lang, 'rcpServings'), children: [
+        jsxs('div', { className: 'huic-rcp-stepper', children: [
+          jsx('button', { type: 'button', className: 'huic-rcp-step', 'aria-label': t(lang, 'rcpFewer'), disabled: !interactive || servings <= 1, onClick: () => setServings(servings - 1), children: '−' }),
+          jsx('output', { className: 'huic-rcp-count', 'aria-live': 'polite', children: rcpServingsText(servings, lang) }),
+          jsx('button', { type: 'button', className: 'huic-rcp-step', 'aria-label': t(lang, 'rcpMore'), disabled: !interactive || servings >= 50, onClick: () => setServings(servings + 1), children: '+' })
+        ] }),
+        servings !== card.servings && interactive
+          ? jsx(Btn, { variant: 'ghost', onClick: () => setServings(card.servings), children: t(lang, 'rcpOriginal', { n: card.servings }) })
+          : null
+      ] }),
+      jsxs('h4', { className: 'huic-rcp-h', children: [
+        t(lang, 'rcpIngredients'),
+        jsx('span', { id: haveHintId, children: interactive ? t(lang, 'rcpHaveHint') : t(lang, 'rcpToBuy', { n: missing.length, total: rows.length }) })
+      ] }),
+      jsx('div', { className: 'huic-rcp-groups', children: groups.map(g => jsxs('div', { className: 'huic-rcp-group', children: [
+        g.name || groups.length > 1 ? jsx('h5', { className: 'huic-rcp-gname', children: g.name || t(lang, 'rcpOther') }) : null,
+        jsx('ul', { className: 'huic-rcp-list', 'aria-describedby': haveHintId, children: g.rows.map(({ ing, qty }) => {
+          const has = haveSet.has(ing.id)
+          return jsx('li', { children: jsxs('label', { className: cx('huic-rcp-ing', has && 'huic-rcp-have'), children: [
+            jsx('input', { type: 'checkbox', checked: has, disabled: !interactive, onChange: () => toggle(ing.id) }),
+            jsx('span', { className: 'huic-rcp-qty', children: rcpAmount(qty, ing.unit, lang) }),
+            jsxs('span', { className: 'huic-rcp-item', children: [
+              jsx('span', { className: 'huic-rcp-name', children: ing.item }),
+              ing.note ? jsx('span', { className: 'huic-rcp-note', children: ing.note }) : null
+            ] })
+          ] }) }, ing.id)
+        }) })
+      ] }, g.name || '-')) }),
+      card.steps && card.steps.length ? jsxs('h4', { className: 'huic-rcp-h', children: [
+        t(lang, 'rcpSteps'),
+        totalMinutes ? jsx('span', { children: t(lang, 'rcpTotalTime', { x: rcpMinutes(totalMinutes, lang) }) }) : null
+      ] }) : null,
+      card.steps && card.steps.length ? jsx('ol', { className: 'huic-rcp-steps', children: card.steps.map((s, i) => jsxs('li', { children: [
+        jsx('span', { className: 'huic-rcp-steptext', children: s.text }),
+        s.minutes ? jsxs('span', { className: 'huic-rcp-time', children: [
+          jsxs('svg', { viewBox: '0 0 12 12', fill: 'none', stroke: 'currentColor', strokeWidth: 1.4, 'aria-hidden': true, children: [
+            jsx('circle', { cx: 6, cy: 6.5, r: 4.3 }), jsx('path', { d: 'M6 4.2v2.5l1.5 1M4.5 1h3', strokeLinecap: 'round' })
+          ] }),
+          rcpMinutes(s.minutes, lang)
+        ] }) : null
+      ] }, i)) }) : null
+    ],
+    footer: ans.showActions ? jsx(Footer, {
+      hint: t(lang, missing.length ? 'rcpToBuy' : 'rcpAllHave', { n: missing.length, total: rows.length }),
+      children: jsx(Btn, { variant: 'primary', onClick: send, children: missing.length ? (card.sendLabel || t(lang, 'rcpShopping')) : t(lang, 'rcpHaveShort') })
+    }) : null,
+    after: ans.status
+  })
+}
+
+REPLY_BUILDERS.recipe = (card, answer, lang, data) => {
+  const byId = new Map(card.ingredients.map(i => [i.id, i]))
+  data.servings = answer.servings
+  data.missing = answer.missing.filter(m => byId.has(m.id)).map(m => {
+    const out = { id: m.id, item: byId.get(m.id).item }
+    if (m.qty !== undefined) out.qty = m.qty
+    if (m.unit) out.unit = m.unit
+    return out
+  })
+  data.have = answer.have.filter(id => byId.has(id))
+  if (!data.missing.length) return { mark: '✓', summary: t(lang, 'rHaveAll', { n: data.servings }) }
+  const parts = data.missing.slice(0, 4).map(m => clip([rcpAmount(m.qty, m.unit, lang), m.item].filter(Boolean).join(' '), 40))
+  const more = data.missing.length > 4 ? ', …' : ''
+  const list = parts.join(parts.some(p => /,\s/.test(p)) ? '; ' : ', ')
+  return { mark: '✓', summary: t(lang, 'rShopping', { n: data.servings, x: list + more }) }
+}
+CARD_COMPONENTS.recipe = RecipeCard
+
+// ── 87-flashcards.js ──
+// flashcards: one card at a time. Flip with Space/Enter/click, then "Knew it" or "Again".
+// "Again" cards come back in the next round (3 rounds at most); a result screen sends the outcome.
+
+Object.assign(STRINGS.en, {
+  flashFront: 'Front',
+  flashBack: 'Back',
+  flashFlip: 'Show answer',
+  flashFlipHint: 'Press Space to flip',
+  flashKnew: 'Knew it',
+  flashAgain: 'Again',
+  flashHint: 'Show hint',
+  flashCardOf: 'Card {n} of {total}',
+  flashRound: 'Round {n} of {max}',
+  flashKnownCount: '{n} known',
+  flashAgainCount: '{n} to repeat',
+  flashProgress: '{n} of {total} known',
+  flashKeys: 'Space flip · ← Again · → Knew it',
+  flashResult: 'Result',
+  flashAllKnown: 'You knew them all.',
+  flashPractise: 'To practise',
+  flashMore: '+{n} more',
+  flashRounds: 'after {n} rounds',
+  flashRound1: 'in one round',
+  flashRestart: 'Start over',
+  flashSend: 'Send result',
+  rFlash: 'Flashcards: {k} of {n} known',
+  rFlashAgain: ', {a} to practise'
+})
+Object.assign(STRINGS.de, {
+  flashFront: 'Vorne',
+  flashBack: 'Hinten',
+  flashFlip: 'Antwort zeigen',
+  flashFlipHint: 'Leertaste zum Umdrehen',
+  flashKnew: 'Gewusst',
+  flashAgain: 'Nochmal',
+  flashHint: 'Tipp zeigen',
+  flashCardOf: 'Karte {n} von {total}',
+  flashRound: 'Runde {n} von {max}',
+  flashKnownCount: '{n} gewusst',
+  flashAgainCount: '{n} zu wiederholen',
+  flashProgress: '{n} von {total} gewusst',
+  flashKeys: 'Leertaste umdrehen · ← Nochmal · → Gewusst',
+  flashResult: 'Ergebnis',
+  flashAllKnown: 'Du hast alle gewusst.',
+  flashPractise: 'Zum Üben',
+  flashMore: '+{n} weitere',
+  flashRounds: 'nach {n} Runden',
+  flashRound1: 'in einer Runde',
+  flashRestart: 'Von vorn',
+  flashSend: 'Ergebnis senden',
+  rFlash: 'Karteikarten: {k} von {n} gewusst',
+  rFlashAgain: ', {a} zum Üben'
+})
+
+const FLASH_ROUNDS = 3
+
+const FLASH_CSS = `
+.huic[data-card-type="flashcards"] .huic-fc-meta{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:2px 12px;margin:0;color:var(--ui-text-tertiary);font-size:12px}
+.huic[data-card-type="flashcards"] .huic-fc-meta b{color:var(--ui-text-secondary);font-weight:600}
+.huic[data-card-type="flashcards"] .huic-fc-counts{display:flex;gap:10px}
+.huic[data-card-type="flashcards"] .huic-fc-scene{position:relative;perspective:1400px;margin:6px 0 10px}
+.huic[data-card-type="flashcards"] .huic-fc-scene::before,.huic[data-card-type="flashcards"] .huic-fc-scene::after{content:"";position:absolute;left:10px;right:10px;top:0;bottom:-6px;border:1px solid var(--ui-stroke-tertiary);border-radius:16px;background:var(--ui-chat-surface-background,var(--ui-base,Canvas));display:none}
+.huic[data-card-type="flashcards"] .huic-fc-scene[data-left="2"]::before,.huic[data-card-type="flashcards"] .huic-fc-scene[data-left="3"]::before,.huic[data-card-type="flashcards"] .huic-fc-scene[data-left="3"]::after{display:block}
+.huic[data-card-type="flashcards"] .huic-fc-scene[data-left="3"]::after{left:20px;right:20px;bottom:-12px}
+.huic[data-card-type="flashcards"] .huic-fc-scene[data-left="3"]::before{bottom:-6px}
+.huic[data-card-type="flashcards"] .huic-fc{position:relative;z-index:1;display:grid;width:100%;min-height:200px;cursor:pointer;transform-style:preserve-3d;transition:transform .55s cubic-bezier(.3,.75,.25,1);animation:huic-fc-in .22s ease-out;border-radius:16px;-webkit-tap-highlight-color:transparent}
+.huic[data-card-type="flashcards"] .huic-fc[data-flipped="true"]{transform:rotateY(180deg)}
+.huic[data-card-type="flashcards"] .huic-fc-face{grid-area:1/1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;min-width:0;padding:34px 22px 22px;border:1px solid var(--ui-stroke-secondary);border-radius:16px;background:var(--ui-chat-surface-background,var(--ui-base,Canvas));text-align:center;backface-visibility:hidden;-webkit-backface-visibility:hidden;box-shadow:0 1px 3px color-mix(in srgb,var(--ui-text-primary) 10%,transparent)}
+.huic[data-card-type="flashcards"] .huic-fc-back{transform:rotateY(180deg);border-color:color-mix(in srgb,var(--huic-accent) 45%,var(--ui-stroke-secondary));background:color-mix(in srgb,var(--huic-accent) 7%,var(--ui-chat-surface-background,var(--ui-base,Canvas)))}
+.huic[data-card-type="flashcards"] .huic-fc-tag{position:absolute;top:12px;left:0;right:0;font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ui-text-tertiary)}
+.huic[data-card-type="flashcards"] .huic-fc-back .huic-fc-tag{color:var(--huic-accent)}
+.huic[data-card-type="flashcards"] .huic-fc-text{margin:0;font-size:22px;font-weight:600;line-height:1.3;white-space:pre-wrap}
+.huic[data-card-type="flashcards"] .huic-fc-back .huic-fc-text{font-weight:500}
+.huic[data-card-type="flashcards"] .huic-fc-long .huic-fc-text{font-size:15px;font-weight:500}
+.huic[data-card-type="flashcards"] .huic-fc-hinttext{margin:0;color:var(--ui-text-secondary);font-size:13px;font-style:italic;white-space:pre-wrap}
+.huic[data-card-type="flashcards"] .huic-fc-flipmark{position:absolute;right:12px;bottom:9px;color:var(--ui-text-quaternary,var(--ui-text-tertiary));font-size:11px}
+.huic[data-card-type="flashcards"] .huic-fc-actions{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+.huic[data-card-type="flashcards"] .huic-fc-actions .huic-btn{flex:1 1 0;min-width:120px;max-width:240px;padding:9px 14px}
+.huic[data-card-type="flashcards"] .huic-fc-keys{margin:6px 0 0;text-align:center;color:var(--ui-text-tertiary);font-size:11.5px}
+.huic[data-card-type="flashcards"] .huic-fc-score{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 10px;margin:2px 0 0}
+.huic[data-card-type="flashcards"] .huic-fc-big{font-size:34px;font-weight:700;line-height:1.1;color:var(--huic-accent);font-variant-numeric:tabular-nums}
+.huic[data-card-type="flashcards"] .huic-fc-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px}
+.huic[data-card-type="flashcards"] .huic-fc-list li{display:flex;gap:8px;align-items:baseline;margin:0;padding:6px 10px;border:1px solid var(--ui-stroke-tertiary);border-radius:9px}
+.huic[data-card-type="flashcards"] .huic-fc-list li>span:first-child{flex:none;color:var(--ui-text-tertiary);font-weight:700}
+.huic[data-card-type="flashcards"] .huic-fc-list li small{display:block;color:var(--ui-text-tertiary);font-size:12px}
+.huic[data-card-type="flashcards"] .huic-fc-h{margin:2px 0 0;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ui-text-tertiary)}
+@keyframes huic-fc-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@container (max-width: 440px){
+  .huic[data-card-type="flashcards"] .huic-fc-text{font-size:19px}
+  .huic[data-card-type="flashcards"] .huic-fc-face{padding:32px 16px 20px}
+  .huic[data-card-type="flashcards"] .huic-fc-actions .huic-btn{min-width:0}
+}
+@media (prefers-reduced-motion: reduce){
+  .huic[data-card-type="flashcards"] .huic-fc{transition:none !important;animation:none !important;transform:none !important}
+  .huic[data-card-type="flashcards"] .huic-fc-back{transform:none}
+  .huic[data-card-type="flashcards"] .huic-fc:not([data-flipped="true"]) .huic-fc-back,.huic[data-card-type="flashcards"] .huic-fc[data-flipped="true"] .huic-fc-front{display:none}
+  .huic[data-card-type="flashcards"] .huic-fc[data-flipped="true"] .huic-fc-back{backface-visibility:visible;-webkit-backface-visibility:visible}
+}
+`
+
+function flashShuffled(n, shuffle) {
+  const order = Array.from({ length: n }, (_, i) => i)
+  if (shuffle) {
+    for (let i = n - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1))
+      ;[order[i], order[j]] = [order[j], order[i]]
+    }
+  }
+  return order
+}
+
+function flashInit(card) {
+  const queue = flashShuffled(card.cards.length, card.shuffle === true)
+  return { queue, known: [], again: [], round: 1, roundTotal: queue.length }
+}
+
+// One answer: Knew it → known; Again → waits for the next round. Done when the queue is empty.
+function flashStep(state, knew) {
+  const [current, ...rest] = state.queue
+  const known = knew ? [...state.known, current] : state.known
+  const again = knew ? state.again : [...state.again, current]
+  if (rest.length) return { ...state, queue: rest, known, again }
+  if (again.length && state.round < FLASH_ROUNDS) return { queue: again, known, again: [], round: state.round + 1, roundTotal: again.length }
+  return { ...state, queue: [], known, again }
+}
+
+// A saved state must split the cards exactly into queue, known and again; otherwise start fresh.
+function flashCleanState(card, saved) {
+  const n = card.cards.length
+  const ints = a => Array.isArray(a) && a.every(x => Number.isInteger(x) && x >= 0 && x < n)
+  if (saved && ints(saved.queue) && ints(saved.known) && ints(saved.again)) {
+    const all = [...saved.queue, ...saved.known, ...saved.again]
+    const round = saved.round
+    if (all.length === n && new Set(all).size === n && Number.isInteger(round) && round >= 1 && round <= FLASH_ROUNDS) {
+      return { queue: saved.queue, known: saved.known, again: saved.again, round, roundTotal: Number.isInteger(saved.roundTotal) && saved.roundTotal >= saved.queue.length ? saved.roundTotal : saved.queue.length }
+    }
+  }
+  return flashInit(card)
+}
+
+function FlashFace({ kind, text, hint, lang, long }) {
+  return jsxs('div', {
+    className: cx('huic-fc-face', kind === 'front' ? 'huic-fc-front' : 'huic-fc-back', long && 'huic-fc-long'),
+    'aria-hidden': true,
+    children: [
+      jsx('span', { className: 'huic-fc-tag', children: t(lang, kind === 'front' ? 'flashFront' : 'flashBack') }),
+      jsx('p', { className: 'huic-fc-text', children: text }),
+      hint ? jsx('p', { className: 'huic-fc-hinttext', children: hint }) : null
+    ]
+  })
+}
+
+function FlashcardsCard({ card, sessionId, display, lang }) {
+  const labelId = useId()
+  const ans = useCardAnswer(card, sessionId, lang)
+  const sent = ans.answer && ans.answer.data
+  const [state, setState] = useState(() => flashCleanState(card, ans.draft))
+  const [flipped, setFlipped] = useState(false)
+  const [hintOpen, setHintOpen] = useState(false)
+  const [announce, setAnnounce] = useState('')
+  const cardRef = useRef(null)
+  const n = card.cards.length
+
+  const done = Boolean(sent) || state.queue.length === 0
+  const known = sent ? sent.known : state.known
+  const again = sent ? sent.again : state.again
+  const rounds = sent ? sent.rounds : state.round
+  const current = state.queue[0]
+  const cur = card.cards[current]
+
+  // Keep the keyboard on the card after each answer so Space keeps flipping.
+  const focusCard = useRef(false)
+  useEffect(() => {
+    if (focusCard.current) cardRef.current?.focus()
+    focusCard.current = false
+  }, [current])
+
+  const flip = () => {
+    if (done) return
+    const next = !flipped
+    setFlipped(next)
+    setAnnounce(next ? `${t(lang, 'flashBack')}: ${cur.back}` : '')
+  }
+  const answer = knew => {
+    if (!flipped || done) return
+    const next = flashStep(state, knew)
+    focusCard.current = true
+    setFlipped(false)
+    setHintOpen(false)
+    setAnnounce('')
+    setState(next)
+    ans.saveDraft(next)
+  }
+  const restart = () => {
+    const next = flashInit(card)
+    setState(next)
+    setFlipped(false)
+    setHintOpen(false)
+    ans.saveDraft(next)
+  }
+  const send = () => ans.submit({ known: [...known].sort((a, b) => a - b), again: [...again].sort((a, b) => a - b), rounds })
+  const onCardKey = e => {
+    if (e.nativeEvent.isComposing || e.altKey || e.ctrlKey || e.metaKey) return
+    if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); flip() }
+    else if (flipped && e.key === 'ArrowLeft') { e.preventDefault(); answer(false) }
+    else if (flipped && e.key === 'ArrowRight') { e.preventDefault(); answer(true) }
+  }
+
+  const progressLabel = t(lang, 'flashProgress', { n: known.length, total: n })
+  const roundDone = state.roundTotal - state.queue.length
+  const long = !done && ([...cur.front].length > 80 || [...cur.back].length > 80)
+
+  const study = done ? null : [
+    jsxs('p', { className: 'huic-fc-meta', children: [
+      jsxs('span', { children: [
+        state.round > 1 ? jsx('b', { children: `${t(lang, 'flashRound', { n: state.round, max: FLASH_ROUNDS })} · ` }) : null,
+        t(lang, 'flashCardOf', { n: roundDone + 1, total: state.roundTotal })
+      ] }),
+      jsxs('span', { className: 'huic-fc-counts', children: [
+        jsx('span', { children: `✓ ${t(lang, 'flashKnownCount', { n: known.length })}` }),
+        state.again.length ? jsx('span', { children: `↺ ${t(lang, 'flashAgainCount', { n: state.again.length })}` }) : null
+      ] })
+    ] }),
+    jsx('div', {
+      className: 'huic-progress', role: 'progressbar', 'aria-label': progressLabel,
+      'aria-valuemin': 0, 'aria-valuemax': n, 'aria-valuenow': known.length,
+      children: jsx('span', { style: { width: `${(known.length / n) * 100}%` } })
+    }),
+    jsx('div', {
+      className: 'huic-fc-scene', 'data-left': Math.min(3, state.queue.length),
+      children: jsxs('div', {
+        ref: cardRef, className: 'huic-fc', role: 'button', tabIndex: 0,
+        'data-flipped': flipped, 'aria-pressed': flipped,
+        'aria-label': `${t(lang, 'flashFront')}: ${cur.front}. ${t(lang, 'flashFlipHint')}`,
+        onClick: flip, onKeyDown: onCardKey,
+        children: [
+          jsx(FlashFace, { kind: 'front', text: cur.front, hint: hintOpen ? cur.hint : null, lang, long }),
+          jsx(FlashFace, { kind: 'back', text: cur.back, lang, long })
+        ]
+      }, `${current}-${state.round}`)
+    }),
+    jsx('div', { className: 'huic-sr', role: 'status', 'aria-live': 'polite', children: announce }),
+    jsx('div', {
+      className: 'huic-fc-actions',
+      children: flipped
+        ? jsxs(Fragment, { children: [
+            jsx(Btn, { onClick: () => answer(false), children: `↺ ${t(lang, 'flashAgain')}` }),
+            jsx(Btn, { variant: 'primary', onClick: () => answer(true), children: `✓ ${t(lang, 'flashKnew')}` })
+          ] })
+        : jsxs(Fragment, { children: [
+            cur.hint && !hintOpen ? jsx(Btn, { variant: 'ghost', onClick: () => setHintOpen(true), children: t(lang, 'flashHint') }) : null,
+            jsx(Btn, { variant: 'primary', onClick: flip, children: t(lang, 'flashFlip') })
+          ] })
+    }),
+    jsx('p', { className: 'huic-fc-keys', children: t(lang, 'flashKeys') })
+  ]
+
+  const practise = [...again].sort((a, b) => a - b)
+  const result = done ? [
+    jsxs('div', { className: 'huic-fc-score', children: [
+      jsx('span', { className: 'huic-fc-big', children: `${known.length} / ${n}` }),
+      jsx('span', { className: 'huic-sub', children: `${t(lang, 'flashProgress', { n: known.length, total: n })}, ${t(lang, rounds > 1 ? 'flashRounds' : 'flashRound1', { n: rounds })}` })
+    ] }),
+    jsx('div', {
+      className: 'huic-progress', role: 'progressbar', 'aria-label': progressLabel,
+      'aria-valuemin': 0, 'aria-valuemax': n, 'aria-valuenow': known.length,
+      children: jsx('span', { style: { width: `${(known.length / n) * 100}%` } })
+    }),
+    practise.length
+      ? jsxs('div', { children: [
+          jsx('h4', { className: 'huic-fc-h', children: t(lang, 'flashPractise') }),
+          jsx('ul', { className: 'huic-fc-list', children: practise.slice(0, 8).map(i => jsxs('li', { children: [
+            jsx('span', { 'aria-hidden': true, children: '↺' }),
+            jsxs('span', { children: [card.cards[i].front, jsx('small', { children: card.cards[i].back })] })
+          ] }, i)) }),
+          practise.length > 8 ? jsx('p', { className: 'huic-sub', children: t(lang, 'flashMore', { n: practise.length - 8 }) }) : null
+        ] })
+      : jsx('p', { style: { margin: 0 }, role: 'status', children: `🎉 ${t(lang, 'flashAllKnown')}` })
+  ] : null
+
+  return jsx(Shell, {
+    card, display, labelId, title: card.title,
+    children: jsxs(Fragment, { children: [jsx('style', { children: FLASH_CSS }), ...(done ? result : study)] }),
+    footer: done && ans.showActions ? jsx(Footer, {
+      children: jsxs(Fragment, { children: [
+        jsx(Btn, { variant: 'ghost', onClick: restart, children: t(lang, 'flashRestart') }),
+        jsx(Btn, { variant: 'primary', onClick: send, children: t(lang, 'flashSend') })
+      ] })
+    }) : null,
+    after: ans.status
+  })
+}
+
+REPLY_BUILDERS.flashcards = (card, answer, lang, data) => {
+  const n = card.cards.length
+  const ok = a => Array.isArray(a) && a.every(i => Number.isInteger(i) && i >= 0 && i < n)
+  data.known = ok(answer.known) ? answer.known : []
+  data.again = ok(answer.again) ? answer.again : []
+  data.rounds = Number.isInteger(answer.rounds) ? answer.rounds : 1
+  // The fronts too: indexes are 0-based, the text version counts from 1, so the model gets the cards by name.
+  if (data.again.length) data.practise = data.again.map(i => card.cards[i].front)
+  let summary = t(lang, 'rFlash', { k: data.known.length, n })
+  if (data.again.length) summary += t(lang, 'rFlashAgain', { a: data.again.length })
+  return { mark: '✓', summary }
+}
+CARD_COMPONENTS.flashcards = FlashcardsCard
 
 // ── 90-plugin.js ──
 // Registration. Cards render only for this package's own hui_present tool
@@ -2980,6 +5938,44 @@ Object.assign(CARD_COMPONENTS, {
 
 let pluginCtx = null
 
+const PLUGIN_ID = 'hermes-ui-cards'
+const EVENT_SETTINGS = `plugin.${PLUGIN_ID}.settings.changed`
+const EVENT_ANSWER = `plugin.${PLUGIN_ID}.answer.recorded`
+
+// Hear a gateway event for as long as the plugin lives (ctx.onEvent is tracked by the host).
+function listen(ctx, type, fn) {
+  if (typeof ctx.onEvent === 'function') return ctx.onEvent(type, fn)
+  if (sdk.host && typeof sdk.host.onEvent === 'function') {
+    const stop = sdk.host.onEvent(type, fn)
+    if (typeof ctx.onDispose === 'function' && typeof stop === 'function') ctx.onDispose(stop)
+    return stop
+  }
+}
+
+// Settings → Plugins values from the gateway's own plugin list (the RPC that page saves through):
+// the fallback when this plugin's backend route is not reachable.
+async function displayFromPluginList() {
+  if (!sdk.host || typeof sdk.host.request !== 'function') return null
+  const listing = await sdk.host.request('plugins.manage', { action: 'list' })
+  const rows = listing && Array.isArray(listing.plugins) ? listing.plugins : []
+  const row = rows.find(r => r && (r.key === PLUGIN_ID || r.name === PLUGIN_ID))
+  if (!row || !Array.isArray(row.settings_schema)) return null
+  const value = key => row.settings_schema.find(f => f && f.key === key)?.value
+  return { compact: value('compact') === true, accent: value('accent'), undo: Number(value('undo_seconds')) }
+}
+
+async function refreshDisplay(ctx, { fallback = false } = {}) {
+  try {
+    const reply = await ctx.rest('/settings', { timeoutMs: 8000 })
+    if (reply && reply.display && typeof reply.display === 'object') return setLiveDisplay(sanitizeDisplay(reply.display))
+  } catch {}
+  if (!fallback) return
+  try {
+    const display = await displayFromPluginList()
+    if (display) setLiveDisplay(sanitizeDisplay(display))
+  } catch {}
+}
+
 const DEMO_PROMPT = 'Show me the hui_present demo card for "{type}".'
 
 const plugin = {
@@ -2988,6 +5984,16 @@ const plugin = {
   register(ctx) {
     pluginCtx = ctx
     useStorage(ctx.storage)
+    const hasRest = typeof ctx.rest === 'function'
+    useServerAnswers(hasRest ? (path, opts) => ctx.rest(path, opts) : null)
+    loadDisplay = hasRest ? () => refreshDisplay(ctx) : null
+    displayRequested = false
+    liveDisplay = null
+    lastResultDisplay = null
+    listen(ctx, EVENT_ANSWER, onAnswerRecorded)
+    // A save in Settings → Plugins: re-read and apply to every card on screen. The plugin list is
+    // the fallback here (one call per save), not on every start.
+    listen(ctx, EVENT_SETTINGS, () => (hasRest ? refreshDisplay(ctx, { fallback: true }) : displayFromPluginList().then(d => d && setLiveDisplay(sanitizeDisplay(d)), () => {})))
     if (typeof sdk.TOOL_MEDIA_RENDERER_AREA !== 'string') return
     ctx.register({
       id: 'cards',
@@ -3014,4 +6020,4 @@ const plugin = {
 }
 
 export default plugin
-export { buildReply, cardFromResult, CardView, formatSlot, readCard, useStorage, validateCard }
+export { buildReply, cardFromResult, CardView, formatSlot, readCard, serverIdle, undoDelayMs, useStorage, validateCard }

@@ -25,6 +25,20 @@ const vc_validateCard = (() => {
 
   // json.dumps(..., ensure_ascii=False), including Python's default separators.
   // This is deliberately separate from the card's wire representation.
+  // undefined → absent (objects) / null (arrays), like JSON; everything else (also Infinity) unchanged.
+  function vc_dropUndefined(v) {
+    if (Array.isArray(v)) return v.map(x => (x === undefined ? null : vc_dropUndefined(x)))
+    if (v && typeof v === 'object') {
+      const out = {}
+      for (const [k, x] of Object.entries(v)) {
+        // defineProperty: a key named "__proto__" stays a plain field (it is reported as unknown).
+        if (x !== undefined) Object.defineProperty(out, k, { value: vc_dropUndefined(x), enumerable: true, writable: true, configurable: true })
+      }
+      return out
+    }
+    return v
+  }
+
   function pyJSON(v) {
     if (v === null) return 'null'
     if (typeof v === 'string') return JSON.stringify(v)
@@ -187,6 +201,7 @@ const vc_validateCard = (() => {
     const props = { ...extra, ...spec.properties }, out = {}, required = spec.required || []
     for (const key of required) if (!own(value, key) || value[key] === null) ctx.errors.push(`${path}.${key}: required`)
     for (const [key, item] of Object.entries(value)) {
+      if (!own(props, key) && spec.additionalProperties) { const before = ctx.errors.length, cleaned = checkValue(item, spec.additionalProperties, `${path}.${key}`, ctx); if (before === ctx.errors.length) Object.defineProperty(out, key, {value: cleaned, enumerable: true, writable: true, configurable: true}); continue }
       if (!own(props, key)) { ctx.warnings.push(`${path}.${key}: unknown field, ignored${suggest(key, Object.keys(props))}`); continue }
       if (item === null && !required.includes(key)) continue
       const before = ctx.errors.length, cleaned = checkValue(item, props[key], `${path}.${key}`, ctx)
@@ -207,8 +222,26 @@ const vc_validateCard = (() => {
     }
   }
   function rule(name, card, ctx) {
-    const unique = { uniqueOptionIds: 'options', uniqueItemIds: 'items', uniqueColumnIds: 'columns', uniqueSlotIds: 'slots' }
+    const unique = { uniqueOptionIds: 'options', uniqueItemIds: 'items', uniqueColumnIds: 'columns', uniqueSlotIds: 'slots', uniqueStepIds: 'steps', uniqueCriterionIds: 'criteria', uniqueIngredientIds: 'ingredients' }
     if (own(unique, name)) uniqueIds(card, unique[name], ctx)
+    else if (name === 'uniqueInputNames') {
+      const seen = new Set(); for (const [i, item] of card.inputs.entries()) { if (seen.has(item.name)) ctx.errors.push(`card.inputs[${i}].name: duplicate name "${item.name}"`); seen.add(item.name) }
+    } else if (name === 'scoresMatchCriteria') {
+      const ids = card.criteria.map(c => c.id)
+      for (const [i, option] of card.options.entries()) { for (const key of ids) if (!own(option.scores,key)) ctx.errors.push(`card.options[${i}].scores: missing criterion "${key}"`); for (const key of Object.keys(option.scores)) if (!ids.includes(key)) ctx.errors.push(`card.options[${i}].scores: unknown criterion "${key}"`) }
+    } else if (name === 'calcExpressions') {
+      const names = card.inputs.map(x => x.name)
+      for (const [i, output] of card.outputs.entries()) { const parsed = calcParse(output.expr,names); if (!Array.isArray(parsed)) ctx.errors.push(`card.outputs[${i}].expr: ${parsed.message} at ${parsed.at}`) }
+    } else if (name === 'calcInputs') {
+      for (const [i, item] of card.inputs.entries()) {
+        const p=`card.inputs[${i}]`, lo=item.min, hi=item.max, d=item.default
+        if (lo != null && hi != null && lo >= hi) ctx.errors.push(`${p}.min: must be smaller than max`)
+        if ((lo != null && d < lo) || (hi != null && d > hi)) ctx.errors.push(`${p}.default: outside range`)
+        if (item.step != null && item.step <= 0) ctx.errors.push(`${p}.step: must be larger than 0`)
+        if (item.kind === 'select') { if (!item.options) ctx.errors.push(`${p}.options: required for kind select`); else if (!item.options.some(x => x.value === d)) ctx.errors.push(`${p}.default: must be one of the options`) }
+        if (item.kind === 'toggle' && d !== 0 && d !== 1) ctx.errors.push(`${p}.default: must be 0 or 1 for kind toggle`)
+      }
+    }
     else if (name === 'minMaxPicks') {
       const n = (card.options || []).length, lo = card.min, hi = card.max
       if (!card.multiple && (lo != null || hi != null)) { ctx.warnings.push('card.min/max: only used with multiple: true, ignored'); delete card.min; delete card.max; return }
@@ -261,7 +294,11 @@ const vc_validateCard = (() => {
     }
   }
   function assignIds(card) {
-    for (const [key, prefix] of Object.entries({ options: 'o', items: 'i', columns: 'c', slots: 's' })) {
+    const prefixes = { options: 'o', items: 'i', columns: 'c', slots: 's' }
+    if (card.type === 'plan') prefixes.steps = 'p'
+    if (card.type === 'review' || card.type === 'rank') prefixes.items = card.type === 'review' ? 'r' : 'k'
+    if (card.type === 'recipe') prefixes.ingredients = 'g'
+    for (const [key, prefix] of Object.entries(prefixes)) {
       const items = card[key]
       if (!Array.isArray(items) || !items.length || !object(items[0])) continue
       const used = new Set(items.filter(it => own(it, 'id')).map(it => it.id))
@@ -280,6 +317,8 @@ const vc_validateCard = (() => {
       try { raw = JSON.parse(raw) } catch { return reject(['card: must be a JSON object, got a string that is not JSON']) }
     }
     if (!object(raw)) return reject([`card: must be an object (got ${kind(raw)})`])
+    // A card that reached JS (not JSON) may hold undefined fields: read it as the JSON it stands for.
+    raw = vc_dropUndefined(raw)
     const size = utf8Length(pyJSON(raw)), limit = SCHEMA.limits.maxCardBytes
     if (size > limit) return reject([`card: too large (${size} bytes, limit ${limit}); split it or shorten the text`])
     const ctype = raw.type
@@ -297,4 +336,66 @@ const vc_validateCard = (() => {
 
 function validateCard(raw) {
   return vc_validateCard(raw)
+}
+
+// Bounded recursive-descent calculator; AST is shared with the Python evaluator.
+function calcParse(expr, names) {
+  let pos = 0
+  const funcs = {min:[1,99],max:[1,99],round:[1,2],floor:[1,1],ceil:[1,1],sqrt:[1,1],abs:[1,1],pow:[2,2],log:[1,1],exp:[1,1],if:[3,3]}
+  const fail = (message, at = pos) => { throw {message, at: [...expr.slice(0, at)].length} }
+  const skip = () => { while (pos < expr.length && /\s/u.test(expr[pos])) pos++ }
+  function parse(level=0, depth=0) {
+    if (depth > 32) fail('maximum depth exceeded')
+    skip()
+    if (level < 3) {
+      let left = parse(level+1, depth)
+      const ops = [['<=','>=','==','!=','<','>'],['+','-'],['*','/']][level]
+      while (true) { skip(); const op = ops.find(x => expr.startsWith(x,pos)); if (!op) break; pos += op.length; left = ['binary',op,left,parse(level+1,depth+1)] }
+      return left
+    }
+    if (level === 3) {
+      if (expr.startsWith('-',pos)) { pos++; return ['unary',parse(3,depth+1)] }
+      let left = parse(4,depth); skip()
+      if (expr.startsWith('^',pos)) { pos++; left=['binary','^',left,parse(3,depth+1)] }
+      return left
+    }
+    skip(); const start = pos
+    if (expr[pos] === '(') { pos++; const node=parse(0,depth+1); skip(); if (expr[pos] !== ')') fail('expected ")"'); pos++; return node }
+    let m = expr.slice(pos).match(/^(?:\d+(?:\.\d*)?|\.\d+)/)
+    if (m) { pos += m[0].length; const v=Number(m[0]); if (!Number.isFinite(v)) fail('invalid number',start); return ['number',v] }
+    m=expr.slice(pos).match(/^[A-Za-z_][A-Za-z0-9_]*/)
+    if (m) {
+      const name=m[0]; pos+=name.length; skip()
+      if (expr[pos] === '(') {
+        if (!Object.prototype.hasOwnProperty.call(funcs,name)) fail(`unknown function "${name}"`,start)
+        pos++; const args=[]; skip()
+        if (expr[pos] !== ')') while (true) { args.push(parse(0,depth+1)); skip(); if (expr[pos] !== ',') break; pos++ }
+        if (expr[pos] !== ')') fail('expected ")"'); pos++
+        const [lo,hi]=funcs[name]; if (args.length<lo || args.length>hi) fail(`wrong number of arguments for "${name}"`,start)
+        return ['call',name,args]
+      }
+      if (!names.includes(name)) fail(`unknown name "${name}"`,start)
+      return ['name',name]
+    }
+    fail('expected expression')
+  }
+  try { if ([...expr].length > 300) fail('expression too long',300); const result=parse(); skip(); if (pos !== expr.length) fail('unexpected character'); return result } catch (e) { return e }
+}
+function calcEval(ast, values) {
+  function ev(n) {
+    const [type, op] = n
+    if (type==='number') return op
+    if (type==='name') return values[op]
+    if (type==='unary') return -ev(op)
+    if (type==='binary') {
+      const a=ev(n[2]), b=ev(n[3])
+      if (!Number.isFinite(a) || !Number.isFinite(b) || (op === '/' && b === 0)) throw new Error('invalid result')
+      switch(op) { case '+':return a+b; case '-':return a-b; case '*':return a*b; case '/':return a/b; case '^':return Math.pow(a,b); case '<':return +(a<b); case '<=':return +(a<=b); case '>':return +(a>b); case '>=':return +(a>=b); case '==':return +(a===b); case '!=':return +(a!==b) }
+    }
+    if (op==='if') { const condition=ev(n[2][0]); if (!Number.isFinite(condition)) throw new Error('invalid result'); return ev(n[2][condition ? 1 : 2]) }
+    const a=n[2].map(ev)
+    if (op==='round') { const f=10**(a.length>1?a[1]:0); return Math.floor(a[0]*f+0.5)/f }
+    return Math[op](...a)
+  }
+  try { const v=ev(ast); return Number.isFinite(v) ? v : null } catch { return null }
 }

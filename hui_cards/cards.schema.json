@@ -63,6 +63,138 @@
     }
   },
   "cards": {
+    "plan": {
+      "phase": 3,
+      "summary": "Edit and run a plan.",
+      "type": "object",
+      "required": [
+        "title",
+        "steps"
+      ],
+      "properties": {
+        "title": {
+          "$ref": "shortText"
+        },
+        "summary": {
+          "$ref": "text"
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 15,
+          "items": {
+            "type": "object",
+            "required": [
+              "title"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "itemId"
+              },
+              "title": {
+                "$ref": "shortText"
+              },
+              "detail": {
+                "$ref": "text"
+              },
+              "command": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              },
+              "risk": {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              },
+              "optional": {
+                "type": "boolean",
+                "default": false
+              }
+            }
+          }
+        },
+        "runLabel": {
+          "$ref": "label"
+        }
+      },
+      "x-rules": [
+        "uniqueStepIds"
+      ]
+    },
+    "review": {
+      "phase": 3,
+      "summary": "Review items together.",
+      "type": "object",
+      "required": [
+        "title",
+        "items"
+      ],
+      "properties": {
+        "title": {
+          "$ref": "shortText"
+        },
+        "summary": {
+          "$ref": "text"
+        },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 30,
+          "items": {
+            "type": "object",
+            "required": [
+              "title"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "itemId"
+              },
+              "title": {
+                "$ref": "shortText"
+              },
+              "detail": {
+                "$ref": "text"
+              },
+              "preview": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              },
+              "tag": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 24
+              }
+            }
+          }
+        },
+        "defaultDecision": {
+          "type": "string",
+          "enum": [
+            "keep",
+            "drop",
+            "none"
+          ],
+          "default": "none"
+        },
+        "keepLabel": {
+          "$ref": "label"
+        },
+        "dropLabel": {
+          "$ref": "label"
+        },
+        "applyLabel": {
+          "$ref": "label"
+        }
+      },
+      "x-rules": [
+        "uniqueItemIds"
+      ]
+    },
     "checklist": {
       "phase": 1,
       "summary": "Items the user ticks off; the ticks are kept when the chat is reopened. \"Done\" reports checked and open items.",
@@ -357,50 +489,6 @@
         "fieldKindRules"
       ]
     },
-    "steps": {
-      "phase": 2,
-      "summary": "A guided walkthrough, one step at a time with Back/Next; the user reports done or where they got stuck.",
-      "type": "object",
-      "required": [
-        "steps"
-      ],
-      "properties": {
-        "title": {
-          "$ref": "shortText"
-        },
-        "steps": {
-          "type": "array",
-          "minItems": 2,
-          "maxItems": 12,
-          "items": {
-            "type": "object",
-            "required": [
-              "title"
-            ],
-            "properties": {
-              "title": {
-                "$ref": "shortText"
-              },
-              "body": {
-                "$ref": "longText"
-              },
-              "command": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 1000
-              },
-              "image": {
-                "$ref": "image"
-              }
-            }
-          }
-        },
-        "finishLabel": {
-          "$ref": "label"
-        }
-      },
-      "x-rules": []
-    },
     "confirm": {
       "phase": 1,
       "summary": "Ask before you act: one action with reason and risk; the user answers Yes, No or Change.",
@@ -477,6 +565,323 @@
         }
       },
       "x-rules": []
+    },
+    "steps": {
+      "phase": 2,
+      "summary": "A guided walkthrough, one step at a time with Back/Next; the user reports done or where they got stuck.",
+      "type": "object",
+      "required": [
+        "steps"
+      ],
+      "properties": {
+        "title": {
+          "$ref": "shortText"
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 12,
+          "items": {
+            "type": "object",
+            "required": [
+              "title"
+            ],
+            "properties": {
+              "title": {
+                "$ref": "shortText"
+              },
+              "body": {
+                "$ref": "longText"
+              },
+              "command": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              },
+              "image": {
+                "$ref": "image"
+              }
+            }
+          }
+        },
+        "finishLabel": {
+          "$ref": "label"
+        }
+      },
+      "x-rules": []
+    },
+    "decision": {
+      "phase": 3,
+      "summary": "Compare weighted options.",
+      "type": "object",
+      "required": [
+        "title",
+        "criteria",
+        "options"
+      ],
+      "properties": {
+        "title": {
+          "$ref": "shortText"
+        },
+        "criteria": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "label",
+              "weight"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "itemId"
+              },
+              "label": {
+                "$ref": "shortText"
+              },
+              "weight": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10
+              }
+            }
+          }
+        },
+        "options": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 6,
+          "items": {
+            "type": "object",
+            "required": [
+              "label",
+              "scores"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "itemId"
+              },
+              "label": {
+                "$ref": "shortText"
+              },
+              "scores": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10
+                }
+              },
+              "note": {
+                "$ref": "text"
+              }
+            }
+          }
+        },
+        "note": {
+          "$ref": "text"
+        },
+        "submitLabel": {
+          "$ref": "label"
+        }
+      },
+      "x-rules": [
+        "uniqueCriterionIds",
+        "uniqueOptionIds",
+        "scoresMatchCriteria"
+      ]
+    },
+    "calc": {
+      "phase": 3,
+      "summary": "Calculate outputs from inputs.",
+      "type": "object",
+      "required": [
+        "title",
+        "inputs",
+        "outputs"
+      ],
+      "properties": {
+        "title": {
+          "$ref": "shortText"
+        },
+        "inputs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "label",
+              "default"
+            ],
+            "properties": {
+              "name": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,31}$"
+              },
+              "label": {
+                "$ref": "shortText"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "number",
+                  "slider",
+                  "select",
+                  "toggle"
+                ],
+                "default": "number"
+              },
+              "min": {
+                "type": "number"
+              },
+              "max": {
+                "type": "number"
+              },
+              "step": {
+                "type": "number"
+              },
+              "default": {
+                "type": "number"
+              },
+              "unit": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 12
+              },
+              "options": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 12,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "label",
+                    "value"
+                  ],
+                  "properties": {
+                    "label": {
+                      "$ref": "shortText"
+                    },
+                    "value": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 4,
+          "items": {
+            "type": "object",
+            "required": [
+              "label",
+              "expr"
+            ],
+            "properties": {
+              "label": {
+                "$ref": "shortText"
+              },
+              "expr": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              },
+              "format": {
+                "type": "string",
+                "enum": [
+                  "number",
+                  "integer",
+                  "percent",
+                  "currency"
+                ],
+                "default": "number"
+              },
+              "decimals": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 6
+              },
+              "unit": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 12
+              },
+              "emphasis": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "note": {
+          "$ref": "text"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$",
+          "default": "EUR"
+        },
+        "sendLabel": {
+          "$ref": "label"
+        }
+      },
+      "x-rules": [
+        "uniqueInputNames",
+        "calcExpressions",
+        "calcInputs"
+      ]
+    },
+    "rank": {
+      "phase": 3,
+      "summary": "Put items in order.",
+      "type": "object",
+      "required": [
+        "title",
+        "items"
+      ],
+      "properties": {
+        "title": {
+          "$ref": "shortText"
+        },
+        "prompt": {
+          "$ref": "text"
+        },
+        "items": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 12,
+          "items": {
+            "type": "object",
+            "required": [
+              "label"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "itemId"
+              },
+              "label": {
+                "$ref": "shortText"
+              },
+              "detail": {
+                "$ref": "text"
+              }
+            }
+          }
+        },
+        "submitLabel": {
+          "$ref": "label"
+        }
+      },
+      "x-rules": [
+        "uniqueItemIds"
+      ]
     },
     "choice": {
       "phase": 1,
@@ -618,6 +1023,133 @@
         "uniqueSlotIds",
         "slotOrder"
       ]
+    },
+    "recipe": {
+      "phase": 3,
+      "summary": "Scale a recipe and make a shopping list.",
+      "type": "object",
+      "required": [
+        "title",
+        "servings",
+        "ingredients"
+      ],
+      "properties": {
+        "title": {
+          "$ref": "shortText"
+        },
+        "servings": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        },
+        "ingredients": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 40,
+          "items": {
+            "type": "object",
+            "required": [
+              "item"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "itemId"
+              },
+              "item": {
+                "$ref": "shortText"
+              },
+              "qty": {
+                "type": "number",
+                "minimum": 0
+              },
+              "unit": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 12
+              },
+              "note": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "group": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              }
+            }
+          }
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "required": [
+              "text"
+            ],
+            "properties": {
+              "text": {
+                "$ref": "text"
+              },
+              "minutes": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 600
+              }
+            }
+          }
+        },
+        "sendLabel": {
+          "$ref": "label"
+        }
+      },
+      "x-rules": [
+        "uniqueIngredientIds"
+      ]
+    },
+    "flashcards": {
+      "phase": 3,
+      "summary": "Practise with flashcards.",
+      "type": "object",
+      "required": [
+        "title",
+        "cards"
+      ],
+      "properties": {
+        "title": {
+          "$ref": "shortText"
+        },
+        "cards": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 40,
+          "items": {
+            "type": "object",
+            "required": [
+              "front",
+              "back"
+            ],
+            "properties": {
+              "front": {
+                "$ref": "text"
+              },
+              "back": {
+                "$ref": "text"
+              },
+              "hint": {
+                "$ref": "text"
+              }
+            }
+          }
+        },
+        "shuffle": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "x-rules": []
     },
     "rating": {
       "phase": 2,

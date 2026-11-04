@@ -1,0 +1,12 @@
+{
+  "type": "review",
+  "title": "Review changes",
+  "items": [
+    {
+      "title": "Update guide"
+    },
+    {
+      "title": "Remove draft"
+    }
+  ]
+}

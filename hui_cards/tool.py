@@ -16,6 +16,7 @@ import threading
 import time
 from pathlib import Path
 
+from . import store
 from .fallback import render_text
 from .schema import CARD_TYPES, SCHEMA, validate_card
 
@@ -23,7 +24,8 @@ PLUGIN_ID = "hermes-ui-cards"
 TOOL_NAME = "hui_present"
 MAX_CARD_FILES = 500
 PENDING_TTL_S = 30 * 60
-ACCENTS = ["app", "blue", "green", "orange", "purple", "red"]
+REPEAT_WAIT_S = 20  # a parallel twin of a hui_present call waits this long for the first one
+ACCENTS = store.ACCENTS
 
 _settings_reader = None  # set by register(): key, default -> value
 _pending: dict[str, list[tuple[float, str]]] = {}
@@ -32,10 +34,11 @@ _pending_lock = threading.Lock()
 # and the Webapp attached to a gateway) bind HERMES_SESSION_PLATFORM=local for every local
 # client, CLI included; only the agent platform the hooks receive says "desktop".
 _turn_platform: dict[str, tuple[float, str]] = {}
-# session id -> {normalized card JSON: tool result} for the running turn (idempotent repeats)
-_turn_cards: dict[str, dict[str, str]] = {}
-CARD_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
-REPLY_RE = re.compile(r"^\[hui-card\] (\{.*\})\s*$", re.M)
+# session id -> {normalized card JSON: tool result, or an Event while the first call builds it}
+# for the running turn (idempotent repeats)
+_turn_cards: dict[str, dict[str, "str | threading.Event"]] = {}
+CARD_ID_RE = store.CARD_ID_RE
+REPLY_RE = store.REPLY_RE
 
 
 def configure(settings_reader) -> None:
@@ -54,11 +57,20 @@ def setting(key: str, default):
 
 
 def display_settings() -> dict:
-    accent = str(setting("accent", "app"))
-    return {
-        "compact": bool(setting("compact", False)),
-        "accent": accent if accent in ACCENTS else "app",
-    }
+    return store.display_settings(setting)
+
+
+def enabled_types() -> list[str]:
+    """The card types Settings → Plugins leaves on (`card_types`), in schema order. Anything that is
+    not a list of known types (unset, empty, a typo only) means all types."""
+    value = setting("card_types", None)
+    if isinstance(value, str):
+        value = [part.strip() for part in value.split(",")]
+    if not isinstance(value, (list, tuple)):
+        return list(CARD_TYPES)
+    wanted = {str(v).strip().lower() for v in value if isinstance(v, str)}
+    picked = [t for t in CARD_TYPES if t in wanted]
+    return picked or list(CARD_TYPES)
 
 
 # ── surface detection ──
@@ -182,27 +194,40 @@ def _messages_since_card(history, card_id: str, user_message: str) -> int | None
     return len(later)
 
 
-def answer_context(user_message: str, history=None) -> str | None:
+def answered_card(user_message: str) -> tuple[dict, dict] | None:
+    """(parsed answer, card) when the message answers a card this backend showed, else None."""
+    reply = store.parse_reply(user_message)
+    card = read_card_file(reply["card"]) if reply else None
+    if not isinstance(card, dict) or not isinstance(card.get("type"), str):
+        return None
+    return reply, card
+
+
+CONFIRM_DECISIONS = {
+    "yes": "The user approved it. Do exactly that action and nothing more; anything else needs a new confirmation.",
+    "no": "The user declined: do NOT run this action.",
+    "change": "The user asked for a change (their text is in the message): do not run the original action; "
+              "apply the change and show a new confirm card if it still needs approval.",
+}
+CONFIRM_UNKNOWN = ("The answer does not say yes, no or change: do not run this action; ask the user what they "
+                   "want instead.")
+
+
+def answer_context(user_message: str, history=None, answered: tuple | None = None) -> str | None:
     """Context for a turn that answers a card: what the card asked (kept on disk, so it survives
     compaction of the tool result) and a warning when the answer is stale."""
-    match = REPLY_RE.search(user_message or "")
-    if not match:
+    answered = answered or answered_card(user_message)
+    if answered is None:
         return None
-    try:
-        reply = json.loads(match.group(1))
-    except ValueError:
-        return None
-    card_id = reply.get("card") if isinstance(reply, dict) else None
-    card = read_card_file(card_id) if isinstance(card_id, str) else None
-    if card is None:
-        return None
+    card = answered[1]
+    card_id = answered[0]["card"]
     what = card.get("title") or card.get("question") or card["type"]
     lines = [f"[hermes-ui-cards] This message answers your {card['type']} card \"{what}\" ({card_id})."]
     if card["type"] == "confirm":
         lines.append(f"The action on that card: {card.get('action', '')}")
         if card.get("command"):
             lines.append(f"Command on that card: {card['command']}")
-        lines.append("Do exactly that action and nothing more; anything else needs a new confirmation.")
+        lines.append(CONFIRM_DECISIONS.get(answered[0]["data"].get("decision"), CONFIRM_UNKNOWN))
     since = _messages_since_card(history, card_id, user_message)
     if since:
         lines.append(f"The user wrote {since} other message{'s' if since != 1 else ''} after this card was shown. "
@@ -216,6 +241,13 @@ DESKTOP_HINT = (
     "follow steps or approve an action with consequences, show an interactive card with the hui_present tool "
     "(through tool_call if it is deferred). Plain answers and simple either-or questions stay text or clarify."
 )
+
+
+def desktop_hint() -> str:
+    types = enabled_types()
+    if len(types) == len(CARD_TYPES):
+        return DESKTOP_HINT
+    return DESKTOP_HINT + " Card types turned on in this install: " + ", ".join(types) + "."
 
 
 def on_turn_start(session_id: str = "", platform: str = "", user_message: str = "",
@@ -234,16 +266,40 @@ def on_turn_start(session_id: str = "", platform: str = "", user_message: str = 
                 _turn_platform.pop(key, None)
             _turn_platform[session_id] = (now, platform)
     parts = []
+    surface = platform or current_surface(session_id)
     try:
-        answered = answer_context(user_message, conversation_history)
+        answered = answered_card(user_message)
     except Exception:
         answered = None
     if answered:
-        parts.append(answered)
-    surface = platform or current_surface(session_id)
+        _record_answer(session_id, answered, surface)
+        try:
+            context = answer_context(user_message, conversation_history, answered)
+        except Exception:
+            context = None
+        if context:
+            parts.append(context)
     if surface == "desktop" and bool(setting("enabled", True)):
-        parts.append(DESKTOP_HINT)
+        parts.append(desktop_hint())
     return {"context": "\n\n".join(parts)} if parts else None
+
+
+def _record_answer(session_id: str, answered: tuple, surface: str) -> None:
+    """Remember the answer server-side, so the card is locked in every window and on every computer
+    that opens this chat, and tell the Desktop windows connected right now."""
+    reply, card = answered
+    try:
+        record = store.record_answer(session_id, reply, card["type"])
+    except Exception:
+        return
+    if not record or surface != "desktop":
+        return  # no Desktop window is attached to a CLI or messaging turn
+    try:
+        from hermes_cli.plugin_events import broadcast_plugin_event
+        broadcast_plugin_event(PLUGIN_ID, "answer.recorded",
+                               {"session_id": session_id, "card": reply["card"], "answer": record})
+    except Exception:
+        pass
 
 
 def ensure_media_lines(response_text: str = "", session_id: str = "", **_kwargs):
@@ -292,6 +348,15 @@ TEXT_NEXT = (
 )
 
 
+def _raw_type(raw):
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (ValueError, RecursionError):
+            return None
+    return raw.get("type") if isinstance(raw, dict) else None
+
+
 def present(args: dict, session_id: str = "", surface: str | None = None) -> str:
     if not isinstance(args, dict):
         return _error("hui_present takes {\"card\": {...}}")
@@ -304,6 +369,11 @@ def present(args: dict, session_id: str = "", surface: str | None = None) -> str
             return _error(f"unknown demo \"{demo}\"; use one of: {', '.join(CARD_TYPES)}")
     if raw is None:
         return _error("missing \"card\": pass {\"card\": {\"type\": \"choice\", ...}}")
+    allowed = enabled_types()
+    kind = _raw_type(raw)
+    if isinstance(kind, str) and kind in CARD_TYPES and kind not in allowed:
+        return _error(f"Card type \"{kind}\" is turned off in this install's settings. "
+                      f"Use one of the enabled types: {', '.join(allowed)}; or answer as text.")
     card, problems, warnings = validate_card(raw)
     if card is None:
         return _error(f"Card rejected ({len(problems)} problem{'s' if len(problems) != 1 else ''}). "
@@ -316,16 +386,49 @@ def present(args: dict, session_id: str = "", surface: str | None = None) -> str
     surface = current_surface(session_id) if surface is None else surface
     content_key = json.dumps([card, surface, bool(setting("enabled", True)), display_settings()],
                              sort_keys=True, ensure_ascii=False)
-    with _pending_lock:
-        repeat = _turn_cards.get(session_id, {}).get(content_key) if session_id else None
-    if repeat:  # the same card twice in one turn: one card, not two answerable copies
-        return repeat
+    if not session_id:
+        return _build(card, warnings, session_id, surface)
+    # The same card twice in one turn is one card, not two answerable copies, also when the model
+    # sends both calls in parallel: the first call reserves the key, a twin waits for its result.
+    for _attempt in range(3):
+        with _pending_lock:
+            turn = _turn_cards.setdefault(session_id, {})
+            entry = turn.get(content_key)
+            if entry is None:
+                slot = turn[content_key] = threading.Event()
+                break
+        if isinstance(entry, str):
+            return entry
+        entry.wait(REPEAT_WAIT_S)
+    else:
+        return _error("hui_present: the same card is still being created by a parallel call; show it once.")
+    out = None
+    try:
+        out = _build(card, warnings, session_id, surface)
+        return out
+    finally:
+        with _pending_lock:
+            turn = _turn_cards.get(session_id)
+            if turn is not None and turn.get(content_key) is slot:
+                if out is None:
+                    turn.pop(content_key, None)  # failed: a twin builds it itself
+                else:
+                    turn[content_key] = out
+        slot.set()
+
+
+def _build(card: dict, warnings: list, session_id: str, surface: str) -> str:
     card = {"cardId": _new_card_id(card), **card}
     text = render_text(card)
     result: dict = {"ok": True, "cardId": card["cardId"], "type": card["type"]}
     if surface == "desktop" and bool(setting("enabled", True)):
         path = _write_card_file(card, text)
         tag = media_tag(path)
+        if session_id:
+            try:
+                store.note_shown(session_id, card["cardId"], card["type"])
+            except Exception:
+                pass  # the card still works; it is only not tracked across devices
         _remember(session_id, tag)
         result.update({
             "media": tag,
@@ -337,11 +440,7 @@ def present(args: dict, session_id: str = "", surface: str | None = None) -> str
         result.update({"surface": surface or "text", "text": text, "next": TEXT_NEXT})
     if warnings:
         result["warnings"] = warnings
-    out = json.dumps(result, ensure_ascii=False)
-    if session_id:
-        with _pending_lock:
-            _turn_cards.setdefault(session_id, {})[content_key] = out
-    return out
+    return json.dumps(result, ensure_ascii=False)
 
 
 def handle_present(args, **kwargs) -> str:
@@ -416,7 +515,8 @@ def tool_description() -> str:
         "answer comes back as the user's next message with a '[hui-card] {json}' line.",
         "Card types (`?` = optional, strings unless noted, [2-6] = item count; limits are checked and errors name the field):",
     ]
-    lines += [_signature(t, s) for t, s in SCHEMA["cards"].items()]
+    types = enabled_types()  # read once at registration: Settings changes apply after a Hermes restart
+    lines += [_signature(t, s) for t, s in SCHEMA["cards"].items() if t in types]
     lines.append("Every card also takes id? (short slug) and lang? (\"en\", \"de\": language of buttons). "
                  "Images: only https URLs you got from a tool or the user, never invented ones. "
                  "Examples of when a card helps and when not: skill_view(\"hermes-ui-cards:hui-cards\").")
@@ -424,6 +524,7 @@ def tool_description() -> str:
 
 
 def tool_schema() -> dict:
+    types = enabled_types()
     return {
         "name": TOOL_NAME,
         "description": tool_description(),
@@ -432,13 +533,13 @@ def tool_schema() -> dict:
             "properties": {
                 "card": {
                     "type": "object",
-                    "description": "The card. `type` is one of: " + ", ".join(CARD_TYPES) + ".",
-                    "properties": {"type": {"type": "string", "enum": CARD_TYPES}},
+                    "description": "The card. `type` is one of: " + ", ".join(types) + ".",
+                    "properties": {"type": {"type": "string", "enum": types}},
                     "required": ["type"],
                 },
                 "demo": {
                     "type": "string",
-                    "enum": CARD_TYPES,
+                    "enum": types,
                     "description": "Show a built-in example card of this type instead of `card` (when the "
                                    "user asks to try the plugin).",
                 },

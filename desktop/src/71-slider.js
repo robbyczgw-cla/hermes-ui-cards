@@ -3,7 +3,7 @@ Object.assign(STRINGS.de, { keySlider: 'Wert eintippen oder ziehen · Enter send
 
 // Snap relative to min, just like the native range input, without float noise.
 function sliderInitialValue(card) {
-  if (card.default !== undefined) return card.default
+  if (card.default !== undefined) return sliderSnap(card, card.default)
   const step = card.step || 1
   const value = card.min + Math.round(((card.max - card.min) / 2) / step) * step
   return Number(Math.min(card.max, Math.max(card.min, value)).toPrecision(12))
@@ -12,8 +12,11 @@ function sliderInitialValue(card) {
 function sliderSnap(card, raw) {
   const step = card.step || 1
   const clamped = Math.min(card.max, Math.max(card.min, raw))
-  const snapped = card.min + Math.round((clamped - card.min) / step) * step
-  return Number(Math.min(card.max, Math.max(card.min, snapped)).toPrecision(12))
+  // Snap to a step index that stays inside the range (min 0, max 11, step 3 → 9, never 11 or 12),
+  // so the typed value always matches what the native range control can show.
+  const lastIndex = Math.floor((card.max - card.min) / step + 1e-9)
+  const index = Math.min(lastIndex, Math.max(0, Math.round((clamped - card.min) / step)))
+  return Number((card.min + index * step).toPrecision(12))
 }
 
 function sliderParse(text) {

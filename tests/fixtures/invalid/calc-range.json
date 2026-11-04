@@ -1,0 +1,26 @@
+{
+  "type": "calc",
+  "title": "Monthly cost",
+  "inputs": [
+    {
+      "name": "price",
+      "label": "Price",
+      "default": 1200,
+      "min": 3,
+      "max": 3,
+      "step": 0
+    },
+    {
+      "name": "months",
+      "label": "Months",
+      "default": 12
+    }
+  ],
+  "outputs": [
+    {
+      "label": "Monthly",
+      "expr": "price / months",
+      "format": "currency"
+    }
+  ]
+}

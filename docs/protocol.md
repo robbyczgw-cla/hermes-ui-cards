@@ -48,6 +48,13 @@ A click on the card sends one message to the same chat, exactly as if the user h
 
 | Type | Answer fields | Line 1 (English / German) |
 |---|---|---|
+| plan | `steps: [{id, title, included, note?}]` | `✓ Run the plan: 5 of 6 steps` / `✓ Plan ausführen: 5 von 6 Schritten` |
+| review | `keep`, `drop`, `undecided`: ID arrays; `notes`, `titles?`: ID maps | `✓ Review done: keep 5, drop 3` / `✓ Durchgesehen: 5 behalten, 3 verwerfen` |
+| decision | `weights`, `ranking: [{id, label, score}]`, `picked?` | `✓ Decision: A (8.4) ahead of B (7.9)` / `✓ Entscheidung: …` |
+| calc | `inputs: {name: value}`, `outputs: [{label, value}]` | `✓ Calculated: Monthly rate 1,234.56 €` / `✓ Berechnet: …` |
+| rank | `order: [id]`, `labels: [label]` | `✓ Ranked: A > B > C` / `✓ Reihenfolge: A > B > C` |
+| recipe | `servings`, `missing: [{id, item, qty?, unit?}]`, `have: [id]` | `✓ Shopping list for 6: …` / `✓ Einkaufsliste für 6: …` |
+| flashcards | `known: [index]`, `again: [index]` (0-based), `rounds`, `practise?: [front]` (fronts of the again cards) | `✓ Flashcards: 8 of 10 known` / `✓ Karteikarten: 8 von 10 gewusst` |
 | choice | `selected: [optionId]`, `labels: [label]`, `other?: string` | `✓ Chose: A, B` / `✓ Gewählt: A, B` |
 | checklist | `done_ids: [itemId]`, `open_ids: [itemId]`, `done: [text]`, `open: [text]` | `✓ Checklist done: 3 of 5 checked. Still open: X, Y` / `✓ Checkliste fertig: 3 von 5 erledigt. Offen: X, Y` |
 | compare | `selected: columnId`, `label` | `✓ Picked: Pixel 10` / `✓ Gewählt: Pixel 10` |

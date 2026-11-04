@@ -347,3 +347,24 @@ def test_compare_sources_and_as_of():
     assert "Price: €100 [shop.at]" in out
     assert "Prices checked 8 Nov 2026" in out
     assert "Preise geprüft 8 Nov 2026" in text(german(raw))
+
+
+def test_new_card_fallbacks():
+    from hui_cards.demos import DEMOS
+    from hui_cards.schema import validate_card
+    for name in ('plan', 'review', 'decision', 'calc', 'rank', 'recipe', 'flashcards'):
+        card, errors, _ = validate_card(DEMOS[name])
+        assert not errors
+        for lang in ('en', 'de'):
+            rendered = render_text({**card, 'lang': lang})
+            assert card['title'] in rendered
+            assert rendered.splitlines()[-1].startswith('Antworte' if lang == 'de' else 'Reply')
+    assert 'house' not in render_text(validate_card(DEMOS['flashcards'])[0])
+
+
+def test_calc_fallback_formats_defaults():
+    from hui_cards.schema import validate_card
+    card, errors, _ = validate_card({'type':'calc', 'title':'Total', 'inputs':[{'name':'x','label':'Amount','default':1234.56}], 'outputs':[{'label':'Total','expr':'x','format':'currency','decimals':2}]})
+    assert not errors
+    assert '1,234.56 €' in render_text(card)
+    assert '1.234,56 €' in render_text({**card, 'lang':'de'})

@@ -72,7 +72,11 @@ def _ts(spec: dict, defs: dict, indent: str) -> str:
             inner = _ts(spec.get("items", {}), defs, indent)
             out.append(f"Array<{inner}>")
         elif t == "object":
-            out.append(_ts_object(spec, defs, indent))
+            extra = spec.get("additionalProperties")
+            if isinstance(extra, dict) and not spec.get("properties"):
+                out.append(f"Record<string, {_ts(extra, defs, indent)}>")
+            else:
+                out.append(_ts_object(spec, defs, indent))
     return " | ".join(out) or "unknown"
 
 

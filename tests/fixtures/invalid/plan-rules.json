@@ -1,0 +1,14 @@
+{
+  "type": "plan",
+  "title": "x",
+  "steps": [
+    {
+      "id": "x",
+      "title": "a"
+    },
+    {
+      "id": "x",
+      "title": "b"
+    }
+  ]
+}

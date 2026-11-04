@@ -18,7 +18,7 @@ const RATING_CSS = `
 .huic[data-card-type="rating"] .huic-segbtn:last-child{border-right:0}
 .huic[data-card-type="rating"] .huic-segbtn:hover:not([disabled]){background:var(--ui-control-hover-background)}
 .huic[data-card-type="rating"] .huic-segbtn:focus-visible{outline-offset:-2px}
-.huic[data-card-type="rating"] .huic-segbtn[aria-checked="true"]{background:var(--huic-accent);color:var(--ui-chat-surface-background,var(--ui-base,Canvas));font-weight:600}
+.huic[data-card-type="rating"] .huic-segbtn[aria-checked="true"]{background:var(--huic-accent);color:var(--huic-on-accent,var(--ui-chat-surface-background,var(--ui-base,Canvas)));font-weight:600}
 .huic[data-card-type="rating"] .huic-segbtn[disabled]{cursor:default}
 .huic[data-card-type="rating"] .huic-rate-meta{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 12px;min-height:1.45em}
 .huic[data-card-type="rating"] .huic-rate-echo{font-weight:600}

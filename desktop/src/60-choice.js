@@ -19,7 +19,7 @@ Object.assign(STRINGS.de, {
 const KEYS_CSS = `
 .huic .huic-num{flex:none;display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 4px;border-radius:50%;border:1px solid var(--ui-stroke-secondary);color:var(--ui-text-tertiary);font-size:11px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums;background:transparent}
 .huic .huic-num.huic-num-multi{border-radius:5px}
-.huic [aria-checked="true"] .huic-num,.huic [aria-checked="true"]>.huic-num{background:var(--huic-accent);border-color:var(--huic-accent);color:var(--ui-chat-surface-background,var(--ui-base,Canvas))}
+.huic [aria-checked="true"] .huic-num,.huic [aria-checked="true"]>.huic-num{background:var(--huic-accent);border-color:var(--huic-accent);color:var(--huic-on-accent,var(--ui-chat-surface-background,var(--ui-base,Canvas)))}
 `
 
 // "1–3" for three options, "1" for one, capped at the nine digit keys.
@@ -99,7 +99,7 @@ const CHOICE_CSS = `
 .huic[data-card-type="choice"] .huic-tile-desc{color:var(--ui-text-secondary);font-size:12px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .huic[data-card-type="choice"] .huic-tile>.huic-num{position:absolute;top:8px;left:8px;background:color-mix(in srgb,var(--ui-chat-surface-background,var(--ui-base,Canvas)) 82%,transparent)}
 .huic[data-card-type="choice"] .huic-tile>.huic-badge{position:absolute;top:8px;right:8px;max-width:70%;overflow:hidden;text-overflow:ellipsis;background:color-mix(in srgb,var(--ui-chat-surface-background,var(--ui-base,Canvas)) 82%,transparent)}
-.huic[data-card-type="choice"] .huic-tile[aria-checked="true"]>.huic-num{background:var(--huic-accent);border-color:var(--huic-accent);color:var(--ui-chat-surface-background,var(--ui-base,Canvas))}
+.huic[data-card-type="choice"] .huic-tile[aria-checked="true"]>.huic-num{background:var(--huic-accent);border-color:var(--huic-accent);color:var(--huic-on-accent,var(--ui-chat-surface-background,var(--ui-base,Canvas)))}
 .huic[data-card-type="choice"] .huic-opt-row{align-items:center}
 @container (max-width: 440px){.huic[data-card-type="choice"] .huic-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (prefers-reduced-motion: reduce){.huic[data-card-type="choice"] .huic-tile[aria-checked="true"]{transform:none}}

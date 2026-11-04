@@ -1,0 +1,12 @@
+{
+  "type": "rank",
+  "title": "Set priorities",
+  "items": [
+    {
+      "label": "Speed"
+    },
+    {
+      "label": "Quality"
+    }
+  ]
+}

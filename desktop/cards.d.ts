@@ -10,6 +10,40 @@ export interface CardCommon {
   lang?: string
 }
 
+/** Edit and run a plan. */
+export interface PlanCard extends CardCommon {
+  type: "plan"
+  title: string
+  summary?: string
+  steps: Array<{
+    id?: string
+    title: string
+    detail?: string
+    command?: string
+    risk?: "low" | "medium" | "high"
+    optional?: boolean
+  }>
+  runLabel?: string
+}
+
+/** Review items together. */
+export interface ReviewCard extends CardCommon {
+  type: "review"
+  title: string
+  summary?: string
+  items: Array<{
+    id?: string
+    title: string
+    detail?: string
+    preview?: string
+    tag?: string
+  }>
+  defaultDecision?: "keep" | "drop" | "none"
+  keepLabel?: string
+  dropLabel?: string
+  applyLabel?: string
+}
+
 /** Items the user ticks off; the ticks are kept when the chat is reopened. "Done" reports checked and open items. */
 export interface ChecklistCard extends CardCommon {
   type: "checklist"
@@ -83,20 +117,6 @@ export interface FormCard extends CardCommon {
   submitLabel?: string
 }
 
-/** A guided walkthrough, one step at a time with Back/Next; the user reports done or where they got stuck. */
-export interface StepsCard extends CardCommon {
-  type: "steps"
-  title?: string
-  steps: Array<{
-    title: string
-    body?: string
-    command?: string
-    /** https image URL that came from a tool or the user. Never invent one. */
-    image?: string
-  }>
-  finishLabel?: string
-}
-
 /** Ask before you act: one action with reason and risk; the user answers Yes, No or Change. */
 export interface ConfirmCard extends CardCommon {
   type: "confirm"
@@ -118,6 +138,83 @@ export interface ConfirmCard extends CardCommon {
   cancelLabel?: string
   /** Offer "Change" with a text field. */
   allowChange?: boolean
+}
+
+/** A guided walkthrough, one step at a time with Back/Next; the user reports done or where they got stuck. */
+export interface StepsCard extends CardCommon {
+  type: "steps"
+  title?: string
+  steps: Array<{
+    title: string
+    body?: string
+    command?: string
+    /** https image URL that came from a tool or the user. Never invent one. */
+    image?: string
+  }>
+  finishLabel?: string
+}
+
+/** Compare weighted options. */
+export interface DecisionCard extends CardCommon {
+  type: "decision"
+  title: string
+  criteria: Array<{
+    id: string
+    label: string
+    weight: number
+  }>
+  options: Array<{
+    id?: string
+    label: string
+    scores: Record<string, number>
+    note?: string
+  }>
+  note?: string
+  submitLabel?: string
+}
+
+/** Calculate outputs from inputs. */
+export interface CalcCard extends CardCommon {
+  type: "calc"
+  title: string
+  inputs: Array<{
+    name: string
+    label: string
+    kind?: "number" | "slider" | "select" | "toggle"
+    min?: number
+    max?: number
+    step?: number
+    default: number
+    unit?: string
+    options?: Array<{
+      label: string
+      value: number
+    }>
+  }>
+  outputs: Array<{
+    label: string
+    expr: string
+    format?: "number" | "integer" | "percent" | "currency"
+    decimals?: number
+    unit?: string
+    emphasis?: boolean
+  }>
+  note?: string
+  currency?: string
+  sendLabel?: string
+}
+
+/** Put items in order. */
+export interface RankCard extends CardCommon {
+  type: "rank"
+  title: string
+  prompt?: string
+  items: Array<{
+    id?: string
+    label: string
+    detail?: string
+  }>
+  submitLabel?: string
 }
 
 /** Pick several of 2-6 options, or options that need a picture or a short text each. For one plain question with simple options use the built-in clarify tool instead. */
@@ -165,6 +262,38 @@ export interface ScheduleCard extends CardCommon {
   noneLabel?: string
 }
 
+/** Scale a recipe and make a shopping list. */
+export interface RecipeCard extends CardCommon {
+  type: "recipe"
+  title: string
+  servings: number
+  ingredients: Array<{
+    id?: string
+    item: string
+    qty?: number
+    unit?: string
+    note?: string
+    group?: string
+  }>
+  steps?: Array<{
+    text: string
+    minutes?: number
+  }>
+  sendLabel?: string
+}
+
+/** Practise with flashcards. */
+export interface FlashcardsCard extends CardCommon {
+  type: "flashcards"
+  title: string
+  cards: Array<{
+    front: string
+    back: string
+    hint?: string
+  }>
+  shuffle?: boolean
+}
+
 /** Ask for a rating on a scale (stars or numbers), optional comment. */
 export interface RatingCard extends CardCommon {
   type: "rating"
@@ -205,13 +334,20 @@ export interface QuizCard extends CardCommon {
 }
 
 export type Card =
+  | PlanCard
+  | ReviewCard
   | ChecklistCard
   | CompareCard
   | FormCard
-  | StepsCard
   | ConfirmCard
+  | StepsCard
+  | DecisionCard
+  | CalcCard
+  | RankCard
   | ChoiceCard
   | ScheduleCard
+  | RecipeCard
+  | FlashcardsCard
   | RatingCard
   | SliderCard
   | QuizCard

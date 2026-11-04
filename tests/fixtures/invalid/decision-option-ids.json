@@ -1,0 +1,34 @@
+{
+  "type": "decision",
+  "title": "Choose a laptop",
+  "criteria": [
+    {
+      "id": "cost",
+      "label": "Cost",
+      "weight": 5
+    },
+    {
+      "id": "speed",
+      "label": "Speed",
+      "weight": 4
+    }
+  ],
+  "options": [
+    {
+      "label": "A",
+      "scores": {
+        "cost": 8,
+        "speed": 6
+      },
+      "id": "same"
+    },
+    {
+      "label": "B",
+      "scores": {
+        "cost": 6,
+        "speed": 8
+      },
+      "id": "same"
+    }
+  ]
+}

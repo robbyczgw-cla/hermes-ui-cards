@@ -1,0 +1,21 @@
+{
+  "type": "recipe",
+  "title": "Pancakes",
+  "servings": 2,
+  "ingredients": [
+    {
+      "item": "flour",
+      "qty": 200,
+      "unit": "g"
+    },
+    {
+      "item": "egg",
+      "qty": 1
+    }
+  ],
+  "steps": [
+    {
+      "text": "Mix and cook."
+    }
+  ]
+}

@@ -97,6 +97,17 @@ DEMOS: dict[str, dict] = {
 }
 
 
+DEMOS.update({
+    'plan': {'type':'plan','title':'Release plan','steps':[{'title':'Run tests'},{'title':'Publish notes','optional':True}]},
+    'review': {'type':'review','title':'Review changes','items':[{'title':'Update guide'},{'title':'Remove draft'}]},
+    'decision': {'type':'decision','title':'Choose a laptop','criteria':[{'id':'cost','label':'Cost','weight':5},{'id':'speed','label':'Speed','weight':4}],'options':[{'label':'A','scores':{'cost':8,'speed':6}},{'label':'B','scores':{'cost':6,'speed':8}}]},
+    'calc': {'type':'calc','title':'Monthly cost','inputs':[{'name':'price','label':'Price','default':1200},{'name':'months','label':'Months','default':12}],'outputs':[{'label':'Monthly','expr':'price / months','format':'currency'}]},
+    'rank': {'type':'rank','title':'Set priorities','items':[{'label':'Speed'},{'label':'Quality'}]},
+    'recipe': {'type':'recipe','title':'Pancakes','servings':2,'ingredients':[{'item':'flour','qty':200,'unit':'g'},{'item':'egg','qty':1}],'steps':[{'text':'Mix and cook.'}]},
+    'flashcards': {'type':'flashcards','title':'Vocabulary','cards':[{'front':'Haus','back':'house'},{'front':'Baum','back':'tree'}]},
+})
+
+
 def demo_card(card_type: str) -> dict | None:
     card = DEMOS.get(card_type.strip().lower())
     return copy.deepcopy(card) if card else None

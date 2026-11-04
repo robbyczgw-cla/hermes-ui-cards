@@ -429,7 +429,76 @@ def _quiz(card: dict, L: _L) -> list[str]:
     return lines + [L(f"Reply with your answers, e.g. {ex_s}.", f"Antworte mit deinen Antworten, z. B. {ex_s}.")]
 
 
+def _plan(card, L):
+    lines = _head(card, 'title', 'summary')
+    for i, step in enumerate(card['steps'], 1):
+        tags = [L('optional', 'optional') if step.get('optional') else '', L[step['risk']] if step.get('risk') else '']
+        lines.append(f"{i}. {_one(step['title'])}" + (f" ({', '.join(x for x in tags if x)})" if any(tags) else ''))
+        for key in ('detail', 'command'):
+            if step.get(key): lines += _indent(_block(step[key]), '   ')
+    return lines + [L('Reply "go", or list the step numbers to skip / a new order, e.g. "skip 3" or "2, 1, 3".', 'Antworte mit "Los", den zu überspringenden Schritten oder einer neuen Reihenfolge, z. B. "Schritt 3 überspringen" oder "2, 1, 3".')]
+
+def _review(card, L):
+    lines = _head(card, 'title', 'summary')
+    for i, item in enumerate(card['items'], 1):
+        lines.append(f"{i}. " + _join([_one(item['title']), _one(item.get('tag', '')), _one(item.get('detail', ''))]))
+        if item.get('preview'): lines += _indent(_block(item['preview']), '   ')
+    return lines + [L('Reply with the numbers to drop, e.g. "drop 2, 5" (everything else is kept).', 'Antworte mit den Nummern zum Verwerfen, z. B. "2, 5 verwerfen" (alles andere bleibt).')]
+
+def _decision(card, L):
+    lines = _head(card, 'title', 'note'); criteria = card['criteria']; total = sum(c['weight'] for c in criteria)
+    for i, option in enumerate(card['options'], 1):
+        score = sum(c['weight'] * option['scores'][c['id']] for c in criteria) / total if total else None
+        lines.append(f"{i}. {_one(option['label'])}: " + (f'{score:.1f}'.replace('.', ',') if L.de and score is not None else f'{score:.1f}' if score is not None else '–'))
+    lines.append(L('Weights: ', 'Gewichte: ') + ', '.join(f"{_one(c['label'])} {_num(c['weight'], L)}" for c in criteria))
+    return lines + [L('Reply with changed weights or a pick.', 'Antworte mit geänderten Gewichten oder deiner Wahl.')]
+
+def _calc(card, L):
+    from .calc_expr import calc_parse, calc_eval
+    lines = _head(card, 'title', 'note'); values = {x['name']: x['default'] for x in card['inputs']}
+    for item in card['inputs']:
+        lines.append(f"{_one(item['label'])} ({item['name']}): {_with_unit(item['default'], item.get('unit'), L)}")
+    for output in card['outputs']:
+        val = calc_eval(calc_parse(output['expr'], list(values)), values); fmt = output.get('format', 'number')
+        if val is None: shown = '–'
+        else:
+            if fmt == 'percent': val *= 100
+            decimals = output.get('decimals', 0 if fmt == 'integer' else 2)
+            shown = f'{val:,.{decimals}f}'
+            if L.de: shown = shown.replace(',', '\0').replace('.', ',').replace('\0', '.')
+            if fmt == 'percent': shown += ' %'
+            if fmt == 'currency': shown += ' ' + {'EUR':'€', 'USD':'$', 'GBP':'£'}.get(card.get('currency', 'EUR'), card.get('currency', 'EUR'))
+            if output.get('unit'): shown += ' ' + _one(output['unit'])
+        lines.append(f"{_one(output['label'])}: {shown}")
+    return lines + [L('Reply with other values, e.g. "rate 4.5".', 'Antworte mit anderen Werten, z. B. "rate 4,5".')]
+
+def _rank(card, L):
+    lines = _head(card, 'title', 'prompt')
+    for i, item in enumerate(card['items'], 1): lines.append(f"{i}. " + _join([_one(item['label']), _one(item.get('detail', ''))]))
+    return lines + [L('Reply with the numbers in your order, e.g. "3, 1, 2".', 'Antworte mit den Nummern in deiner Reihenfolge, z. B. "3, 1, 2".')]
+
+def _recipe(card, L):
+    lines = _head(card, 'title'); lines.append(L(f"Servings: {card['servings']}", f"Portionen: {card['servings']}"))
+    groups = {}
+    for item in card['ingredients']: groups.setdefault(item.get('group', ''), []).append(item)
+    for group, items in groups.items():
+        if group: lines.append(_one(group))
+        for item in items:
+            amount = _with_unit(item['qty'], item.get('unit'), L) if 'qty' in item else _one(item.get('unit', ''))
+            lines.append(_join([_join([amount, _one(item['item'])], ' '), _one(item.get('note', ''))]))
+    for i, step in enumerate(card.get('steps', []), 1):
+        lines.append(f"{i}. {_one(step['text'])}" + (L(f" ({step['minutes']} min)", f" ({step['minutes']} Min.)") if 'minutes' in step else ''))
+    return lines + [L('Reply with the ingredients you are missing, or a number of servings.', 'Antworte mit den fehlenden Zutaten oder einer Portionszahl.')]
+
+def _flashcards(card, L):
+    lines = _head(card, 'title')
+    for i, item in enumerate(card['cards'], 1): lines.append(f"{i}. {_one(item['front'])}")
+    return lines + [L('Reply with your answers, or "show 3" to see a back.', 'Antworte mit deinen Antworten oder mit "3 zeigen", um eine Rückseite zu sehen.')]
+
+
 _RENDERERS = {
+    "plan": _plan, "review": _review, "decision": _decision, "calc": _calc,
+    "rank": _rank, "recipe": _recipe, "flashcards": _flashcards,
     "choice": _choice,
     "checklist": _checklist,
     "compare": _compare,

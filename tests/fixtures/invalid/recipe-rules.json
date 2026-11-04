@@ -1,0 +1,15 @@
+{
+  "type": "recipe",
+  "title": "x",
+  "servings": 2,
+  "ingredients": [
+    {
+      "id": "x",
+      "item": "a"
+    },
+    {
+      "id": "x",
+      "item": "b"
+    }
+  ]
+}

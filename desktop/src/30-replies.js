@@ -2,6 +2,7 @@
 // `[hui-card] {json}` for the model. Pure functions, unit-tested.
 
 const REPLY_TAG = '[hui-card]'
+const REPLY_BUILDERS = {}
 const MAX_REPLY = (SCHEMA.limits && SCHEMA.limits.maxReplyChars) || 4000
 const SUMMARY_ITEM_MAX = 60
 
@@ -196,8 +197,14 @@ function buildReply(card, answer, lang) {
       summary = t(L, 'rQuiz', { score: data.score, total: data.total })
       break
     }
-    default:
-      throw new Error(`no reply for card type ${card.type}`)
+    default: {
+      // Card types in their own files (81-…js) register a builder: (card, answer, lang, data) => { mark?, summary }.
+      const extra = REPLY_BUILDERS[card.type]
+      if (!extra) throw new Error(`no reply for card type ${card.type}`)
+      const built = extra(card, answer, L, data)
+      if (built.mark) mark = built.mark
+      summary = built.summary
+    }
   }
 
   let reply = fitReply(mark, summary, data)

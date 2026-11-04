@@ -1,0 +1,23 @@
+{
+  "type": "calc",
+  "title": "x",
+  "inputs": [
+    {
+      "name": "x",
+      "label": "x",
+      "default": 2,
+      "kind": "toggle"
+    },
+    {
+      "name": "x",
+      "label": "x",
+      "default": 1
+    }
+  ],
+  "outputs": [
+    {
+      "label": "x",
+      "expr": "missing"
+    }
+  ]
+}

@@ -10,7 +10,7 @@ test('checklist groups show counts, collapse when complete, and reopen without c
     { text: 'Tickets', category: 'Documents', checked: true },
     { text: 'Socks', category: 'Clothes' }
   ] }))
-  const group = buttonByText(m.container, '›Documents · 2/2')
+  const group = buttonByText(m.container, 'Documents · 2/2')
   assert.equal(group.getAttribute('aria-expanded'), 'false')
   const content = document.getElementById(group.getAttribute('aria-controls'))
   assert.equal(content.hidden, true)
@@ -106,15 +106,14 @@ test('form progress stays live, validation runs on submit, draft and switch valu
   await m.unmount()
 })
 
-test('form date format help is linked to the native date field in both languages', async () => {
-  for (const [lang, format, choose, saved] of [
-    ['en', 'Format: dd/mm/yyyy', 'Please choose', 'Draft saved'],
-    ['de', 'Format: TT.MM.JJJJ', 'Bitte wählen', 'Entwurf gespeichert']
+test('form date fields carry no fixed format hint (the native picker shows the locale), in both languages', async () => {
+  for (const [lang, choose, saved] of [
+    ['en', 'Please choose', 'Draft saved'],
+    ['de', 'Bitte wählen', 'Entwurf gespeichert']
   ]) {
     const m = await mount(toolResult({ ...form, lang }))
     const input = m.container.querySelector('input[type="date"]')
-    const help = document.getElementById(input.getAttribute('aria-describedby'))
-    assert.equal(help.textContent, format)
+    assert.doesNotMatch(m.container.textContent, /dd\/mm|TT\.MM/)
     assert.equal(input.lang, lang === 'de' ? 'de-DE' : 'en-GB')
     assert.equal(m.container.querySelector('select option').textContent, choose)
     await type(input, '2026-11-05')

@@ -30,3 +30,14 @@ config_schema:
     default: app
     label: Accent colour
     description: "app = the accent of your Desktop theme."
+  undo_seconds:
+    type: str
+    choices: ["0", "4", "8"]
+    default: "4"
+    label: Undo time (seconds)
+    description: "How long a compare pick waits before it is sent, so you can undo it. 0 = send at once."
+  card_types:
+    type: list
+    default: [plan, review, checklist, compare, form, confirm, steps, decision, calc, rank, choice, schedule, recipe, flashcards, rating, slider, quiz]
+    label: Card types
+    description: "Card types Hermes may show. Remove a name to turn that type off; an empty list means all. hui_present refuses turned-off types at once; the tool description follows after a Hermes restart."

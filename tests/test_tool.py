@@ -39,7 +39,7 @@ def test_desktop_returns_media_card_and_writes_markdown_copy(isolated):
     assert out["cardId"].startswith("trip-") and len(out["cardId"]) == len("trip-") + 10
     assert out["card"]["cardId"] == out["cardId"]
     assert [o["id"] for o in out["card"]["options"]] == ["o1", "o2"]
-    assert out["display"] == {"compact": False, "accent": "app"}
+    assert out["display"] == {"compact": False, "accent": "app", "undo": 4}
     assert out["media"].startswith("MEDIA:")
     path = Path(out["media"][len("MEDIA:"):])
     assert path.parent == isolated / "plugin-data" / "hermes-ui-cards" / "cards"
@@ -65,8 +65,12 @@ def test_cards_switched_off_gives_text_on_desktop_too():
 
 
 def test_display_settings_are_sanitized():
-    tool.configure(lambda key, default: {"compact": True, "accent": "neon"}.get(key, default))
-    assert run({"card": CHOICE}, "desktop")["display"] == {"compact": True, "accent": "app"}
+    tool.configure(lambda key, default: {"compact": True, "accent": "neon", "undo_seconds": "5"}.get(key, default))
+    assert run({"card": CHOICE}, "desktop")["display"] == {"compact": True, "accent": "app", "undo": 4}
+    tool.configure(lambda key, default: {"compact": "yes", "undo_seconds": "0"}.get(key, default))
+    assert tool.display_settings() == {"compact": False, "accent": "app", "undo": 0}
+    tool.configure(lambda key, default: {"undo_seconds": 8}.get(key, default))  # an int from config.yaml
+    assert tool.display_settings()["undo"] == 8
 
 
 def test_invalid_card_is_an_error_that_names_the_fields():
@@ -179,13 +183,15 @@ def test_old_card_files_are_pruned(monkeypatch):
 def test_tool_description_stays_small():
     schema = tool.tool_schema()
     assert schema["name"] == "hui_present"
-    assert len(json.dumps(schema)) < 4500
+    # Plugin tools are deferred behind tool_search: the full text is only loaded on tool_describe.
+    assert len(json.dumps(schema)) < 7000
     for card_type in CARD_TYPES:
         assert f"- {card_type}:" in schema["description"]
 
 
 def test_cards_command():
-    assert "Types: checklist, compare, form, steps, confirm, choice" in handle_cards("")
+    assert "Types: " + ", ".join(CARD_TYPES) + "." in handle_cards("")
+    assert "Types: plan, review, checklist, compare, form, confirm, steps" in handle_cards("")
     assert handle_cards("types").count("\n") == len(CARD_TYPES) - 1
     demo = handle_cards("demo compare")
     assert "Which laptop?" in demo and "hui_present demo for compare" in demo
@@ -235,8 +241,13 @@ def test_register_matches_the_manifest():
     assert ctx.commands == ["cards"]
     assert all(path.exists() for _, path in ctx.skills)
     assert manifest["requires_hermes"] == ">=0.22.6"
-    assert set(manifest["config_schema"]) == {"enabled", "compact", "accent"}
+    assert set(manifest["config_schema"]) == {"enabled", "compact", "accent", "undo_seconds", "card_types"}
     assert manifest["config_schema"]["accent"]["choices"] == tool.ACCENTS
+    undo = manifest["config_schema"]["undo_seconds"]
+    # A str with choices is what Settings → Plugins draws as a dropdown (an int with choices is a free number box).
+    assert undo["type"] == "str" and undo["choices"] == ["0", "4", "8"] and undo["default"] == "4"
+    assert manifest["config_schema"]["card_types"]["type"] == "list"
+    assert manifest["config_schema"]["card_types"]["default"] == CARD_TYPES  # keep in step with the schema
 
 
 def test_same_card_twice_in_one_turn_is_one_card():

@@ -3,29 +3,67 @@
 
 Object.assign(STRINGS.en, {
   formChoose: 'Please choose', formRequiredFilled: '{done} of {total} required filled',
-  formDraftSaved: 'Draft saved', formDateFormat: 'Format: dd/mm/yyyy'
+  formDraftSaved: 'Draft saved', formDateFormat: 'Format: dd/mm/yyyy', formOptional: 'optional'
 })
 Object.assign(STRINGS.de, {
   formChoose: 'Bitte wählen', formRequiredFilled: '{done} von {total} Pflichtfeldern ausgefüllt',
-  formDraftSaved: 'Entwurf gespeichert', formDateFormat: 'Format: TT.MM.JJJJ'
+  formDraftSaved: 'Entwurf gespeichert', formDateFormat: 'Format: TT.MM.JJJJ', formOptional: 'optional'
 })
 
+// A guided intake, not a web form: numbered questions down a rail that tick off as they
+// are answered, settings-style rows (question left, answer right) and a meter for what's required.
 const FORM_CSS = `
-.huic[data-card-type="form"] .huic-form-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:10px}
-.huic[data-card-type="form"] .huic-form-wide{grid-column:1/-1}
-.huic[data-card-type="form"] .huic-field{min-width:0}
-.huic[data-card-type="form"] .huic-input{min-width:0;min-height:32px;background:color-mix(in srgb,var(--ui-bg-quaternary) 35%,transparent)}
-.huic[data-card-type="form"] input.huic-input,.huic[data-card-type="form"] select.huic-input{height:32px;padding-block:4px}
+.huic[data-card-type="form"] .huic-form-grid{display:flex;flex-direction:column;counter-reset:huic-q}
+.huic[data-card-type="form"] .huic-form-intro{margin:0 0 4px;color:var(--ui-text-secondary);font-size:13px;line-height:19px}
+.huic[data-card-type="form"] .huic-field{position:relative;display:grid;grid-template-columns:20px minmax(0,1fr);column-gap:12px;row-gap:8px;align-items:start;min-width:0;padding:12px 0;border-top:1px solid var(--huic-line)}
+.huic[data-card-type="form"] .huic-field:first-of-type{border-top:0;padding-top:4px}
+.huic[data-card-type="form"] .huic-form-intro+.huic-field{border-top:1px solid var(--huic-line);padding-top:12px}
+.huic[data-card-type="form"] .huic-field::before{content:"";position:absolute;left:9.5px;top:0;bottom:0;width:1px;background:var(--huic-line)}
+.huic[data-card-type="form"] .huic-field:first-of-type::before{top:16px}
+.huic[data-card-type="form"] .huic-field:last-of-type::before{bottom:auto;height:16px}
+.huic[data-card-type="form"] .huic-form-marker{position:relative;z-index:1;grid-row:1 / span 2;display:grid;place-items:center;width:20px;height:20px;margin-top:0;border:1px solid var(--huic-line-strong);border-radius:50%;background:var(--ui-chat-surface-background,var(--ui-base));color:var(--ui-text-tertiary);font-size:10.5px;font-weight:600;font-variant-numeric:tabular-nums;transition:background .2s,border-color .2s,color .2s}
+.huic[data-card-type="form"] .huic-form-marker::before{counter-increment:huic-q;content:counter(huic-q)}
+.huic[data-card-type="form"] [data-state="done"]>.huic-form-marker{background:var(--huic-accent);border-color:var(--huic-accent);color:var(--huic-on-accent)}
+.huic[data-card-type="form"] [data-state="done"]>.huic-form-marker::before{content:"";width:8px;height:4px;border-left:1.75px solid currentColor;border-bottom:1.75px solid currentColor;transform:translateY(-1px) rotate(-45deg)}
+.huic[data-card-type="form"] [data-state="error"]>.huic-form-marker{border-color:var(--ui-red);color:var(--ui-red);background:color-mix(in srgb,var(--ui-red) 10%,var(--ui-chat-surface-background,var(--ui-base)))}
+.huic[data-card-type="form"] [data-state="error"]>.huic-form-marker::before{content:"!"}
+.huic[data-card-type="form"] .huic-form-lead{display:flex;flex-direction:column;gap:2px;min-width:0;padding-top:1px}
+.huic[data-card-type="form"] .huic-form-control{display:flex;flex-direction:column;gap:4px;min-width:0;grid-column:2}
+.huic[data-card-type="form"] .huic-label{font-size:13px;line-height:18px;font-weight:500;color:var(--ui-text-primary)}
+.huic[data-card-type="form"] .huic-form-optional{margin-left:6px;color:var(--ui-text-tertiary);font-size:11.5px;font-weight:400}
+.huic[data-card-type="form"] .huic-input{min-width:0;min-height:34px}
+.huic[data-card-type="form"] input.huic-input,.huic[data-card-type="form"] select.huic-input{height:34px;padding-block:4px}
+.huic[data-card-type="form"] .huic-form-short{max-width:240px}
+.huic[data-card-type="form"] .huic-select{position:relative;display:block;min-width:0}
+.huic[data-card-type="form"] .huic-select>select{appearance:none;-webkit-appearance:none;padding-right:30px;cursor:pointer}
+.huic[data-card-type="form"] .huic-select::after{content:"";position:absolute;right:12px;top:50%;width:6px;height:6px;border-right:1.5px solid var(--ui-text-tertiary);border-bottom:1.5px solid var(--ui-text-tertiary);transform:translateY(-70%) rotate(45deg);pointer-events:none}
 .huic[data-card-type="form"] select.huic-input option{background:var(--ui-chat-surface-background,var(--ui-base));color:var(--ui-text-primary)}
-.huic[data-card-type="form"] .huic-switch-label{display:flex;align-items:center;gap:8px;min-height:32px;cursor:pointer}
-.huic[data-card-type="form"] .huic-switch-label:has(:disabled){cursor:default;opacity:.6}
-.huic[data-card-type="form"] input.huic-switch{appearance:none;position:relative;flex:none;width:32px;height:18px;margin:0;border:1px solid var(--ui-stroke-secondary);border-radius:999px;background:var(--ui-bg-quaternary);cursor:inherit;transition:background .15s,border-color .15s}
-.huic[data-card-type="form"] input.huic-switch::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:var(--ui-text-secondary);transition:transform .15s}
+.huic[data-card-type="form"] .huic-form-unit{flex:none;white-space:nowrap;color:var(--ui-text-tertiary);font-size:12px}
+.huic[data-card-type="form"] .huic-switch-label{grid-column:2;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:22px;cursor:pointer}
+.huic[data-card-type="form"] .huic-switch-label>span{font-weight:500;line-height:18px}
+.huic[data-card-type="form"] .huic-switch-label:has(:disabled){cursor:default;opacity:.75}
+.huic[data-card-type="form"] input.huic-switch{appearance:none;position:relative;flex:none;width:34px;height:20px;margin:0;border:1px solid var(--huic-line-strong);border-radius:999px;background:var(--ui-bg-tertiary,var(--ui-bg-quaternary));cursor:inherit;transition:background .18s,border-color .18s}
+.huic[data-card-type="form"] input.huic-switch::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--ui-text-tertiary);transition:transform .18s var(--huic-ease),background .18s}
 .huic[data-card-type="form"] input.huic-switch:checked{background:var(--huic-accent);border-color:var(--huic-accent)}
-.huic[data-card-type="form"] input.huic-switch:checked::after{transform:translateX(14px);background:var(--ui-chat-surface-background,var(--ui-base))}
-.huic[data-card-type="form"] .huic-form-feedback{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1;color:var(--ui-text-tertiary);font-size:12px}
-@container (min-width:521px){.huic[data-card-type="form"] .huic-form-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(prefers-reduced-motion:reduce){.huic[data-card-type="form"] *{transition:none!important}}
+.huic[data-card-type="form"] input.huic-switch:checked::after{transform:translateX(14px);background:var(--huic-on-accent)}
+.huic[data-card-type="form"] .huic-form-feedback{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1;color:var(--ui-text-tertiary);font-size:12px}
+.huic[data-card-type="form"] .huic-form-meter{display:flex;gap:3px;max-width:160px}
+.huic[data-card-type="form"] .huic-form-meter>i{flex:1;height:4px;max-width:28px;border-radius:999px;background:var(--huic-line-strong);transition:background .25s var(--huic-ease)}
+.huic[data-card-type="form"] .huic-form-meter>i.on{background:var(--huic-accent)}
+.huic[data-card-type="form"] .huic-form-status{display:flex;flex-wrap:wrap;column-gap:8px}
+.huic[data-card-type="form"] .huic-form-status>span+span::before{content:"·";margin-right:8px;color:var(--ui-text-quaternary,var(--ui-text-tertiary))}
+.huic[data-card-type="form"] .huic-form-status>.huic-err{color:var(--ui-red)}
+@container (min-width:521px){
+ .huic[data-card-type="form"] .huic-field{grid-template-columns:20px minmax(0,38%) minmax(0,1fr)}
+ .huic[data-card-type="form"] .huic-form-marker{grid-row:auto}
+ .huic[data-card-type="form"] .huic-form-control{grid-column:3}
+ .huic[data-card-type="form"] .huic-switch-label{grid-column:2 / span 2}
+ .huic[data-card-type="form"] .huic-form-lead{padding-top:7px}
+ .huic[data-card-type="form"] .huic-field>.huic-form-marker{margin-top:7px}
+ .huic[data-card-type="form"] .huic-field.is-toggle>.huic-form-marker{margin-top:0}
+ .huic[data-card-type="form"] .huic-field:first-of-type::before{top:23px}
+ .huic[data-card-type="form"] .huic-field:last-of-type::before{height:23px}
+}
 `
 
 const TEXT_MAX = { text: 300, email: 200, textarea: 1000 }
@@ -73,11 +111,13 @@ function formOutput(card, values) {
   return out
 }
 
-function FormField({ field, value, error, disabled, lang, onChange, baseId }) {
+function FormField({ field, value, error, disabled, lang, onChange, baseId, state, optional }) {
   const id = `${baseId}-${field.name}`
   const helpId = field.help ? `${id}-help` : undefined
   const errId = error ? `${id}-err` : undefined
-  const dateHelpId = field.kind === 'date' ? `${id}-format` : undefined
+  // No format hint for dates: the native picker shows the user's own locale format, a fixed
+  // hint (dd/mm/yyyy) would contradict it. The value sent is always ISO (YYYY-MM-DD).
+  const dateHelpId = undefined
   const describedBy = [helpId, dateHelpId, errId].filter(Boolean).join(' ') || undefined
   const common = {
     id,
@@ -87,6 +127,7 @@ function FormField({ field, value, error, disabled, lang, onChange, baseId }) {
     'aria-describedby': describedBy,
     'aria-required': field.required ? 'true' : undefined
   }
+  const short = ['number', 'date', 'time', 'select'].includes(field.kind)
   let control
   if (field.kind === 'toggle') {
     control = jsxs('label', {
@@ -94,6 +135,7 @@ function FormField({ field, value, error, disabled, lang, onChange, baseId }) {
       htmlFor: id,
       style: { cursor: disabled ? 'default' : 'pointer' },
       children: [
+        jsx('span', { children: field.label }),
         jsx('input', {
           ...common,
           type: 'checkbox',
@@ -101,20 +143,22 @@ function FormField({ field, value, error, disabled, lang, onChange, baseId }) {
           checked: value === true,
           onChange: e => onChange(e.target.checked),
           className: 'huic-switch'
-        }),
-        jsx('span', { children: field.label })
+        })
       ]
     })
   } else if (field.kind === 'select') {
-    control = jsxs('select', {
-      ...common,
-      className: 'huic-input',
-      value,
-      onChange: e => onChange(e.target.value),
-      children: [
-        jsx('option', { value: '', children: field.placeholder || t(lang, 'formChoose') }),
-        ...field.options.map(o => jsx('option', { value: o, children: o }, o))
-      ]
+    control = jsx('span', {
+      className: 'huic-select huic-form-short',
+      children: jsxs('select', {
+        ...common,
+        className: 'huic-input',
+        value,
+        onChange: e => onChange(e.target.value),
+        children: [
+          jsx('option', { value: '', children: field.placeholder || t(lang, 'formChoose') }),
+          ...field.options.map(o => jsx('option', { value: o, children: o }, o))
+        ]
+      })
     })
   } else if (field.kind === 'textarea') {
     control = jsx('textarea', {
@@ -128,7 +172,7 @@ function FormField({ field, value, error, disabled, lang, onChange, baseId }) {
   } else {
     const type = { number: 'number', date: 'date', time: 'time', email: 'email' }[field.kind] || 'text'
     control = jsxs('div', {
-      className: 'huic-row',
+      className: cx('huic-row', short && 'huic-form-short'),
       children: [
         jsx('input', {
           ...common,
@@ -143,29 +187,39 @@ function FormField({ field, value, error, disabled, lang, onChange, baseId }) {
           maxLength: type === 'text' || type === 'email' ? Math.min(field.maxLength || Infinity, TEXT_MAX[field.kind]) * 2 : undefined,
           onChange: e => onChange(TEXT_MAX[field.kind] ? limitText(e.target.value, Math.min(field.maxLength || Infinity, TEXT_MAX[field.kind])) : e.target.value)
         }),
-        field.unit ? jsx('span', { className: 'huic-help', children: field.unit }) : null
+        field.unit ? jsx('span', { className: 'huic-form-unit', children: field.unit }) : null
       ]
     })
   }
+  const help = [
+    field.help ? jsx('span', { className: 'huic-help', id: helpId, children: field.help }, 'help') : null,
+    null
+  ]
   return jsxs('div', {
-    className: cx('huic-field', ['text', 'textarea'].includes(field.kind) && 'huic-form-wide'),
+    className: cx('huic-field', ['text', 'textarea'].includes(field.kind) && 'huic-form-wide', field.kind === 'toggle' && 'is-toggle'),
+    'data-state': state,
     children: [
+      jsx('span', { className: 'huic-form-marker', 'aria-hidden': true }),
       field.kind === 'toggle'
-        ? null
-        : jsxs('label', {
-            className: 'huic-label',
-            htmlFor: id,
+        ? control
+        : jsxs('div', {
+            className: 'huic-form-lead',
             children: [
-              field.label,
-              field.required
-                ? jsxs('span', { className: 'huic-req', children: [' *', jsx('span', { className: 'huic-sr', children: ` (${t(lang, 'required')})` })] })
-                : null
+              jsxs('label', {
+                className: 'huic-label',
+                htmlFor: id,
+                children: [
+                  field.label,
+                  field.required ? jsx('span', { className: 'huic-sr', children: ` (${t(lang, 'required')})` }) : null,
+                  optional ? jsx('span', { className: 'huic-form-optional', children: t(lang, 'formOptional') }) : null
+                ]
+              }),
+              ...help
             ]
           }),
-      control,
-      field.help ? jsx('span', { className: 'huic-help', id: helpId, children: field.help }) : null,
-      dateHelpId ? jsx('span', { className: 'huic-help', id: dateHelpId, children: t(lang, 'formDateFormat') }) : null,
-      error ? jsx('span', { className: 'huic-err', id: errId, children: error }) : null
+      field.kind === 'toggle'
+        ? (help.some(Boolean) ? jsx('div', { className: 'huic-form-control', children: help }) : null)
+        : jsxs('div', { className: 'huic-form-control', children: [control, error ? jsx('span', { className: 'huic-err', id: errId, children: error }) : null] })
     ]
   })
 }
@@ -198,6 +252,9 @@ function FormCard({ card, sessionId, display, lang }) {
   const required = card.fields.filter(f => f.required)
   // A switch always has a boolean value; false is a valid answer too.
   const requiredFilled = required.filter(f => f.kind === 'toggle' || String(values[f.name] ?? '').trim() !== '').length
+  const filled = f => f.kind !== 'toggle' && String(values[f.name] ?? '').trim() !== ''
+  const shownError = f => oversizeFields.has(f.name) ? t(lang, 'shortenField') : tried ? errors[f.name] : null
+  const fieldState = f => shownError(f) ? 'error' : filled(f) && !errors[f.name] ? 'done' : 'idle'
   const reply = buildReply(card, { values: formOutput(card, values) }, lang)
   const remaining = MAX_REPLY - [...reply.text].length
   const ranked = card.fields.map(f => ({ name: f.name, size: [...JSON.stringify(formOutput(card, values)[f.name])].length }))
@@ -245,14 +302,16 @@ function FormCard({ card, sessionId, display, lang }) {
     'aria-labelledby': card.title ? labelId : undefined,
     className: 'huic-form-grid',
     children: [
-      card.description ? jsx('p', { className: 'huic-sub huic-form-wide', style: { margin: 0 }, children: card.description }) : null,
+      card.description ? jsx('p', { className: 'huic-form-intro', children: card.description }) : null,
       ...card.fields.map(field =>
         jsx(
           FormField,
           {
             field,
             value: values[field.name] ?? '',
-            error: oversizeFields.has(field.name) ? t(lang, 'shortenField') : tried ? errors[field.name] : null,
+            state: fieldState(field),
+            optional: required.length > 0 && !field.required && field.kind !== 'toggle',
+            error: shownError(field),
             disabled: ans.locked,
             lang,
             baseId,
@@ -272,9 +331,12 @@ function FormCard({ card, sessionId, display, lang }) {
         hint: jsxs('span', {
           className: 'huic-form-feedback',
           children: [
-            required.length ? jsx('span', { 'aria-live': 'polite', children: t(lang, 'formRequiredFilled', { done: requiredFilled, total: required.length }) }) : null,
-            ans.draft?.values ? jsx('span', { role: 'status', children: t(lang, 'formDraftSaved') }) : null,
-            tried && hasErrors ? jsx('span', { children: t(lang, 'errFix') }) : null
+            required.length ? jsx('span', { className: 'huic-form-meter', 'aria-hidden': true, children: required.map(f => jsx('i', { className: f.kind === 'toggle' || filled(f) ? 'on' : undefined }, f.name)) }) : null,
+            jsxs('span', { className: 'huic-form-status', children: [
+              required.length ? jsx('span', { 'aria-live': 'polite', children: t(lang, 'formRequiredFilled', { done: requiredFilled, total: required.length }) }) : null,
+              ans.draft?.values ? jsx('span', { role: 'status', children: t(lang, 'formDraftSaved') }) : null,
+              tried && hasErrors ? jsx('span', { className: 'huic-err', children: t(lang, 'errFix') }) : null
+            ] })
           ]
         }),
         children: jsx('button', {

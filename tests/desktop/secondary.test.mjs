@@ -201,3 +201,17 @@ test('quiz: keyboard flow, tile feedback, result screen, send', async t => {
   await click(buttonByText(container, 'Send result'))
   assert.equal(lastReply().line1, '✓ Quiz: 1 of 2 correct')
 })
+
+
+test('slider: typed and default values snap to a step inside the range', async () => {
+  const { mod } = await import('./dom.mjs')
+  const card = { type: 'slider', question: 'How many?', min: 0, max: 11, step: 3, default: 10 }
+  const { container, unmount } = await mount(toolResult(card))
+  const range = container.querySelector('input[type="range"]')
+  assert.equal(range.value, '9', 'default 10 shows as 9 (the nearest step that fits)')
+  const box = container.querySelector('input[type="number"]')
+  await type(box, '11')
+  await act(async () => { box.dispatchEvent(new window.FocusEvent('blur', { bubbles: true })); box.dispatchEvent(new window.Event('focusout', { bubbles: true })) })
+  assert.equal(container.querySelector('input[type="range"]').value, '9')
+  await unmount()
+})

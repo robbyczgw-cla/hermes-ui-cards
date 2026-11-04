@@ -10,7 +10,10 @@
    Done and takes the message the card sends.
 3. Follow-up turn: sends that message into the same session and checks that the model got the
    [hui-card] line and Hermes delivered its reaction.
-4. CLI turn: `hermes chat -q` gets the plain-text version and no MEDIA line.
+4. Answer memory: the plugin recorded the card as shown, then as answered, under the session id
+   Hermes Desktop uses for the chat (`stored_session_id`), and Hermes' real web server serves it at
+   /api/plugins/hermes-ui-cards/answers (plus /settings), mounted from dashboard/manifest.json.
+5. CLI turn: `hermes chat -q` gets the plain-text version and no MEDIA line.
 
     HERMES_BIN=/path/to/venv/bin/hermes python3 tests/e2e/run_e2e.py
 
@@ -65,15 +68,19 @@ class Backend:
                                      stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                      stderr=open(home / "backend.err", "w"))
         self.frames: queue.Queue = queue.Queue()
+        self.plugin_events: list = []  # every plugin.* gateway event, whoever waits for frames
         threading.Thread(target=self._read, daemon=True).start()
         self.next_id = 0
 
     def _read(self):
         for line in self.proc.stdout:
             try:
-                self.frames.put(json.loads(line))
+                frame = json.loads(line)
             except ValueError:
-                pass
+                continue
+            if frame.get("method") == "event" and str(frame.get("params", {}).get("type", "")).startswith("plugin."):
+                self.plugin_events.append(frame["params"])
+            self.frames.put(frame)
 
     def call(self, method: str, params: dict, timeout: float = 120) -> dict:
         self.next_id += 1
@@ -116,6 +123,10 @@ class Backend:
         self.proc.kill()
 
 
+def sent_ids(sent: dict) -> list:
+    return json.loads(sent["text"].split("\n")[1][len("[hui-card] "):])["done_ids"]
+
+
 def main() -> None:
     hermes = os.environ.get("HERMES_BIN") or "hermes"
     python = str(Path(hermes).with_name("python"))
@@ -126,7 +137,10 @@ def main() -> None:
 
     backend = Backend(python, home)
     try:
-        sid = backend.call("session.create", {"source": "desktop"})["session_id"]
+        created = backend.call("session.create", {"source": "desktop"})
+        sid = created["session_id"]
+        # What Hermes Desktop hands a tool media renderer as `sessionId` (storedId || runtimeId).
+        stored = created.get("stored_session_id") or sid
         result, text = backend.turn(sid, "Help me pack for Japan in winter")
         if not isinstance(result, dict):
             result = json.loads(result) if isinstance(result, str) else None
@@ -140,6 +154,13 @@ def main() -> None:
         if not card_file.is_file():
             fail(f"card file missing: {card_file}")
         ok("desktop: card file written")
+        record_file = home / "plugin-data" / "hermes-ui-cards" / "answers" / f"{result['cardId']}.json"
+        if not record_file.is_file():
+            fail(f"answer memory: no record for the shown card ({record_file})")
+        shown = json.loads(record_file.read_text(encoding="utf-8")).get("shown") or {}
+        if shown.get("session") != stored:
+            fail(f"answer memory: card shown under {shown.get('session')!r}, Desktop asks with {stored!r}")
+        ok(f"answer memory: card recorded as shown in session {stored} (the id Desktop asks with)")
 
         result_path = home / "result.json"
         result_path.write_text(json.dumps(result), encoding="utf-8")
@@ -165,6 +186,31 @@ def main() -> None:
         if want not in reaction:
             fail(f"follow-up reply: {reaction!r}")
         ok(f"follow-up: Hermes answered {reaction!r}")
+        recorded = [e for e in backend.plugin_events if e.get("type") == "plugin.hermes-ui-cards.answer.recorded"]
+        if not recorded or recorded[-1]["payload"].get("card") != result["cardId"] \
+                or recorded[-1]["payload"].get("session_id") != stored:
+            fail(f"no answer.recorded event for the card (plugin events: {backend.plugin_events!r:.400})")
+        ok("answer memory: connected client got plugin.hermes-ui-cards.answer.recorded")
+
+        probe = subprocess.run([python, str(HERE / "route_probe.py"), stored, result["cardId"] + ",nope-0000000000"],
+                               env=dict(os.environ, HERMES_HOME=str(home)), cwd=str(home), capture_output=True,
+                               text=True, timeout=180)
+        if probe.returncode != 0:
+            fail(f"route probe: {probe.stderr.strip()[-600:]}")
+        routes = json.loads(probe.stdout.strip().splitlines()[-1])
+        answers = routes["answers"]
+        if answers["status"] != 200:
+            fail(f"GET /api/plugins/hermes-ui-cards/answers: HTTP {answers['status']} {answers['body']!r:.300}")
+        got = answers["body"]["answers"].get(result["cardId"])
+        if not got or got.get("summary") != lines[0][2:] or got.get("data", {}).get("done_ids") != sent_ids(sent):
+            fail(f"answers route: {answers['body']!r:.400}")
+        if answers["body"]["open"]:
+            fail(f"answers route: unexpected open cards {answers['body']['open']}")
+        ok(f"answer memory: GET /api/plugins/hermes-ui-cards/answers → answered ({got['summary']!r})")
+        settings = routes["settings"]
+        if settings["status"] != 200 or settings["body"].get("display") != {"compact": False, "accent": "app", "undo": 4}:
+            fail(f"GET /api/plugins/hermes-ui-cards/settings: {settings!r:.300}")
+        ok("settings: GET /api/plugins/hermes-ui-cards/settings → defaults")
     finally:
         backend.close()
 

@@ -13,6 +13,7 @@ validate_card() never raises. It returns (card, errors, warnings):
 from __future__ import annotations
 
 import copy
+from .calc_expr import calc_parse
 import json
 import math
 import re
@@ -191,6 +192,11 @@ def _check_object(value: dict, spec: dict, path: str, ctx: _Ctx, extra_props: di
         if key not in value or value[key] is None:
             ctx.errors.append(f"{path}.{key}: required")
     for key, item in value.items():
+        if key not in props and "additionalProperties" in spec:
+            before = len(ctx.errors)
+            cleaned = _check_value(item, spec["additionalProperties"], f"{path}.{key}", ctx)
+            if len(ctx.errors) == before: out[key] = cleaned
+            continue
         if key not in props:
             hint = _suggest(key, list(props))
             ctx.warnings.append(f"{path}.{key}: unknown field, ignored{hint}")
@@ -253,7 +259,9 @@ def _unique_ids(card, key, ctx):
 
 
 def _rule(name, card, ctx):
-    if name == "uniqueOptionIds":
+    if name in ("uniqueStepIds", "uniqueCriterionIds", "uniqueIngredientIds"):
+        _unique_ids(card, {"uniqueStepIds": "steps", "uniqueCriterionIds": "criteria", "uniqueIngredientIds": "ingredients"}[name], ctx)
+    elif name == "uniqueOptionIds":
         _unique_ids(card, "options", ctx)
     elif name == "uniqueItemIds":
         _unique_ids(card, "items", ctx)
@@ -261,6 +269,35 @@ def _rule(name, card, ctx):
         _unique_ids(card, "columns", ctx)
     elif name == "uniqueSlotIds":
         _unique_ids(card, "slots", ctx)
+    elif name == "uniqueInputNames":
+        seen = set()
+        for i, item in enumerate(card["inputs"]):
+            name = item["name"]
+            if name in seen: ctx.errors.append(f'card.inputs[{i}].name: duplicate name "{name}"')
+            seen.add(name)
+    elif name == "scoresMatchCriteria":
+        ids = [c["id"] for c in card["criteria"]]
+        for i, option in enumerate(card["options"]):
+            scores = option["scores"]
+            for key in ids:
+                if key not in scores: ctx.errors.append(f'card.options[{i}].scores: missing criterion "{key}"')
+            for key in scores:
+                if key not in ids: ctx.errors.append(f'card.options[{i}].scores: unknown criterion "{key}"')
+    elif name == "calcExpressions":
+        names = [x["name"] for x in card["inputs"]]
+        for i, output in enumerate(card["outputs"]):
+            parsed = calc_parse(output["expr"], names)
+            if isinstance(parsed, dict): ctx.errors.append(f'card.outputs[{i}].expr: {parsed["message"]} at {parsed["at"]}')
+    elif name == "calcInputs":
+        for i, item in enumerate(card["inputs"]):
+            p = f"card.inputs[{i}]"; lo = item.get("min"); hi = item.get("max"); d = item["default"]
+            if lo is not None and hi is not None and lo >= hi: ctx.errors.append(f"{p}.min: must be smaller than max")
+            if (lo is not None and d < lo) or (hi is not None and d > hi): ctx.errors.append(f"{p}.default: outside range")
+            if "step" in item and item["step"] <= 0: ctx.errors.append(f"{p}.step: must be larger than 0")
+            if item["kind"] == "select":
+                if "options" not in item: ctx.errors.append(f"{p}.options: required for kind select")
+                elif d not in [x["value"] for x in item["options"]]: ctx.errors.append(f"{p}.default: must be one of the options")
+            if item["kind"] == "toggle" and d not in (0, 1): ctx.errors.append(f"{p}.default: must be 0 or 1 for kind toggle")
     elif name == "minMaxPicks":
         n = len(card.get("options", []))
         lo, hi = card.get("min"), card.get("max")
@@ -353,7 +390,11 @@ def _iso(value: str) -> datetime:
 
 
 def _assign_ids(card: dict) -> None:
-    for key, prefix in _PREFIX.items():
+    prefixes = dict(_PREFIX)
+    if card.get("type") == "plan": prefixes["steps"] = "p"
+    if card.get("type") in ("review", "rank"): prefixes["items"] = {"review": "r", "rank": "k"}[card["type"]]
+    if card.get("type") == "recipe": prefixes["ingredients"] = "g"
+    for key, prefix in prefixes.items():
         items = card.get(key)
         if not isinstance(items, list) or not items or not isinstance(items[0], dict):
             continue

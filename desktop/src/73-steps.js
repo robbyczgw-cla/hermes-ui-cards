@@ -7,19 +7,40 @@ Object.assign(STRINGS.de, {
   stepsNotePlaceholder: 'Sag Hermes, wo du festhängst'
 })
 
+// A calm guide: one connected track (the progress bar is its line), the current step as
+// an eyebrow + title, content that fades in per step, Next carries an arrow.
 const STEPS_CSS = `
-.huic[data-card-type="steps"] .huic-steps-map{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 6px;padding:0;list-style:none}
+.huic[data-card-type="steps"] .huic-steps-track{--dot:26px;position:relative;margin:0 0 4px}
+.huic[data-card-type="steps"] .huic-steps-track>.huic-progress{position:absolute;left:calc(var(--dot) / 2);right:calc(var(--dot) / 2);top:calc(var(--dot) / 2 - 1px);height:2px}
+.huic[data-card-type="steps"] .huic-steps-map{position:relative;display:flex;justify-content:space-between;gap:4px;margin:0;padding:0;list-style:none}
 .huic[data-card-type="steps"] .huic-steps-map li{display:block;padding:0;margin:0}
-.huic[data-card-type="steps"] .huic-steps-dot{display:grid;place-items:center;min-width:27px;height:27px;border:1px solid var(--ui-stroke-tertiary);border-radius:999px;background:transparent;color:var(--ui-text-secondary);font:inherit;font-size:11px;font-variant-numeric:tabular-nums;cursor:pointer}
-.huic[data-card-type="steps"] .huic-steps-dot:hover:not(:disabled){background:var(--ui-control-hover-background)}
-.huic[data-card-type="steps"] .huic-steps-dot[aria-current="step"]{background:var(--huic-accent);border-color:var(--huic-accent);color:var(--ui-chat-surface-background,var(--ui-base));font-weight:600}
-.huic[data-card-type="steps"] .huic-steps-dot:disabled{color:var(--ui-text-secondary);opacity:.65;cursor:default}
-.huic[data-card-type="steps"] .huic-steps-done{border-color:color-mix(in srgb,var(--huic-accent) 40%,var(--ui-stroke-tertiary));color:var(--huic-accent);background:color-mix(in srgb,var(--huic-accent) 7%,transparent)}
+.huic[data-card-type="steps"] .huic-steps-dot{position:relative;display:grid;place-items:center;width:var(--dot);height:var(--dot);padding:0;border:1px solid var(--huic-line-strong);border-radius:999px;background:var(--ui-chat-surface-background,var(--ui-base));color:var(--ui-text-tertiary);font:inherit;font-size:11px;font-weight:500;font-variant-numeric:tabular-nums;cursor:pointer;transition:background .2s,border-color .2s,color .2s,box-shadow .2s}
+.huic[data-card-type="steps"] .huic-steps-dot:hover:not(:disabled){border-color:var(--huic-accent);color:var(--ui-text-primary)}
+.huic[data-card-type="steps"] .huic-steps-dot[aria-current="step"]{background:var(--huic-accent);border-color:var(--huic-accent);color:var(--huic-on-accent);font-weight:600;box-shadow:0 0 0 4px color-mix(in srgb,var(--huic-accent) 16%,transparent)}
+.huic[data-card-type="steps"] .huic-steps-dot:disabled{cursor:default}
+.huic[data-card-type="steps"] .huic-steps-dot.huic-steps-done{border-color:color-mix(in srgb,var(--huic-accent) 45%,var(--huic-line));color:var(--huic-accent);background:color-mix(in srgb,var(--huic-accent) 10%,var(--ui-chat-surface-background,var(--ui-base)));font-size:0}
+.huic[data-card-type="steps"] .huic-steps-done::before{content:"";width:8px;height:4px;border-left:1.75px solid currentColor;border-bottom:1.75px solid currentColor;transform:translate(0,-1px) rotate(-45deg)}
+.huic[data-card-type="steps"] .huic-steps-content{display:flex;flex-direction:column;gap:8px;animation:huic-fade .28s var(--huic-ease) both}
+.huic[data-card-type="steps"] .huic-steps-content>.huic-code-block,.huic[data-card-type="steps"] .huic-steps-content>.huic-img{margin-top:4px}
+.huic[data-card-type="steps"] .huic-steps-title{margin:-6px 0 0;font-size:15px;line-height:22px;font-weight:600;letter-spacing:-.01em;outline:none}
+.huic[data-card-type="steps"] .huic-steps-body{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ui-text-secondary);line-height:1.6}
 .huic[data-card-type="steps"] .huic-steps-left{margin-right:auto;min-width:0}
-.huic[data-card-type="steps"] .huic-steps-left button::before{content:'⚠';margin-right:6px}
+.huic[data-card-type="steps"] .huic-steps-left button::before{content:"?";display:grid;place-items:center;width:15px;height:15px;border-radius:50%;border:1.25px solid currentColor;font-size:10px;font-weight:700;line-height:1}
 .huic[data-card-type="steps"] .huic-steps-nav{display:flex;gap:8px;align-items:center;margin-left:auto}
-.huic[data-card-type="steps"] .huic-steps-report{padding:12px var(--huic-pad);border-top:1px solid var(--ui-stroke-tertiary);display:flex;flex-direction:column;gap:7px}
+.huic[data-card-type="steps"] .huic-steps-next::after{content:"→";transition:transform .15s var(--huic-ease)}
+.huic[data-card-type="steps"] .huic-steps-next:hover::after{transform:translateX(2px)}
+.huic[data-card-type="steps"] .huic-steps-report{padding:12px var(--huic-pad);border-top:1px solid var(--huic-line);background:color-mix(in srgb,var(--ui-orange,var(--huic-accent)) 5%,transparent);box-shadow:inset 3px 0 0 var(--ui-orange,var(--huic-accent));display:flex;flex-direction:column;gap:8px;animation:huic-fade .2s var(--huic-ease) both}
 .huic[data-card-type="steps"] .huic-steps-report-actions{display:flex;justify-content:flex-end;gap:8px}
+@container (max-width: 440px){
+ .huic[data-card-type="steps"] .huic-steps-track{--dot:22px}
+ .huic-steps-frame[data-many] .huic-steps-map{gap:2px}
+ .huic[data-card-type="steps"] .huic-foot{flex-wrap:nowrap}
+ .huic[data-card-type="steps"] .huic-steps-left{flex:none;margin-right:0}
+ .huic[data-card-type="steps"] .huic-steps-left .huic-btn{padding-inline:8px}
+ .huic[data-card-type="steps"] .huic-steps-nav{flex:1;min-width:0}
+ .huic[data-card-type="steps"] .huic-steps-nav>.huic-btn{flex:1}
+}
+@container (max-width: 340px){.huic-steps-frame[data-many] .huic-steps-track{--dot:18px}.huic-steps-frame[data-many] .huic-steps-dot{font-size:9.5px}}
 `
 
 function StepsCard({ card, sessionId, display, lang }) {
@@ -63,29 +84,33 @@ function StepsCard({ card, sessionId, display, lang }) {
   const step = card.steps[index]
   const progressText = t(lang, 'stepOf', { n: index + 1, total: card.steps.length })
   const canNavigate = ans.showActions || ans.answered
-  return jsx('div', { onKeyDown: navigate, children: jsx(Shell, {
+  return jsx('div', { onKeyDown: navigate, 'data-many': card.steps.length > 8 ? '' : undefined, className: 'huic-steps-frame', children: jsx(Shell, {
     card, display, labelId, title: card.title,
     children: [
       jsx('style', { children: STEPS_CSS }),
-      jsx('span', { className: 'huic-sub', children: progressText }),
-      jsx('div', {
-        className: 'huic-progress', role: 'progressbar', 'aria-label': progressText,
-        'aria-valuemin': 0, 'aria-valuemax': card.steps.length, 'aria-valuenow': index + 1,
-        children: jsx('span', { style: { width: `${((index + 1) / card.steps.length) * 100}%` } })
-      }),
-      jsx('ol', { className: 'huic-steps-map', 'aria-label': t(lang, 'stepsMap'), children: card.steps.map((item, i) =>
-        jsx('li', { children: jsx('button', {
-          type: 'button', className: cx('huic-steps-dot', i < index && 'huic-steps-done'),
-          title: item.title, 'aria-label': `${t(lang, 'stepOf', { n: i + 1, total: card.steps.length })}: ${item.title}`,
-          'aria-current': i === index ? 'step' : undefined,
-          disabled: !canNavigate || i > index,
-          onClick: () => move(i), children: i + 1
-        }) }, i)
-      ) }),
-      jsx('h4', { ref: headingRef, tabIndex: -1, className: 'huic-title', children: step.title }),
-      step.body ? jsx('p', { style: { margin: 0, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }, children: step.body }) : null,
-      step.command ? jsx(CodeBlock, { code: step.command, lang }) : null,
-      step.image ? jsx(CardImage, { src: step.image }, index) : null
+      jsxs('div', { className: 'huic-steps-track', children: [
+        jsx('div', {
+          className: 'huic-progress', role: 'progressbar', 'aria-label': progressText,
+          'aria-valuemin': 0, 'aria-valuemax': card.steps.length, 'aria-valuenow': index + 1,
+          children: jsx('span', { style: { width: `${(index / (card.steps.length - 1)) * 100}%` } })
+        }),
+        jsx('ol', { className: 'huic-steps-map', 'aria-label': t(lang, 'stepsMap'), children: card.steps.map((item, i) =>
+          jsx('li', { children: jsx('button', {
+            type: 'button', className: cx('huic-steps-dot', i < index && 'huic-steps-done'),
+            title: item.title, 'aria-label': `${t(lang, 'stepOf', { n: i + 1, total: card.steps.length })}: ${item.title}`,
+            'aria-current': i === index ? 'step' : undefined,
+            disabled: !canNavigate || i > index,
+            onClick: () => move(i), children: i + 1
+          }) }, i)
+        ) })
+      ] }),
+      jsxs('div', { className: 'huic-steps-content', children: [
+        jsx('span', { className: 'huic-eyebrow', children: progressText }),
+        jsx('h4', { ref: headingRef, tabIndex: -1, className: 'huic-title huic-steps-title', children: step.title }),
+        step.body ? jsx('p', { className: 'huic-steps-body', children: step.body }) : null,
+        step.command ? jsx(CodeBlock, { code: step.command, lang, prompt: true }) : null,
+        step.image ? jsx(CardImage, { src: step.image }, index) : null
+      ] }, index)
     ],
     footer: canNavigate ? (reporting && ans.showActions
       ? jsxs('div', { className: 'huic-steps-report', children: [
@@ -110,7 +135,7 @@ function StepsCard({ card, sessionId, display, lang }) {
             index > 0 ? jsx(Btn, { onClick: () => move(index - 1), children: t(lang, 'back') }) : null,
             index === card.steps.length - 1
               ? (ans.showActions ? jsx(Btn, { variant: 'primary', onClick: () => ans.submit({ completed: true }), children: card.finishLabel || t(lang, 'finish') }) : null)
-              : jsx(Btn, { variant: 'primary', onClick: () => move(index + 1), children: t(lang, 'next') })
+              : jsx(Btn, { variant: 'primary', className: 'huic-steps-next', onClick: () => move(index + 1), children: t(lang, 'next') })
           ] })
         ] }) })) : null,
     after: ans.status

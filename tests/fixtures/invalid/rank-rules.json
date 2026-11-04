@@ -1,0 +1,14 @@
+{
+  "type": "rank",
+  "title": "x",
+  "items": [
+    {
+      "id": "x",
+      "label": "a"
+    },
+    {
+      "id": "x",
+      "label": "b"
+    }
+  ]
+}
