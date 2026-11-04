@@ -177,6 +177,8 @@ def main() -> None:
     if "MEDIA:" in out.split('"name": "hui_present"')[-1].replace("\\n", "\n").split("Here is a list")[-1]:
         fail("cli: a MEDIA line reached the CLI reply")
     ok("cli: plain-text version with numbered items, no MEDIA line")
+    # `hermes chat` starts a background gateway for this home; stop it.
+    subprocess.run([hermes, "gateway", "stop"], env=env, capture_output=True, text=True, timeout=120)
     server.shutdown()
     print("E2E passed")
 

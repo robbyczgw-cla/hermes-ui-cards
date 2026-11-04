@@ -39,7 +39,7 @@ function ScheduleCard({ card, sessionId, display, lang }) {
           group.slots.map(slot => {
             const index = available.findIndex(s => s.id === slot.id)
             return jsx(OptionTile, {
-              option: { label: formatSlot(slot, card, lang), description: [slot.label, slot.note, slot.unavailable ? t(lang, 'unavailable') : null].filter(Boolean).join(' · ') },
+              option: { label: formatSlot(slot, card, lang, { withDay: groups.length < 2 }), description: [slot.label, slot.note, slot.unavailable ? t(lang, 'unavailable') : null].filter(Boolean).join(' · ') },
               checked: selected.includes(slot.id), multiple: Boolean(card.multiple), disabled: ans.locked || slot.unavailable,
               tabIndex: slot.unavailable ? -1 : card.multiple || index === focusIndex ? 0 : -1,
               refCb: el => { if (index >= 0) roving.refs.current[index] = el },

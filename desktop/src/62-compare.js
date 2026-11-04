@@ -40,13 +40,7 @@ function CompareColumn({ card, column, index, lang, ans, picked, onPick }) {
         ]
       }),
       rows.length
-        ? jsx('dl', {
-            className: 'huic-kv',
-            children: rows.flatMap((row, ri) => [
-              jsx('dt', { children: row.label }, `t${ri}`),
-              jsx('dd', { children: displayValue(row.values[index], lang) }, `d${ri}`)
-            ])
-          })
+        ? jsx(KeyValues, { rows: rows.map(row => ({ label: row.label, value: displayValue(row.values[index], lang) })) })
         : null,
       column.pros && column.pros.length
         ? jsx('ul', {

@@ -26,17 +26,7 @@ function ConfirmCard({ card, sessionId, display, lang }) {
     card.reason ? jsx('p', { className: 'huic-sub', style: { margin: 0 }, children: card.reason }, 'reason') : null,
     card.command ? jsx(CodeBlock, { code: card.command, lang }, 'cmd') : null,
     card.details && card.details.length
-      ? jsx(
-          'dl',
-          {
-            className: 'huic-kv',
-            children: card.details.flatMap((d, i) => [
-              jsx('dt', { children: d.label }, `t${i}`),
-              jsx('dd', { children: d.value }, `d${i}`)
-            ])
-          },
-          'details'
-        )
+      ? jsx(KeyValues, { rows: card.details }, 'details')
       : null,
     risk
       ? jsxs(

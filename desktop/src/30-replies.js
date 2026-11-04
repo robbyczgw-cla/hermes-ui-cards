@@ -52,14 +52,15 @@ function slotZone(value, card) {
 function slotDay(value, card) {
   return new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: slotZone(value, card) }).format(slotDate(value))
 }
-function formatSlot(slot, card, lang) {
+// withDay: false under a day heading (schedule card), where the date would repeat.
+function formatSlot(slot, card, lang, { withDay = true } = {}) {
   const locale = lang === 'de' ? 'de-DE' : 'en-GB'
   const format = (value, day) => new Intl.DateTimeFormat(locale, {
     ...(day ? { weekday: 'short', day: 'numeric', month: 'short' } : {}),
     hour: '2-digit', minute: '2-digit', timeZone: slotZone(value, card)
   }).format(slotDate(value))
   if (Number.isNaN(slotDate(slot.start).getTime())) return oneLine(slot.label || slot.start)
-  let text = format(slot.start, true)
+  let text = format(slot.start, withDay)
   if (slot.end && !Number.isNaN(slotDate(slot.end).getTime()))
     text += '–' + format(slot.end, slotDay(slot.start, card) !== slotDay(slot.end, card))
   return text

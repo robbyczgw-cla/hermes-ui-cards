@@ -24,6 +24,7 @@ def isolated(tmp_path, monkeypatch):
         monkeypatch.delenv(name, raising=False)
     tool.configure(None)
     tool._pending.clear()
+    tool._turn_platform.clear()
     yield tmp_path
 
 
@@ -108,6 +109,22 @@ def test_surface_detection(monkeypatch):
     assert tool.current_surface() == "telegram"
 
 
+def test_gateway_local_sessions_use_the_hook_platform(monkeypatch):
+    # Desktop and Webapp sessions owned by a gateway look like CLI sessions from the tool
+    # (platform "local", no source); pre_llm_call tells them apart.
+    monkeypatch.setenv("HERMES_SESSION_PLATFORM", "local")
+    assert tool.current_surface("local-abc") == "local"
+    tool.on_turn_start(session_id="local-abc", platform="desktop")
+    assert tool.current_surface("local-abc") == "desktop"
+    out = json.loads(tool.handle_present({"card": CHOICE}, session_id="local-abc"))
+    assert "media" in out
+    tool.on_turn_start(session_id="local-cli", platform="cli")
+    out = json.loads(tool.handle_present({"card": CHOICE}, session_id="local-cli"))
+    assert "text" in out and "media" not in out
+    # an unknown session falls back to the environment
+    assert tool.current_surface("other") == "local"
+
+
 def test_media_line_safety_net():
     out = run({"card": CHOICE}, "desktop", session_id="abc")
     tag = out["media"]
@@ -129,7 +146,7 @@ def test_turn_start_hint_only_on_desktop(monkeypatch):
     assert tool.on_turn_start(session_id="a", platform="telegram") is None
     assert tool.on_turn_start(session_id="a", platform="cli") is None
     monkeypatch.setenv("HERMES_SESSION_SOURCE", "desktop")
-    assert tool.on_turn_start(session_id="a", platform="") == {"context": tool.DESKTOP_HINT}
+    assert tool.on_turn_start(session_id="b", platform="") == {"context": tool.DESKTOP_HINT}
     tool.configure(lambda key, default: False if key == "enabled" else default)
     assert tool.on_turn_start(session_id="a", platform="desktop") is None
     assert len(tool.DESKTOP_HINT) < 400

@@ -27,6 +27,10 @@ ACCENTS = ["app", "blue", "green", "orange", "purple", "red"]
 _settings_reader = None  # set by register(): key, default -> value
 _pending: dict[str, list[tuple[float, str]]] = {}
 _pending_lock = threading.Lock()
+# session id -> (time, platform) from pre_llm_call. Gateway-owned sessions (the Desktop app
+# and the Webapp attached to a gateway) bind HERMES_SESSION_PLATFORM=local for every local
+# client, CLI included; only the agent platform the hooks receive says "desktop".
+_turn_platform: dict[str, tuple[float, str]] = {}
 
 
 def configure(settings_reader) -> None:
@@ -62,8 +66,13 @@ def _session_env(name: str) -> str:
         return os.environ.get(name, "")
 
 
-def current_surface() -> str:
+def current_surface(session_id: str = "") -> str:
     """Where this turn is shown: "desktop", a messaging platform name, "cli", "tui", … or ""."""
+    if session_id:
+        with _pending_lock:
+            seen = _turn_platform.get(session_id)
+        if seen and time.time() - seen[0] <= PENDING_TTL_S and seen[1]:
+            return seen[1]
     platform = os.environ.get("HERMES_PLATFORM") or _session_env("HERMES_SESSION_PLATFORM")
     source = _session_env("HERMES_SESSION_SOURCE")
     for ident in (platform, source):
@@ -141,9 +150,15 @@ def on_turn_start(session_id: str = "", platform: str = "", **_kwargs):
     """pre_llm_call: forget MEDIA lines of a turn that never finished, and on Desktop remind the
     model that cards exist (Hermes defers plugin tools behind tool_search, so the model would
     otherwise only see the tool's name). The hint is ephemeral: it is not stored in the session."""
+    platform = str(platform or "").strip().lower()
+    now = time.time()
     with _pending_lock:
         _pending.pop(session_id or "", None)
-    surface = "desktop" if str(platform or "").lower() == "desktop" else current_surface()
+        if session_id and platform:
+            for key in [k for k, v in _turn_platform.items() if now - v[0] > PENDING_TTL_S]:
+                _turn_platform.pop(key, None)
+            _turn_platform[session_id] = (now, platform)
+    surface = platform or current_surface(session_id)
     if surface == "desktop" and bool(setting("enabled", True)):
         return {"context": DESKTOP_HINT}
     return None
@@ -207,7 +222,7 @@ def present(args: dict, session_id: str = "", surface: str | None = None) -> str
                       "Fix these fields and call hui_present again.", problems, warnings)
     card = {"cardId": _new_card_id(card), **card}
     text = render_text(card)
-    surface = current_surface() if surface is None else surface
+    surface = current_surface(session_id) if surface is None else surface
     result: dict = {"ok": True, "cardId": card["cardId"], "type": card["type"]}
     if surface == "desktop" and bool(setting("enabled", True)):
         path = _write_card_file(card, text)

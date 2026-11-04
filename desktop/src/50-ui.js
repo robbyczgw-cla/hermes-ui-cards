@@ -60,9 +60,6 @@ textarea.huic-input{min-height:64px;resize:vertical}
 .huic-risk-low{color:var(--ui-green,var(--ui-text-secondary))}
 .huic-risk-medium{color:var(--ui-orange,var(--ui-yellow,var(--ui-text-secondary)))}
 .huic-risk-high{color:var(--ui-red,var(--ui-text-primary))}
-.huic-kv{display:grid;grid-template-columns:minmax(80px,max-content) 1fr;gap:3px 12px;margin:0}
-.huic-kv dt{color:var(--ui-text-tertiary)}
-.huic-kv dd{margin:0}
 .huic-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .huic-btn{appearance:none;border:0;border-radius:7px;padding:5px 12px;font:inherit;font-weight:500;cursor:pointer;color:var(--ui-text-primary);background:var(--ui-bg-quaternary)}
 .huic-btn:hover:not([disabled]){background:var(--ui-control-hover-background)}
@@ -71,12 +68,12 @@ textarea.huic-input{min-height:64px;resize:vertical}
 .huic-btn-ghost{background:transparent;color:var(--ui-text-secondary)}
 .huic-btn-danger{background:color-mix(in srgb,var(--ui-red) 16%,transparent);color:var(--ui-red)}
 .huic-btn[disabled]{opacity:.5;cursor:default}
+.huic-btn-primary[disabled]{opacity:1;background:var(--ui-bg-quaternary);color:var(--ui-text-quaternary,var(--ui-text-tertiary))}
 @container (max-width: 440px){
   .huic-grid{grid-template-columns:1fr}
   .huic-foot{justify-content:stretch}
   .huic-foot>.huic-btn,.huic-foot>button{flex:1}
   .huic-hint{flex-basis:100%}
-  .huic-kv{grid-template-columns:1fr}
 }
 @media (prefers-reduced-motion: reduce){.huic *{transition:none !important}}
 `
@@ -133,8 +130,8 @@ function Shell({ card, display, title, subtitle, children, footer, after, labelI
         ? jsxs('header', {
             className: 'huic-head',
             children: [
-              title ? jsx('h3', { className: 'huic-title', id: labelId, children: title }) : null,
-              subtitle ? jsx('p', { className: 'huic-sub', children: subtitle }) : null
+              title ? jsx('h3', { className: 'huic-title', id: labelId, style: { margin: 0 }, children: title }) : null,
+              subtitle ? jsx('p', { className: 'huic-sub', style: { margin: '2px 0 0' }, children: subtitle }) : null
             ]
           })
         : null,
@@ -193,6 +190,22 @@ function CopyButton({ text, lang }) {
     }
   }
   return jsx(Btn, { variant: 'ghost', onClick: copy, children: copied ? t(lang, 'copied') : t(lang, 'copy') })
+}
+
+// Label/value pairs. The app's Markdown styles reach dl/dt/dd inside messages, so the
+// layout-critical properties are inline; each pair is one flex row (dl > div > dt + dd).
+const KV_ROW = { display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'baseline', padding: '3px 0', borderTop: '1px solid var(--ui-stroke-tertiary)' }
+const KV_DT = { margin: 0, padding: 0, float: 'none', fontWeight: 400, color: 'var(--ui-text-tertiary)', flex: 'none', maxWidth: '50%' }
+const KV_DD = { margin: 0, padding: 0, textAlign: 'right', minWidth: 0, overflowWrap: 'anywhere' }
+
+function KeyValues({ rows }) {
+  return jsx('dl', {
+    className: 'huic-kv',
+    style: { margin: 0, padding: 0, display: 'block', alignSelf: 'stretch', width: '100%' },
+    children: rows.map((row, i) =>
+      jsxs('div', { style: KV_ROW, children: [jsx('dt', { style: KV_DT, children: row.label }), jsx('dd', { style: KV_DD, children: row.value })] }, i)
+    )
+  })
 }
 
 function CodeBlock({ code, lang }) {

@@ -11,6 +11,7 @@ agent loop, tool dispatch, hooks and persistence with deterministic answers:
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -39,7 +40,12 @@ def decide(messages: list) -> dict:
     """Return {"content": str} or {"tool_call": {...}} for the conversation so far."""
     last = messages[-1]
     if last.get("role") == "tool":
-        result = json.loads(_text_of(last))
+        try:
+            result = json.loads(_text_of(last))
+        except ValueError:
+            return {"content": "Done."}
+        if "demo" in str(messages[-2].get("tool_calls", "")):
+            return {"content": "Here is the example card."}
         if "text" in result:
             return {"content": "Here is a list to work through:\n\n" + result["text"]}
         return {"content": "Here is a list to work through."}
@@ -49,6 +55,12 @@ def decide(messages: list) -> dict:
             answer = json.loads(line[len("[hui-card] "):])
             still = ", ".join(answer.get("open", [])) or "nothing"
             return {"content": f"Got it: {len(answer.get('done', []))} packed. Still to pack: {still}."}
+    if "probe-env" in text:  # diagnostics only
+        return {"tool_call": {"name": "tool_call", "arguments": json.dumps({"calls": [{"name": "env_probe", "arguments": {}}]})}}
+    demo = re.search(r"\bdemo (\w+)", text)
+    if demo:
+        return {"tool_call": {"name": "tool_call", "arguments": json.dumps(
+            {"calls": [{"name": "hui_present", "arguments": {"demo": demo.group(1)}}]})}}
     # Hermes defers plugin tools behind tool_search by default: a model calls them through tool_call.
     return {"tool_call": {"name": "tool_call", "arguments": json.dumps(
         {"calls": [{"name": "hui_present", "arguments": {"card": CARD}}]})}}
