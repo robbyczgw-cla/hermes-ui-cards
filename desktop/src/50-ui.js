@@ -11,7 +11,9 @@ const ACCENT_VARS = {
 }
 
 const CARD_CSS = `
-.huic{--huic-accent:var(--ui-accent);--huic-pad:14px;container-type:inline-size;box-sizing:border-box;width:100%;max-width:680px;margin:6px 0;border:1px solid var(--ui-stroke-tertiary);border-radius:12px;background:var(--ui-chat-surface-background,transparent);color:var(--ui-text-primary);font-size:13px;line-height:1.45;overflow:hidden;text-align:left}
+.huic{--huic-accent:var(--ui-accent);--huic-pad:14px;container-type:inline-size;box-sizing:border-box;width:100%;max-width:680px;margin:6px 0;border:1px solid var(--ui-stroke-tertiary);border-radius:12px;background:var(--ui-chat-surface-background,transparent);color:var(--ui-text-primary);font-size:13px;line-height:1.45;text-align:left}
+.huic>:first-child{border-top-left-radius:11px;border-top-right-radius:11px}
+.huic>:last-child{border-bottom-left-radius:11px;border-bottom-right-radius:11px}
 .huic *{box-sizing:border-box;overflow-wrap:anywhere}
 .huic-body>*{min-width:0}
 .huic.huic-compact{--huic-pad:10px;font-size:12.5px}
