@@ -103,8 +103,12 @@ def _block(value) -> str:
     return "\n".join(line.rstrip() for line in str(value).replace("\r\n", "\n").replace("\r", "\n").split("\n")).strip()
 
 
+class _Kept(str):
+    """A blank line that belongs to the content (a command, a body), so _layout must not merge it."""
+
+
 def _indent(text: str, pad: str) -> list[str]:
-    return [pad + line if line else line for line in text.split("\n")]
+    return [pad + line if line else _Kept() for line in text.split("\n")]
 
 
 def _num(n, L: _L | None = None) -> str:
@@ -619,10 +623,11 @@ def render_text(card: dict) -> str:
 
 
 def _layout(lines: list[str]) -> str:
-    """One blank line at most between blocks, none at the edges, and one before the hint."""
+    """One blank line at most between blocks, none at the edges, and one before the hint.
+    Blank lines inside a command or body (_Kept) stay as they are."""
     out: list[str] = []
     for line in lines:
-        if line or (out and out[-1]):
+        if line or isinstance(line, _Kept) or (out and out[-1]):
             out.append(line)
     while out and not out[-1]:
         out.pop()

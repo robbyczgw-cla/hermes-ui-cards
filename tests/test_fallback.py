@@ -394,3 +394,14 @@ def test_form_optional_toggle_fallback_marks_unanswered():
     card = {"type": "form", "fields": [{"name": "notify", "label": "Notify", "kind": "toggle"}]}
     assert "leave blank if unanswered" in render_text(card)
     assert "leer lassen, falls unbeantwortet" in render_text({**card, "lang": "de"})
+
+
+HEREDOC = "cat > fixture.txt <<'EOF'\nA\n\n\nB\nEOF"
+
+
+def test_blank_lines_inside_a_command_survive_the_layout():
+    # Copying the command from the text version must write the same file as the card's own command.
+    out = text({**CONFIRM, "command": HEREDOC})
+    assert "  A\n\n\n  B\n" in out
+    steps = text({"type": "steps", "title": "Fixture", "steps": [{"title": "Write it", "command": HEREDOC}, {"title": "Check"}]})
+    assert "A\n\n\n" in steps and "\n\n\n\n" not in steps
