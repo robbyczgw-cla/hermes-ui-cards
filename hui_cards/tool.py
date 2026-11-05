@@ -451,64 +451,64 @@ def ensure_media_lines(response_text: str = "", session_id: str = "", **_kwargs)
     return text if text != response_text else None
 
 
-# MEDIA directives as Hermes reads them: `MEDIA:` + optional spaces + a "double", 'single' or
-# `backtick` quoted path, or a bare path. Directives inside code, inline code or block quotes are
-# examples, not deliveries (Hermes masks those spans too), so they are neither repaired nor counted.
-MEDIA_ANY_RE = re.compile(r"""MEDIA:\s*(?P<path>`[^`\n]+?`|"[^"\n]+?"|'[^'\n]+?'|[^\s`"']+)""")
-_FENCE_RE = re.compile(r"^(```|~~~)[^\n]*\n.*?^\1[^\n]*$", re.M | re.S)
-_INLINE_CODE_RE = re.compile(r"`[^`\n]+`")
-_QUOTE_LINE_RE = re.compile(r"^[ \t]*>.*$", re.M)
+# The safety net works on whole lines only: a line that is nothing but one MEDIA directive (bare,
+# "double", 'single' or `backtick` quoted, like Desktop's own line rule), outside fenced code (any
+# fence indented up to three spaces) and block quotes. Everything else in the reply, including
+# examples in code, stays byte for byte as the model wrote it.
+_MEDIA_LINE_RE = re.compile(r"""^[ \t]*MEDIA:[ \t]*(?P<path>`[^`\n]+`|"[^"\n]+"|'[^'\n]+'|[^\s`"']+)[ \t]*$""")
+_FENCE_OPEN_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 
 
-def _protected(text: str) -> str:
-    """`text` with code, inline code and block-quote spans blanked (offsets kept)."""
-    chars = list(text)
-    for rx in (_FENCE_RE, _QUOTE_LINE_RE, _INLINE_CODE_RE):
-        for m in rx.finditer("".join(chars)):
-            # `MEDIA:` + a backtick-quoted path is a delivery (Desktop reads it as one), not code.
-            if rx is _INLINE_CODE_RE and re.search(r"MEDIA:\s*$", text[:m.start()]):
-                continue
-            for i in range(m.start(), m.end()):
-                if chars[i] != "\n":
-                    chars[i] = " "
-    return "".join(chars)
-
-
-def _deliveries(text: str):
-    """(start, end, path) of every MEDIA directive outside protected spans."""
-    for m in MEDIA_ANY_RE.finditer(_protected(text)):
-        raw = text[m.start("path"):m.end("path")]
-        value = raw[1:-1] if raw[:1] in "\"'`" and raw[-1:] == raw[:1] and len(raw) > 1 else raw
-        yield m.start(), m.end(), value
+def _directive_lines(text: str):
+    """(line index, path) for every whole-line MEDIA directive outside code fences and quotes."""
+    lines = text.split("\n")
+    fence = None
+    for i, line in enumerate(lines):
+        m = _FENCE_OPEN_RE.match(line)
+        if fence is None and m:
+            fence = m.group(1)[0] * len(m.group(1))
+            continue
+        if fence is not None:
+            if line.strip().startswith(fence):
+                fence = None
+            continue
+        if line.lstrip().startswith(">"):
+            continue
+        d = _MEDIA_LINE_RE.match(line)
+        if d:
+            raw = d.group("path")
+            value = raw[1:-1] if raw[:1] in "\"'`" and raw[-1:] == raw[:1] and len(raw) > 1 else raw
+            yield i, value
 
 
 def _repair_card_media(text: str, tag: str) -> str:
-    """Point a mistyped directive for this card's file at the real file, and keep one directive."""
+    """Point a mistyped directive line for this card's file at the real file; keep one such line."""
     path = tag.split(":", 1)[1].strip('"')
     name = Path(path).name
-    out, last, seen = [], 0, False
-    for start, end, value in _deliveries(text):
+    lines = text.split("\n")
+    drop, seen = set(), False
+    for i, value in _directive_lines(text):
         norm = value.replace("\\", "/")
         is_card = value == path
         # Only a path that looks like card storage, names this card and does not exist is a typo;
         # a real file elsewhere with the same name (an export, a copy) stays as it is.
         typo = (not is_card and Path(norm).name == name and "/plugin-data/" in norm and "/cards/" in norm
                 and not os.path.exists(value))
-        if is_card or typo:
-            out.append(text[last:start])
-            # The first delivery stays as the model wrote it if it is right; a typo becomes the real
-            # tag; any later directive for this card is dropped (one card, one attachment).
-            out.append("" if seen else (text[start:end] if is_card else tag))
-            seen = True
-            last = end
-    out.append(text[last:])
-    repaired = "".join(out)
-    return re.sub(r"\n{3,}", "\n\n", repaired) if repaired != text else text
+        if not (is_card or typo):
+            continue
+        if seen:
+            drop.add(i)  # a second directive for the same card
+        elif typo:
+            lines[i] = tag
+        seen = True
+    if not drop:
+        return "\n".join(lines)
+    return "\n".join(line for i, line in enumerate(lines) if i not in drop)
 
 
 def _has_media_line(text: str, path: str) -> bool:
-    """Whether `text` delivers `path` as a MEDIA directive outside code and quotes."""
-    return any(value == path for _s, _e, value in _deliveries(text))
+    """Whether `text` delivers `path` on a MEDIA line of its own, outside code and quotes."""
+    return any(value == path for _i, value in _directive_lines(text))
 
 
 # ── the tool ──

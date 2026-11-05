@@ -405,3 +405,38 @@ def test_media_repair_respects_code_quotes_and_real_files(tmp_path):
     w4 = t4[len("MEDIA:"):].replace("hermes-ui-cards", "hermes-union")
     fixed = tool.ensure_media_lines(response_text=f"A\nMEDIA:{w4}\nB\n{t4}", session_id="md")
     assert fixed.count(t4) == 1 and w4 not in fixed
+
+
+def test_media_safety_net_never_changes_other_text():
+    out = run({"card": CHOICE}, "desktop", session_id="keep")
+    tag = out["media"]
+    wrong = tag.replace("hermes-ui-cards", "hermes-union")
+    cases = [
+        # a colon before a code block must not swallow the block (review 8)
+        f"The syntax is MEDIA:\n```\nnot a path\n```\n{tag}",
+        # blank lines inside code survive a repair elsewhere
+        f"```python\ns = '''a\n\n\nb'''\n```\n{wrong}",
+        # an indented fence and a JSON example are examples, not deliveries
+        f"   ```\n   {tag}\n   ```",
+        f'Result: {{"media": "{tag}"}}',
+    ]
+    for reply in cases:
+        tool._pending.clear()
+        tool._remember("keep", tag)
+        fixed = tool.ensure_media_lines(response_text=reply, session_id="keep") or reply
+        body = fixed.rsplit("\n\n" + tag, 1)[0] if not reply.endswith(tag) else fixed
+        for chunk in ("not a path", "a\n\n\nb", "   ```\n   " + tag, '{"media": "' + tag + '"}'):
+            if chunk in reply:
+                assert chunk in fixed, f"changed protected text in {reply!r}"
+        own_lines = [line for line in fixed.split("\n") if line == tag]  # unindented: not the fenced example
+        assert len(own_lines) == 1, f"one deliverable line for the card in {fixed!r}"
+        assert wrong not in fixed or wrong not in reply
+
+
+def test_media_safety_net_paths_with_quotes_in_them(tmp_path, monkeypatch):
+    # a HERMES_HOME with an apostrophe: the correct bare line is recognised and not doubled
+    home = tmp_path / "Rob's home"
+    monkeypatch.setenv("HERMES_HOME", str(home))
+    out = run({"card": CHOICE}, "desktop", session_id="apos")
+    tag = out["media"]
+    assert tool.ensure_media_lines(response_text=f"Here:\n{tag}", session_id="apos") is None
