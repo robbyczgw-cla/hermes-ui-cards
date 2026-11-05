@@ -124,10 +124,18 @@ function rcpFormat(value, lang, metric) {
   return lang === 'de' ? text.replace('.', ',') : text
 }
 
+// "6 cups", "2 pinches": plain English kitchen words only. Abbreviations (tbsp, g) and German stay as
+// written. Same list as RECIPE_PLURALS in hui_cards/fallback.py.
+const RCP_PLURALS = { cup: 'cups', pinch: 'pinches', splash: 'splashes', dash: 'dashes', clove: 'cloves', slice: 'slices', can: 'cans', handful: 'handfuls', sprig: 'sprigs', stick: 'sticks', piece: 'pieces', bunch: 'bunches', leaf: 'leaves', drop: 'drops', glass: 'glasses', jar: 'jars', teaspoon: 'teaspoons', tablespoon: 'tablespoons' }
+function rcpUnit(unit, qty, lang) {
+  if (!unit || lang === 'de' || !(qty > 1)) return unit
+  return RCP_PLURALS[String(unit).toLowerCase()] || unit
+}
+
 function rcpAmount(qty, unit, lang) {
   if (qty === undefined || qty === null) return ''
   const text = rcpFormat(qty, lang, rcpMetric(unit))
-  return unit ? `${text} ${unit}` : text
+  return unit ? `${text} ${rcpUnit(unit, qty, lang)}` : text
 }
 
 function rcpMinutes(minutes, lang) {

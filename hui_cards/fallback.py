@@ -542,8 +542,17 @@ def _rank(card, L):
 _FRACTIONS = {0.125: '⅛', 0.25: '¼', 0.375: '⅜', 0.5: '½', 0.625: '⅝', 0.75: '¾', 0.875: '⅞'}
 
 
+# "6 cups", "2 pinches": plain English kitchen words only (same list as RCP_PLURALS in 86-recipe.js).
+RECIPE_PLURALS = {"cup": "cups", "pinch": "pinches", "splash": "splashes", "dash": "dashes", "clove": "cloves",
+                  "slice": "slices", "can": "cans", "handful": "handfuls", "sprig": "sprigs", "stick": "sticks",
+                  "piece": "pieces", "bunch": "bunches", "leaf": "leaves", "drop": "drops", "glass": "glasses",
+                  "jar": "jars", "teaspoon": "teaspoons", "tablespoon": "tablespoons"}
+
+
 def _qty(qty, unit, L: _L) -> str:
     """Like the Desktop card: kitchen fractions (1½ tsp), decimals for g/ml/mg."""
+    if unit and not L.de and isinstance(qty, (int, float)) and not isinstance(qty, bool) and qty > 1:
+        unit = RECIPE_PLURALS.get(unit.lower(), unit)
     if isinstance(qty, (int, float)) and not isinstance(qty, bool) and qty > 0 and not re.fullmatch(r"(?i)mg|g|ml", unit or ""):
         whole = int(qty + 1e-9)
         frac = round(qty - whole, 3)

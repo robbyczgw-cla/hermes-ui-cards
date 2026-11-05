@@ -405,3 +405,13 @@ def test_blank_lines_inside_a_command_survive_the_layout():
     assert "  A\n\n\n  B\n" in out
     steps = text({"type": "steps", "title": "Fixture", "steps": [{"title": "Write it", "command": HEREDOC}, {"title": "Check"}]})
     assert "A\n\n\n" in steps and "\n\n\n\n" not in steps
+
+
+def test_recipe_english_kitchen_words_take_a_plural():
+    out = text({"type": "recipe", "title": "Ambrosia", "servings": 12, "ingredients": [
+        {"item": "Greek yoghurt", "qty": 6, "unit": "cup"}, {"item": "saffron", "qty": 6, "unit": "pinch"},
+        {"item": "almonds", "qty": 12, "unit": "tbsp"}, {"item": "honey", "qty": 1, "unit": "cup"}]})
+    assert "6 cups Greek yoghurt" in out and "6 pinches saffron" in out
+    assert "12 tbsp almonds" in out and "1 cup honey" in out
+    de = text({"type": "recipe", "title": "Ambrosia", "lang": "de", "servings": 12, "ingredients": [{"item": "Joghurt", "qty": 6, "unit": "cup"}]})
+    assert "6 cup Joghurt" in de

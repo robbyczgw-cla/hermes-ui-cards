@@ -271,6 +271,17 @@ test('recipe: servings 4 to 6 scale quantities with fractions, groups and step b
   assert.deepEqual(qtys(container).slice(0, 4), ['100 g', '¾', '⅛ l', '63 ml'])
 })
 
+test('recipe: English kitchen words take a plural, abbreviations and German stay as written', async t => {
+  const { steps: _omit, ...noSteps } = recipe
+  const ingredients = [{ item: 'yoghurt', qty: 1, unit: 'cup' }, { item: 'saffron', qty: 1, unit: 'pinch' }, { item: 'honey', qty: 2, unit: 'tbsp' }, { item: 'water', qty: 1, unit: 'Splash' }]
+  const { container } = await render(t, { ...noSteps, servings: 2, ingredients })
+  assert.deepEqual(qtys(container), ['1 cup', '1 pinch', '2 tbsp', '1 Splash'])
+  for (let i = 0; i < 4; i++) await click(stepper(container, '+'))
+  assert.deepEqual(qtys(container), ['3 cups', '3 pinches', '6 tbsp', '3 splashes'])
+  const de = await render(t, { ...noSteps, title: 'Ambrosia', lang: 'de', servings: 1, ingredients: [{ item: 'Joghurt', qty: 2, unit: 'cup' }] })
+  assert.deepEqual(qtys(de.container), ['2 cup'])
+})
+
 test('recipe: nice rounding for odd factors', async t => {
   const { steps: _omit, ...noSteps } = recipe
   const { container } = await render(t, { ...noSteps, servings: 3, ingredients: [

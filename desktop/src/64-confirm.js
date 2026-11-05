@@ -10,7 +10,7 @@ Object.assign(STRINGS.en, {
   confirmCommand: 'Command',
   confirmChangeHint: '[Ctrl]/[⌘]+[Enter] to send',
   confirmApproved: 'Approved', confirmDeclined: 'Declined', confirmChanged: 'Change requested',
-  confirmChangeExample: 'For example: keep the last 90 days',
+  confirmChangeExample: 'Describe what should change',
   confirmPending: 'Approved · sending in {s} s', confirmUndo: 'Undo'
 })
 Object.assign(STRINGS.de, {
@@ -18,7 +18,7 @@ Object.assign(STRINGS.de, {
   confirmCommand: 'Befehl',
   confirmChangeHint: '[Strg]/[⌘]+[Enter] zum Senden',
   confirmApproved: 'Freigegeben', confirmDeclined: 'Abgelehnt', confirmChanged: 'Änderung angefragt',
-  confirmChangeExample: 'Zum Beispiel: die letzten 90 Tage behalten',
+  confirmChangeExample: 'Beschreib, was anders sein soll',
   confirmPending: 'Freigegeben · wird in {s} s gesendet', confirmUndo: 'Rückgängig'
 })
 

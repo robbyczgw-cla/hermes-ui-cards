@@ -111,6 +111,8 @@ ones; rewrite those with a comment.
 - `review`: start items undecided (`defaultDecision` left out) when the user wants to check them; set a
   default only when they asked you to pre-sort. Use `confirm` or `plan`, not `review`, for deleting files.
 - `plan`: a step the user should opt into is `optional: true, off: true`.
+- `recipe`: keep the servings out of the title ("Ambrosia", not "Ambrosia (serves 2)"); the card shows
+  the current servings itself.
 - `calc` is for numbers the user wants to play with: it reports the chosen values back, an HTML widget
   doesn't.
 - If you correct a value that is on a card already shown, say that the card's value is outdated or show
