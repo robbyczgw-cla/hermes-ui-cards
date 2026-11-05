@@ -78,6 +78,8 @@ function CompareSource({ url, label }) {
 function CompareCard({ card, sessionId, display, lang }) {
   const labelId = useId()
   const ans = useCardAnswer(card, sessionId, lang)
+  const submitRef = useRef(ans.submit)
+  submitRef.current = ans.submit
   const [selected, setSelected] = useState(() => Math.max(0, card.columns.findIndex(c => c.best)))
   const [expanded, setExpanded] = useState({})
   const [pending, setPending] = useState(null)
@@ -107,7 +109,7 @@ function CompareCard({ card, sessionId, display, lang }) {
     if (timer.current) return
     if (!delay) return void ans.submit({ selected: column.id })
     setPending(column)
-    timer.current = setTimeout(() => { timer.current = null; setPending(null); ans.submit({ selected: column.id }) }, delay)
+    timer.current = setTimeout(() => { timer.current = null; setPending(null); submitRef.current({ selected: column.id }) }, delay)
   }
   const picked = ans.answer?.selection?.selected
   // The tinted wash marks the recommendation until there is a pick, then moves to the pick

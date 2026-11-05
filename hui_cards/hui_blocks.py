@@ -5,7 +5,7 @@ Card       | HUI+ node | Differences / fallback
 choice     | choice    | Image URLs unsupported; text fallback when present.
 checklist  | checklist | HUI+ replies contain item text, not item IDs.
 compare    | text      | HUI+ compare has no pick action.
-form       | form      | Required constraints and unsupported field kinds use text.
+form       | form      | Required constraints, unanswered toggles and unsupported field kinds use text.
 confirm    | confirm   | HUI+ has yes/no only; change-enabled cards use text.
 steps      | guide     | Commands are included in each step body.
 decision   | decision  | Weights and scores retained; reply uses labels.
@@ -51,7 +51,7 @@ def to_hui_node(card: dict) -> dict | None:
         node['items'] = [_pick(i, ('id', 'text', 'category', 'checked')) for i in card['items']]
     elif t == 'form':
         fields = card['fields']
-        if card.get('description') or any(f.get('required') or f['kind'] not in ('text', 'number', 'date', 'select', 'toggle') or f.get('maxLength') or f.get('help') or f.get('unit') for f in fields):
+        if card.get('description') or any(f.get('required') or (f['kind'] == 'toggle' and 'default' not in f) or f['kind'] not in ('text', 'number', 'date', 'select', 'toggle') or f.get('maxLength') or f.get('help') or f.get('unit') for f in fields):
             return None
         node.update(_pick(card, ('title',)))
         node['fields'] = [_pick(f, ('name', 'label', 'kind', 'placeholder', 'min', 'max', 'step', 'options', 'default')) for f in fields]

@@ -370,3 +370,38 @@ def test_other_media_lines_are_left_alone():
     reply = "Here is the chart:\nMEDIA:/tmp/chart.png"
     fixed = tool.ensure_media_lines(response_text=reply, session_id="other-media")
     assert "MEDIA:/tmp/chart.png" in fixed and fixed.endswith(out["media"])
+
+
+def test_media_repair_respects_code_quotes_and_real_files(tmp_path):
+    out = run({"card": CHOICE}, "desktop", session_id="mx")
+    tag = out["media"]
+    path = tag[len("MEDIA:"):]
+    wrong = path.replace("hermes-ui-cards", "hermes-union")
+    # a mistyped example inside a code block is not a delivery: left alone, the real tag is appended
+    fenced = f"Example:\n```\nMEDIA:{wrong}\n```"
+    fixed = tool.ensure_media_lines(response_text=fenced, session_id="mx")
+    assert f"MEDIA:{wrong}" in fixed and fixed.rstrip().endswith(tag)
+    # single quotes and backticks are delivery forms too
+    for q in ("'", "`"):
+        run({"card": {**CHOICE, "question": f"Q{q}?"}}, "desktop", session_id="mq")
+        t2 = tool._pending["mq"][-1][1]
+        p2 = t2[len("MEDIA:"):]
+        w2 = p2.replace("hermes-ui-cards", "hermes-union")
+        fixed = tool.ensure_media_lines(response_text=f"Pick:\nMEDIA:{q}{w2}{q}", session_id="mq")
+        assert w2 not in fixed and fixed.count(t2) == 1
+    # a real file elsewhere with the card's name (an export) is kept, the card tag is added
+    export = tmp_path / "export" / Path(path).name
+    export.parent.mkdir()
+    export.write_text("copy", encoding="utf-8")
+    run({"card": {**CHOICE, "question": "Export?"}}, "desktop", session_id="me")
+    t3 = tool._pending["me"][-1][1]
+    keep = str(export.with_name(Path(t3[len("MEDIA:"):]).name))
+    Path(keep).write_text("copy", encoding="utf-8")
+    fixed = tool.ensure_media_lines(response_text=f"Saved a copy:\nMEDIA:{keep}", session_id="me")
+    assert f"MEDIA:{keep}" in fixed and fixed.count(t3) == 1
+    # a typo plus the right line → exactly one directive for the card
+    run({"card": {**CHOICE, "question": "Twice?"}}, "desktop", session_id="md")
+    t4 = tool._pending["md"][-1][1]
+    w4 = t4[len("MEDIA:"):].replace("hermes-ui-cards", "hermes-union")
+    fixed = tool.ensure_media_lines(response_text=f"A\nMEDIA:{w4}\nB\n{t4}", session_id="md")
+    assert fixed.count(t4) == 1 and w4 not in fixed

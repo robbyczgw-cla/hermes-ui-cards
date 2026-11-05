@@ -262,6 +262,8 @@ function planFromAnswer(card, answer) {
 // focus goes to Undo and back to the button that started it; unmounting sends nothing.
 function planUseUndo(display, onSend) {
   const [pending, setPending] = useState(null)
+  const sendRef = useRef(onSend)
+  sendRef.current = onSend
   const timer = useRef(null)
   const undoRef = useRef(null)
   const startRef = useRef(null)
@@ -276,7 +278,7 @@ function planUseUndo(display, onSend) {
     const ms = typeof undoDelayMs === 'function' ? undoDelayMs(display) : 4000
     if (!ms) { onSend(payload); return }
     setPending({ ...info, ms })
-    timer.current = setTimeout(() => { timer.current = null; setPending(null); onSend(payload) }, ms)
+    timer.current = setTimeout(() => { timer.current = null; setPending(null); sendRef.current(payload) }, ms)
   }
   const cancel = () => {
     if (!timer.current) return

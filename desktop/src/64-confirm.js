@@ -90,6 +90,8 @@ function ConfirmCard({ card, sessionId, display, lang }) {
   const changeId = useId()
   const changeLabelId = useId()
   const ans = useCardAnswer(card, sessionId, lang)
+  const submitRef = useRef(ans.submit)
+  submitRef.current = ans.submit
   const [changing, setChanging] = useState(false)
   const [change, setChange] = useState('')
   const [pending, setPending] = useState(null) // { ms } while an approval can still be undone
@@ -121,7 +123,7 @@ function ConfirmCard({ card, sessionId, display, lang }) {
     const ms = guarded ? (typeof undoDelayMs === 'function' ? undoDelayMs(display) : 4000) : 0
     if (!ms) return void ans.submit({ decision: 'yes' })
     setPending({ ms })
-    timer.current = setTimeout(() => { timer.current = null; setPending(null); ans.submit({ decision: 'yes' }) }, ms)
+    timer.current = setTimeout(() => { timer.current = null; setPending(null); submitRef.current({ decision: 'yes' }) }, ms)
   }
   const undo = () => {
     if (!timer.current) return

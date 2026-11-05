@@ -200,7 +200,7 @@ function ReviewCard({ card, sessionId, display, lang }) {
   const goRef = useRef(null)
   const backFocus = useRef(false)
   const editable = ans.showActions && !undo.pending
-  const destructive = card.items.some(i => /delete|löschen/i.test(i.tag || '')) || /^\s*(delete|remove|drop|löschen|entfernen)\b/i.test(card.applyLabel || '')
+  const destructive = card.items.some(i => /delete|löschen/i.test(i.tag || '')) || [card.keepLabel, card.dropLabel, card.applyLabel].some(label => /^\s*(delete|remove|drop|löschen|entfernen)\b/i.test(label || ''))
   // Custom labels are used everywhere: buttons, bulk actions, tally, announcements, stamps.
   const custom = Boolean(card.keepLabel || card.dropLabel)
   const keepLabel = card.keepLabel || t(lang, 'reviewKeep')
@@ -390,7 +390,7 @@ function ReviewCard({ card, sessionId, display, lang }) {
       ? jsxs('div', { className: 'huic-foot huic-rev-ask', role: 'group', 'aria-labelledby': askId, children: [
           jsx('span', { id: askId, className: 'huic-hint huic-rev-ask-text', children: t(lang, 'reviewAskOpen', { n: open }) }),
           jsx(Btn, { variant: 'ghost', onClick: back, children: t(lang, 'reviewBack') }),
-          jsx(Btn, { ref: goRef, variant: 'primary', onClick: send, children: t(lang, 'reviewSendAnyway') })
+          jsx(Btn, { ref: goRef, variant: destructive ? 'danger-outline' : 'primary', onClick: send, children: t(lang, 'reviewSendAnyway') })
         ] })
       : jsx(Footer, {
           hint: open ? t(lang, 'reviewStillOpen', { n: open }) : t(lang, 'reviewAllDecided', { n: total }),

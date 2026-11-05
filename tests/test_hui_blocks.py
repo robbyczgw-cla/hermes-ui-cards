@@ -92,3 +92,20 @@ def test_auto_uses_public_config(monkeypatch):
     assert not tool._api_hui_enabled()
     config.load_config_readonly = lambda: {'plugins': {'enabled': []}}
     assert not tool._api_hui_enabled()
+
+
+def test_form_unanswered_toggle_falls_back_but_defaults_map():
+    field = {'name': 'enabled', 'label': 'Enabled', 'kind': 'toggle'}
+    card = {'type': 'form', 'title': 'Options', 'fields': [field]}
+    normalized, errors, _ = validate_card(card)
+    assert normalized is not None, errors
+    normalized['cardId'] = 'toggle-test'
+    assert to_hui_node(normalized) is None
+    for_default_false, errors, _ = validate_card({**card, 'fields': [{**field, 'default': False}]})
+    assert for_default_false is not None, errors
+    for_default_false['cardId'] = 'toggle-test'
+    assert to_hui_node(for_default_false)['fields'][0]['default'] is False
+    for_default_true, errors, _ = validate_card({**card, 'fields': [{**field, 'default': True}]})
+    assert for_default_true is not None, errors
+    for_default_true['cardId'] = 'toggle-test'
+    assert to_hui_node(for_default_true)['fields'][0]['default'] is True

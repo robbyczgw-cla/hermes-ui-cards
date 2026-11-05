@@ -677,3 +677,19 @@ test('review: destructive actions have risk styling, accessible names and undo',
     assert.equal(testHost.submissions.length, 1)
   } finally { mock.timers.reset() }
 })
+
+test('review: destructive custom labels use danger styling through open-item confirmation', async () => {
+  const english = await mount(toolResult({ type: 'review', title: 'Files', dropLabel: 'Delete', items: [{ title: 'Old file' }] }))
+  assert.ok(buttonByText(english.container, 'Apply').classList.contains('huic-btn-danger-outline'))
+  await click(buttonByText(english.container, 'Apply'))
+  assert.ok(buttonByText(english.container, 'Send anyway').classList.contains('huic-btn-danger-outline'))
+  await click(buttonByText(english.container, 'Send anyway'))
+  assert.equal(testHost.submissions.length, 1)
+  await english.unmount()
+  const german = await mount(toolResult({ type: 'review', title: 'Dateien', lang: 'de', keepLabel: 'Löschen', items: [{ title: 'Alte Datei' }] }))
+  assert.ok(buttonByText(german.container, 'Übernehmen').classList.contains('huic-btn-danger-outline'))
+  await german.unmount()
+  const apply = await mount(toolResult({ type: 'review', title: 'Files', applyLabel: 'Remove files', items: [{ title: 'Old file' }] }))
+  assert.ok(buttonByText(apply.container, 'Remove files').classList.contains('huic-btn-danger-outline'))
+  await apply.unmount()
+})

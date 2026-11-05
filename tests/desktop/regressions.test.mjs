@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { beforeEach, test } from 'node:test'
+import { beforeEach, test, mock } from 'node:test'
 import { atom } from '@hermes/plugin-sdk'
 import { host, mod, mount, toolResult, registerPlugin, makeStorage, click, type, buttonByText, lastReply, resetHost, testHost, key } from './dom.mjs'
 
@@ -341,4 +341,38 @@ test('a profile or source switch starts a mounted card afresh and keeps each own
   const back = await mount(result, { registration, sessionId: 'copied-chat' })
   assert.match(back.container.textContent, /Your answer/, 'the first owner still has its receipt')
   await back.unmount()
+}))
+
+async function pendingIdMove(card, begin, actionLabel) {
+  const registration = registerPlugin(makeStorage())
+  const result = toolResult(card, { display: { undo: 4 } })
+  mock.timers.enable({ apis: ['setTimeout'] })
+  try {
+    focusView('runtime-undo', null)
+    const m = await mount(result, { registration, sessionId: 'runtime-undo' })
+    await begin(m.container)
+    focusView('runtime-undo', 'stored-undo')
+    await m.rerender({ sessionId: 'stored-undo' })
+    await act(async () => mock.timers.tick(4000))
+    assert.equal(testHost.submissions.length, 1)
+    assert.equal(testHost.submissions[0].sessionId, 'stored-undo')
+    assert.ok(Boolean(m.container.querySelector('.huic-answer')), 'receipt is visible')
+    assert.ok(!buttonByText(m.container, actionLabel), 'action is locked')
+    await act(async () => mock.timers.tick(4000))
+    assert.equal(testHost.submissions.length, 1)
+    await m.unmount()
+  } finally { mock.timers.reset() }
+}
+
+test('compare pending pick follows a confirmed chat id move', withHostAtoms(async () => {
+  await pendingIdMove({ type: 'compare', columns: [{ title: 'A' }, { title: 'B' }] }, c => click(c.querySelector('button[aria-label="Choose: A"]')), 'Choose')
+}))
+test('confirm pending approval follows a confirmed chat id move', withHostAtoms(async () => {
+  await pendingIdMove({ type: 'confirm', title: 'Proceed?', action: 'Proceed', risk: { level: 'high', text: 'Risk' } }, c => click(buttonByText(c, 'Yes, go ahead')), 'Yes, go ahead')
+}))
+test('plan pending run follows a confirmed chat id move', withHostAtoms(async () => {
+  await pendingIdMove({ type: 'plan', title: 'Plan', steps: [{ title: 'One' }] }, c => click(buttonByText(c, 'Run plan')), 'Run plan')
+}))
+test('review pending apply follows a confirmed chat id move', withHostAtoms(async () => {
+  await pendingIdMove({ type: 'review', title: 'Review', defaultDecision: 'keep', items: [{ title: 'One' }] }, c => click(buttonByText(c, 'Apply')), 'Apply')
 }))

@@ -27,7 +27,7 @@ What the tool returns depends on where the chat runs:
 | Hermes Desktop / Webapp | `media: "MEDIA:<path>"`, the normalized `card`, `display` settings | The interactive card (if the plugin's Desktop half is on) |
 | Desktop / Webapp with the Desktop half off | the same | The Markdown copy of the card as a file attachment |
 | Desktop with *Interactive cards* switched off | `text` | The text version (applies to cards created after the switch) |
-| API server, *API server card format* `hui`, or `auto` with the Hermes UI+ plugin enabled | `hui`: a fenced ```` ```hui ```` block, plus `text` | The Hermes UI+ app's own card, for the supported variants of 12 types (see `hui_cards/hui_blocks.py`); plan, review, compare, recipe and flashcards always get text |
+| API server, *Cards for the Hermes UI+ app* `hui`, or `auto` with the Hermes UI+ plugin enabled | `hui`: a fenced ```` ```hui ```` block, plus `text` | The Hermes UI+ app's own card, for the supported variants of 12 types (see `hui_cards/hui_blocks.py`); plan, review, compare, recipe and flashcards always get text |
 | CLI, TUI, messaging platforms, the web dashboard chat, other API clients | `text` | Numbered options and a "Reply with …" hint |
 
 On Desktop the model writes one short sentence and the `MEDIA:` line on its own line. If it
@@ -65,7 +65,7 @@ the card (they are saved as a draft) and send nothing:
 | choice | `selected: [optionId]`, `labels: [label]`, `other?: string` | `✓ Chose: A, B` / `✓ Gewählt: A, B` |
 | checklist | `done_ids: [itemId]`, `open_ids: [itemId]`, `done: [text]`, `open: [text]` | `✓ Checklist done: 3 of 5 checked. Still open: X, Y` / `✓ Checkliste fertig: 3 von 5 erledigt. Offen: X, Y` |
 | compare | `selected: columnId`, `label` | `✓ Picked: Pixel 10` / `✓ Gewählt: Pixel 10` |
-| form | `values: {name: value}`; an untouched toggle without a default is `null` and omitted from line 1; required toggles must be touched | `✓ Form sent: Name: Anna, Date: 2026-11-12` / `✓ Formular gesendet: …` |
+| form | `values: {name: value}`; an untouched toggle without a default is `null` and omitted from line 1; required toggles without a default must be answered | `✓ Form sent: Name: Anna, Date: 2026-11-12` / `✓ Formular gesendet: …` |
 | confirm | `decision: "yes" \| "no" \| "change"`, `change?: string` | `✓ Yes, go ahead: <title>` · `✗ No, don't: <title>` · `✎ Change: <text>` / `✓ Ja, mach das: …` · `✗ Nein, lieber nicht: …` · `✎ Ändern: …` |
 | rating | `value`, `scale`, `comment?` | `✓ Rated 4 of 5` / `✓ Bewertung: 4 von 5` |
 | slider | `value`, `unit?` | `✓ Chose: 300 €` / `✓ Gewählt: 300 €` |
@@ -175,7 +175,7 @@ the card afresh.
 **Settings.** `GET /api/plugins/hermes-ui-cards/settings` returns compact, accent and undo time; the
 Desktop half reads it once per profile/connection and after every save in Settings → Plugins (falling
 back to the `plugins.manage` list RPC), so these three apply to cards already on screen. *Interactive
-cards*, *Card types* and *API server card format* affect cards created afterwards; a changed *Card types*
+cards*, *Card types* and *Cards for the Hermes UI+ app* affect cards created afterwards; a changed *Card types*
 list reaches the tool description after a Hermes restart (an empty or unrecognized list means all types).
 
 **Retention.** The 2,000 most recently shown or answered cards (with up to 8 answering chats and 16
