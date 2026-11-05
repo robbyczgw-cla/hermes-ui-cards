@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 import types
@@ -11,7 +12,9 @@ from hui_cards.demos import DEMOS
 from hui_cards.hui_blocks import to_hui_node
 from hui_cards.schema import validate_card
 
-HUI = Path('hermes-ui-plus-not-set')
+# A checkout of the Hermes UI+ app (its validator checks every mapped block). Point HUI_PLUS_DIR at it;
+# without it these tests are skipped.
+HUI = Path(os.environ.get('HUI_PLUS_DIR', 'hermes-ui-plus-not-set'))
 VALIDATOR = HUI / 'hermes-skill/examples/validate.mjs'
 
 
