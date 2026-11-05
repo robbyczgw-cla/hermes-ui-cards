@@ -340,6 +340,60 @@ function heldRoute() {
 const RATE = { type: 'rating', question: 'Useful?' }
 const rateAnswer = cardId => ({ mark: '✓', summary: 'Rated 4/5', data: { card: cardId, type: 'rating', value: 4 }, at: Date.now() - 5000 })
 
+test('remount joins the pending first lookup and waits for its receipt', async () => {
+  const result = toolResult(RATE)
+  const cardId = JSON.parse(result).cardId
+  const route = heldRoute()
+  const reg = registration({ rest: route.rest, timers: manualTimers() })
+  const first = await mount(result, { registration: reg })
+  await act(async () => new Promise(resolve => setTimeout(resolve, 40)))
+  assert.ok(buttonByText(first.container, 'Send') === undefined)
+  await first.unmount()
+  const second = await mount(result, { registration: reg })
+  assert.ok(buttonByText(second.container, 'Send') === undefined)
+  assert.equal(route.held.length, 1)
+  await route.release({ answers: { [cardId]: rateAnswer(cardId) } })
+  assert.match(second.container.textContent, /Rated 4\/5/)
+  assert.equal(testHost.submissions.length, 0)
+  await second.unmount()
+})
+
+test('two mounted views join the same pending first lookup', async () => {
+  const result = toolResult(RATE)
+  const cardId = JSON.parse(result).cardId
+  const route = heldRoute()
+  const reg = registration({ rest: route.rest, timers: manualTimers() })
+  const first = await mount(result, { registration: reg })
+  await act(async () => new Promise(resolve => setTimeout(resolve, 40)))
+  const second = await mount(result, { registration: reg })
+  assert.ok(buttonByText(first.container, 'Send') === undefined)
+  assert.ok(buttonByText(second.container, 'Send') === undefined)
+  assert.equal(route.held.length, 1)
+  await route.release({ answers: { [cardId]: rateAnswer(cardId) } })
+  assert.match(first.container.textContent, /Rated 4\/5/)
+  assert.match(second.container.textContent, /Rated 4\/5/)
+  assert.equal(testHost.submissions.length, 0)
+  await first.unmount()
+  await second.unmount()
+})
+
+test('unmounting the first view does not release the second view pending a receipt', async () => {
+  const result = toolResult(RATE)
+  const cardId = JSON.parse(result).cardId
+  const route = heldRoute()
+  const reg = registration({ rest: route.rest, timers: manualTimers() })
+  const first = await mount(result, { registration: reg })
+  await act(async () => new Promise(resolve => setTimeout(resolve, 40)))
+  const second = await mount(result, { registration: reg })
+  await first.unmount()
+  assert.ok(buttonByText(second.container, 'Send') === undefined)
+  assert.equal(route.held.length, 1)
+  await route.release({ answers: { [cardId]: rateAnswer(cardId) } })
+  assert.match(second.container.textContent, /Rated 4\/5/)
+  assert.equal(testHost.submissions.length, 0)
+  await second.unmount()
+})
+
 test('a slow lookup keeps the actions back until it answers, then the card is locked', async () => {
   const result = toolResult(RATE)
   const cardId = JSON.parse(result).cardId

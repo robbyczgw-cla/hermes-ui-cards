@@ -1021,8 +1021,9 @@ const RETRY_MS = [5000, 15000, 45000, 120000, 300000]
 const NUDGE_GAP = 5000 // focus/online re-checks at most this often
 const SERVER_MARKS = ['✓', '✗', '✎', '⚠']
 let serverRest = null
-const serverChecked = new Map() // key -> time asked
-const serverQueue = new Map() // owner + sessionId -> { owner, sessionId, cards: Map(cardId -> type) }
+const serverChecked = new Map() // key -> time of last completed check
+const serverPending = new Map() // key -> lookup token, including queued requests
+const serverQueue = new Map() // owner + sessionId -> { owner, sessionId, cards: Map(cardId -> { type, token }) }
 const serverSync = new Map() // key -> deadline: first answer pending, actions wait
 const serverFailed = new Set() // keys whose last lookup failed or timed out
 const syncListeners = new Map() // key -> Set(fn)
@@ -1059,6 +1060,7 @@ function useServerAnswers(rest, timer) {
   reconcileTimer = null
   serverChecked.clear()
   serverQueue.clear()
+  serverPending.clear()
   serverFailed.clear()
   for (const key of [...serverSync.keys()]) endSync(key)
   serverBlocked = 0
@@ -1074,6 +1076,7 @@ function followScope() {
   serverScope = scope
   serverChecked.clear()
   serverQueue.clear()
+  serverPending.clear()
   serverFailed.clear()
   serverBlocked = 0
   serverFailures = 0
@@ -1119,8 +1122,8 @@ function subscribeSync(key, fn) {
 // Whether a card mounted now would ask the server (then its actions wait for the reply).
 function wouldAsk(key) {
   followScope()
-  return Boolean(serverRest) && !readCard(key).answer && Date.now() >= serverBlocked &&
-    Date.now() - (serverChecked.get(key) || 0) >= SERVER_TTL
+  return Boolean(serverRest) && !readCard(key).answer && (serverPending.has(key) ||
+    (Date.now() >= serverBlocked && Date.now() - (serverChecked.get(key) || 0) >= SERVER_TTL))
 }
 
 // `manual`: the user pressed "Check again" (asks even while failures hold the route back).
@@ -1130,12 +1133,14 @@ function askServer(sessionId, cardId, type, force = false, manual = false) {
   const owner = ownerScope()
   const key = cardKey(sessionId, cardId, owner)
   const now = Date.now()
+  if (serverPending.has(key)) return false
   if (readCard(key).answer || (!manual && now < serverBlocked)) return false
   if (!force && now - (serverChecked.get(key) || 0) < SERVER_TTL) return false
-  serverChecked.set(key, now)
+  const token = { deadline: now + SYNC_LIMIT, holding: false }
+  serverPending.set(key, token)
   const batch = `${owner}\u0001${sessionId}`
   if (!serverQueue.has(batch)) serverQueue.set(batch, { owner, sessionId, cards: new Map() })
-  serverQueue.get(batch).cards.set(cardId, type)
+  serverQueue.get(batch).cards.set(cardId, { type, token })
   if (!serverTimer) serverTimer = setTimeout(() => { serverInflight = flushServer() }, 25)
   return true
 }
@@ -1143,13 +1148,17 @@ function askServer(sessionId, cardId, type, force = false, manual = false) {
 // Hold this card's actions until its lookup settles; past SYNC_LIMIT (a request that never comes
 // back) the lookup counts as failed.
 function holdForLookup(key) {
-  serverSync.set(key, Date.now() + SYNC_LIMIT)
+  const token = serverPending.get(key)
+  if (!token || token.holding) return () => {}
+  token.holding = true
+  serverSync.set(key, token.deadline)
   notifyKey(key)
   return schedule(() => {
-    if (!serverSync.has(key)) return
+    if (serverPending.get(key) !== token) return
+    serverPending.delete(key)
     endSync(key)
     setLookupFailed(key, true)
-  }, SYNC_LIMIT)
+  }, Math.max(0, token.deadline - Date.now()))
 }
 
 // "Check again" on a card whose lookup failed.
@@ -1169,9 +1178,11 @@ async function flushServer() {
     const ids = [...cards.keys()]
     for (let i = 0; i < ids.length; i += SERVER_BATCH) {
       const chunk = ids.slice(i, i + SERVER_BATCH)
-      const keys = chunk.map(id => cardKey(sessionId, id, owner))
       if (rest !== serverRest || scope !== backendScope() || owner !== ownerScope()) {
-        for (const key of keys) endSync(key) // queued for another backend: the new scope asks itself
+        for (const id of chunk) {
+          const key = cardKey(sessionId, id, owner)
+          if (serverPending.get(key) === cards.get(id).token) { serverPending.delete(key); endSync(key) }
+        }
         continue
       }
       let reply
@@ -1182,20 +1193,35 @@ async function flushServer() {
         failed = true
       }
       if (rest !== serverRest || scope !== backendScope() || owner !== ownerScope()) {
-        for (const key of keys) endSync(key) // asked another backend: drop it, the new scope asks again
+        for (const id of chunk) {
+          const key = cardKey(sessionId, id, owner)
+          if (serverPending.get(key) === cards.get(id).token) { serverPending.delete(key); endSync(key) }
+        }
         continue
       }
       if (reply === undefined) {
         // Route missing or backend away: keep the local state, say so, try again later.
-        for (const key of keys) {
-          serverChecked.delete(key)
-          setLookupFailed(key, true)
+        for (const id of chunk) {
+          const key = cardKey(sessionId, id, owner)
+          if (serverPending.get(key) === cards.get(id).token) {
+            serverChecked.delete(key)
+            setLookupFailed(key, true)
+          }
         }
       } else {
-        applyServerReply(sessionId, chunk.map(id => [id, cards.get(id)]), reply, owner)
-        for (const key of keys) setLookupFailed(key, false)
+        applyServerReply(sessionId, chunk.map(id => [id, cards.get(id).type]), reply, owner)
+        for (const id of chunk) {
+          const key = cardKey(sessionId, id, owner)
+          if (serverPending.get(key) === cards.get(id).token) {
+            serverChecked.set(key, Date.now())
+            setLookupFailed(key, false)
+          }
+        }
       }
-      for (const key of keys) endSync(key)
+      for (const id of chunk) {
+        const key = cardKey(sessionId, id, owner)
+        if (serverPending.get(key) === cards.get(id).token) { serverPending.delete(key); endSync(key) }
+      }
     }
   }
   if (failed) {
@@ -1220,13 +1246,14 @@ function applyServerReply(sessionId, cards, reply, owner) {
 
 // ── Re-checks of open cards on screen ──
 
-// Cards on screen (key -> { type, owner, sessionId, cardId }): the ones a re-check asks for. Only
+// Cards on screen (key -> Set of mounts): the ones a re-check asks for. Only
 // those of the owner ctx.rest reaches now are asked.
 const mountedTypes = new Map()
 
 function openMounted() {
   const owner = ownerScope()
-  return [...mountedTypes].filter(([key, card]) => card.owner === owner && !readCard(key).answer)
+  return [...mountedTypes].map(([key, mounts]) => [key, mounts.values().next().value])
+    .filter(([key, card]) => card.owner === owner && !readCard(key).answer)
 }
 
 function scheduleReconcile(ms) {
@@ -1333,18 +1360,20 @@ function onAnswersChanged() {
 function useServerAnswer(card, sessionId) {
   const key = sessionId && card && card.cardId ? cardKey(sessionId, card.cardId) : null
   const [, setTick] = useState(0)
-  const expire = useRef(null)
   // Decided during the first render, so a card that will ask never shows actions before the reply.
-  if (key && !serverSync.has(key) && !mountedTypes.has(key) && wouldAsk(key)) serverSync.set(key, Date.now() + SYNC_LIMIT)
+  if (key && !serverSync.has(key) && (serverPending.has(key) || (!mountedTypes.has(key) && wouldAsk(key)))) serverSync.set(key, Date.now() + SYNC_LIMIT)
   useEffect(() => {
     if (!key) return
     const mounted = { type: card.type, owner: ownerScope(), sessionId, cardId: card.cardId }
-    mountedTypes.set(key, mounted)
+    if (!mountedTypes.has(key)) mountedTypes.set(key, new Set())
+    mountedTypes.get(key).add(mounted)
     const stop = subscribeSync(key, () => setTick(n => n + 1))
     const asked = askServer(sessionId, card.cardId, card.type)
     if (asked) {
-      expire.current = holdForLookup(key)
+      holdForLookup(key)
       scheduleReconcile(pollDelay)
+    } else if (serverPending.has(key)) {
+      holdForLookup(key)
     } else {
       endSync(key)
       // Not asked because recent requests failed: this card was not checked either.
@@ -1352,19 +1381,16 @@ function useServerAnswer(card, sessionId) {
     }
     return () => {
       stop()
-      if (expire.current) expire.current()
-      expire.current = null
-      endSync(key)
-      if (mountedTypes.get(key) === mounted) {
+      const mounts = mountedTypes.get(key)
+      if (mounts) mounts.delete(mounted)
+      if (mounts && !mounts.size) {
         mountedTypes.delete(key)
-        serverFailed.delete(key)
       }
     }
   }, [key, card && card.type])
   const recheck = useCallback(() => {
     if (!key) return
-    if (expire.current) expire.current()
-    expire.current = recheckServer(sessionId, card.cardId, card.type)
+    recheckServer(sessionId, card.cardId, card.type)
   }, [key, card && card.type])
   return { syncing: key ? isSyncing(key) : false, failed: key ? lookupFailed(key) : false, recheck }
 }
