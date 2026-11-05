@@ -357,8 +357,8 @@ def test_compare_sources_and_as_of():
     out = text(raw)
     assert "Retailer [retailer.at]" in out
     assert "Price: €100 [shop.at]" in out
-    assert "Prices checked 8 Nov 2026" in out
-    assert "Preise geprüft 8 Nov 2026" in text(german(raw))
+    assert "Checked 8 Nov 2026" in out
+    assert "Stand 8 Nov 2026" in text(german(raw))
 
 
 def test_new_card_fallbacks():

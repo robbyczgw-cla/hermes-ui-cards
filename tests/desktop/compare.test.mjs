@@ -20,7 +20,7 @@ test('aligned rows, best, sources and switcher', async () => {
   assert.equal(container.querySelector('.huic-compare-best .huic-compare-bestof').textContent, 'Best of 2', 'text marker for narrow views and screen readers')
   assert.equal(container.querySelector('.huic-compare-best .huic-compare-dot').getAttribute('aria-hidden'), 'true')
   assert.equal(container.querySelectorAll('a[href="https://shop.at/a"]').length, 2)
-  assert.match(container.textContent, /Prices checked 8 Nov 2026 · 1 sources/)
+  assert.match(container.textContent, /Checked 8 Nov 2026 · 1 source\b/)
   const switches = container.querySelectorAll('[role=radio]')
   assert.equal(switches[1].getAttribute('aria-checked'), 'true')
   await key(switches[1], 'ArrowRight')

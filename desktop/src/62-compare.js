@@ -1,5 +1,5 @@
-Object.assign(STRINGS.en, { compareSources: 'sources', compareChecked: 'Prices checked', compareNoSources: 'No sources linked', compareUndo: 'Undo', comparePending: 'Picked {title} · sending in {s} s', compareMore: '+{count} more', compareLess: 'Show less', compareBest: 'best', compareBestOf: 'Best of {n}', compareSwitch: 'Compare options', compareYourPick: 'Your pick' })
-Object.assign(STRINGS.de, { compareSources: 'Quellen', compareChecked: 'Preise geprüft', compareNoSources: 'Ohne verlinkte Quellen', compareUndo: 'Rückgängig', comparePending: 'Gewählt: {title} · wird in {s} s gesendet', compareMore: '+{count} weitere', compareLess: 'Weniger anzeigen', compareBest: 'bester Wert', compareBestOf: 'Bester von {n}', compareSwitch: 'Optionen vergleichen', compareYourPick: 'Deine Wahl' })
+Object.assign(STRINGS.en, { compareSource: 'source', compareSources: 'sources', compareChecked: 'Checked', compareNoSources: 'No sources linked', compareUndo: 'Undo', comparePending: 'Picked {title} · sending in {s} s', compareMore: '+{count} more', compareLess: 'Show less', compareBest: 'best', compareBestOf: 'Best of {n}', compareSwitch: 'Compare options', compareYourPick: 'Your pick' })
+Object.assign(STRINGS.de, { compareSource: 'Quelle', compareSources: 'Quellen', compareChecked: 'Stand', compareNoSources: 'Ohne verlinkte Quellen', compareUndo: 'Rückgängig', comparePending: 'Gewählt: {title} · wird in {s} s gesendet', compareMore: '+{count} weitere', compareLess: 'Weniger anzeigen', compareBest: 'bester Wert', compareBestOf: 'Bester von {n}', compareSwitch: 'Optionen vergleichen', compareYourPick: 'Deine Wahl' })
 
 // A real table: full-bleed hairline rows, a quiet tinted column for the recommendation,
 // a dot for the best value per row, small source chips. Narrow views switch columns.
@@ -173,7 +173,7 @@ function CompareCard({ card, sessionId, display, lang }) {
     jsxs('svg', { viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: 1.4, 'aria-hidden': true, children: urls.size
       ? [jsx('path', { d: 'M6.5 9.5 9.5 6.5M7 4.5l1-1a2.5 2.5 0 0 1 3.5 3.5l-1 1M9 11.5l-1 1A2.5 2.5 0 0 1 4.5 9l1-1', strokeLinecap: 'round' }, 'l')]
       : [jsx('circle', { cx: 8, cy: 8, r: 6.25 }, 'c'), jsx('path', { d: 'M8 7.25v3.5M8 5.1v.1', strokeLinecap: 'round' }, 'p')] }),
-    jsx('span', { children: urls.size ? [card.asOf ? t(lang, 'compareChecked') + ' ' + card.asOf + ' · ' : '', `${urls.size} ${t(lang, 'compareSources')}`] : t(lang, 'compareNoSources') })
+    jsx('span', { children: urls.size ? [card.asOf ? t(lang, 'compareChecked') + ' ' + card.asOf + ' · ' : '', `${urls.size} ${t(lang, urls.size === 1 ? 'compareSource' : 'compareSources')}`] : t(lang, 'compareNoSources') })
   ] })
   return jsx('div', { onKeyDown, children: jsx(Shell, { card, display, labelId, title: card.title, after: ans.status, children: jsxs(Fragment, { children: [
     jsx('style', { children: COMPARE_CSS }),

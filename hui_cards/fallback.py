@@ -239,7 +239,7 @@ def _compare(card: dict, L: _L) -> list[str]:
     if lines and lines[0] == "":
         lines.pop(0)
     if card.get("asOf"):
-        lines.append(L("Prices checked ", "Preise geprüft ") + _one(card["asOf"]))
+        lines.append(L("Checked ", "Stand ") + _one(card["asOf"]))
     n = len(columns)
     return lines + [L(f"Reply with the number of your pick (1–{n}).", f"Antworte mit der Nummer deiner Wahl (1–{n}).")]
 

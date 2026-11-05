@@ -2538,8 +2538,8 @@ function ChecklistCard({ card, sessionId, display, lang }) {
 }
 
 // ── 62-compare.js ──
-Object.assign(STRINGS.en, { compareSources: 'sources', compareChecked: 'Prices checked', compareNoSources: 'No sources linked', compareUndo: 'Undo', comparePending: 'Picked {title} · sending in {s} s', compareMore: '+{count} more', compareLess: 'Show less', compareBest: 'best', compareBestOf: 'Best of {n}', compareSwitch: 'Compare options', compareYourPick: 'Your pick' })
-Object.assign(STRINGS.de, { compareSources: 'Quellen', compareChecked: 'Preise geprüft', compareNoSources: 'Ohne verlinkte Quellen', compareUndo: 'Rückgängig', comparePending: 'Gewählt: {title} · wird in {s} s gesendet', compareMore: '+{count} weitere', compareLess: 'Weniger anzeigen', compareBest: 'bester Wert', compareBestOf: 'Bester von {n}', compareSwitch: 'Optionen vergleichen', compareYourPick: 'Deine Wahl' })
+Object.assign(STRINGS.en, { compareSource: 'source', compareSources: 'sources', compareChecked: 'Checked', compareNoSources: 'No sources linked', compareUndo: 'Undo', comparePending: 'Picked {title} · sending in {s} s', compareMore: '+{count} more', compareLess: 'Show less', compareBest: 'best', compareBestOf: 'Best of {n}', compareSwitch: 'Compare options', compareYourPick: 'Your pick' })
+Object.assign(STRINGS.de, { compareSource: 'Quelle', compareSources: 'Quellen', compareChecked: 'Stand', compareNoSources: 'Ohne verlinkte Quellen', compareUndo: 'Rückgängig', comparePending: 'Gewählt: {title} · wird in {s} s gesendet', compareMore: '+{count} weitere', compareLess: 'Weniger anzeigen', compareBest: 'bester Wert', compareBestOf: 'Bester von {n}', compareSwitch: 'Optionen vergleichen', compareYourPick: 'Deine Wahl' })
 
 // A real table: full-bleed hairline rows, a quiet tinted column for the recommendation,
 // a dot for the best value per row, small source chips. Narrow views switch columns.
@@ -2713,7 +2713,7 @@ function CompareCard({ card, sessionId, display, lang }) {
     jsxs('svg', { viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: 1.4, 'aria-hidden': true, children: urls.size
       ? [jsx('path', { d: 'M6.5 9.5 9.5 6.5M7 4.5l1-1a2.5 2.5 0 0 1 3.5 3.5l-1 1M9 11.5l-1 1A2.5 2.5 0 0 1 4.5 9l1-1', strokeLinecap: 'round' }, 'l')]
       : [jsx('circle', { cx: 8, cy: 8, r: 6.25 }, 'c'), jsx('path', { d: 'M8 7.25v3.5M8 5.1v.1', strokeLinecap: 'round' }, 'p')] }),
-    jsx('span', { children: urls.size ? [card.asOf ? t(lang, 'compareChecked') + ' ' + card.asOf + ' · ' : '', `${urls.size} ${t(lang, 'compareSources')}`] : t(lang, 'compareNoSources') })
+    jsx('span', { children: urls.size ? [card.asOf ? t(lang, 'compareChecked') + ' ' + card.asOf + ' · ' : '', `${urls.size} ${t(lang, urls.size === 1 ? 'compareSource' : 'compareSources')}`] : t(lang, 'compareNoSources') })
   ] })
   return jsx('div', { onKeyDown, children: jsx(Shell, { card, display, labelId, title: card.title, after: ans.status, children: jsxs(Fragment, { children: [
     jsx('style', { children: COMPARE_CSS }),
@@ -6318,7 +6318,7 @@ const RECIPE_CSS = `
 .huic[data-card-type="recipe"] .huic-rcp-step{display:grid;place-items:center;width:34px;height:32px;padding:0;border:0;background:transparent;color:var(--ui-text-primary);font:inherit;font-size:18px;line-height:1;cursor:pointer}
 .huic[data-card-type="recipe"] .huic-rcp-step:hover:not([disabled]){background:var(--ui-control-hover-background)}
 .huic[data-card-type="recipe"] .huic-rcp-step[disabled]{opacity:.35;cursor:default}
-.huic[data-card-type="recipe"] .huic-rcp-count{min-width:9ch;padding:0 6px;text-align:center;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.huic[data-card-type="recipe"] .huic-rcp-count{min-width:13ch;padding:0 6px;text-align:center;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
 .huic[data-card-type="recipe"] .huic-rcp-h{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:2px 10px;margin:6px 0 0;padding:0;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ui-text-tertiary)}
 .huic[data-card-type="recipe"] .huic-rcp-h span{letter-spacing:0;text-transform:none;font-weight:400;font-size:12px}
 .huic[data-card-type="recipe"] .huic-rcp-groups{columns:2 250px;column-gap:20px}
