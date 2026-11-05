@@ -305,12 +305,19 @@ function AnsweredBar({ lang, record, focus }) {
 // (the bar is a polite live region; a per-second update would interrupt them every second).
 function Countdown({ ms, say }) {
   const total = Math.max(1, Math.round(ms / 1000))
-  const [left, setLeft] = useState(total)
+  // Mounted when the undo window opens, so this deadline matches the send timer. The shown value is
+  // worked out from the clock on every render: a busy main thread or a throttled tab can delay the
+  // timeouts, and the bar must never promise more time than is left.
+  const deadline = useRef(0)
+  if (!deadline.current) deadline.current = Date.now() + ms
+  const [, setTick] = useState(0)
+  const rest = deadline.current - Date.now()
+  const left = Math.min(total, Math.max(1, Math.ceil(rest / 1000)))
   useEffect(() => {
     if (left <= 1) return
-    const id = setTimeout(() => setLeft(n => n - 1), 1000)
+    const id = setTimeout(() => setTick(n => n + 1), rest % 1000 || 1000)
     return () => clearTimeout(id)
-  }, [left])
+  })
   return jsxs(Fragment, { children: [
     jsx('span', { className: 'huic-sr', children: say(total) }),
     jsx('span', { className: 'huic-countdown', 'aria-hidden': true, children: say(left) })

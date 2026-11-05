@@ -181,7 +181,7 @@ test('steps: completion leaves all content and navigation readable, inactive car
 })
 
 test('undo window: the visible countdown moves, screen readers hear the start value once', async t => {
-  mock.timers.enable({ apis: ['setTimeout'] })
+  mock.timers.enable({ apis: ['setTimeout', 'Date'] })
   t.after(() => mock.timers.reset())
   resetHost()
   const { container, unmount } = await mount(toolResult({ ...confirm, title: 'Countdown', risk: { level: 'medium' } }))
@@ -198,6 +198,23 @@ test('undo window: the visible countdown moves, screen readers hear the start va
   assert.equal(testHost.submissions.length, 0, 'still undoable at 1 s')
   await act(async () => mock.timers.tick(1000))
   assert.equal(testHost.submissions.length, 1, 'sent when the window closes')
+  await unmount()
+})
+
+test('undo window: a late timer never leaves the countdown promising more time than is left', async t => {
+  mock.timers.enable({ apis: ['setTimeout', 'Date'] })
+  t.after(() => mock.timers.reset())
+  resetHost()
+  const { container, unmount } = await mount(toolResult({ ...confirm, title: 'Late timers', risk: { level: 'medium' } }))
+  await click(buttonByText(container, 'Yes, go ahead'))
+  // A busy main thread: 3.1 s pass before any callback runs, all of them delivered in one batch.
+  await act(async () => mock.timers.tick(3100))
+  const shown = container.querySelector('.huic-confirm-pending .huic-countdown')
+  assert.ok(shown !== null, 'still pending')
+  assert.equal(shown.textContent, 'Approved · sending in 1 s')
+  assert.equal(testHost.submissions.length, 0)
+  await act(async () => mock.timers.tick(1000))
+  assert.equal(testHost.submissions.length, 1)
   await unmount()
 })
 
