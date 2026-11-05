@@ -42,6 +42,10 @@ approve, edit your plan. Everything else stays text. Most replies are not cards.
 
 ## After the call
 
+On the HUI+ app, a result may contain `hui`: send that block as your reply. The user's
+answers then arrive as `[type:id]` lines (such as `[choice:id]` or `[form:id]`); read and
+act on them like the `[hui-card]` answer below.
+
 On Desktop, write at most one short sentence and the `MEDIA:` line from the tool result's `next`
 field, then **end your turn**. Don't repeat the card's content as text. On other surfaces
 (CLI, Telegram, …) the result has a `text` field instead: send that text as your reply.

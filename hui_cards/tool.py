@@ -347,6 +347,25 @@ TEXT_NEXT = (
     "(one short intro sentence before it is fine). The user answers by typing a number or words; map their "
     "reply to the options in this card."
 )
+HUI_NEXT = (
+    "Send the `hui` block as your reply (one short intro sentence before it is fine). "
+    "Do not repeat the card or ask the same question again. End your turn. "
+    "The user's answer arrives in their next message as a [type:id] line; read and act on it."
+)
+
+
+def _api_hui_enabled() -> bool:
+    mode = setting("api_server_format", "auto")
+    if mode != "auto":
+        return mode == "hui"
+    try:
+        # Public read-only config API; disabled takes precedence over enabled.
+        from hermes_cli.config import load_config_readonly
+        plugins = (load_config_readonly() or {}).get("plugins", {}) or {}
+        return ("hermes-ui-plus" in (plugins.get("enabled") or [])
+                and "hermes-ui-plus" not in (plugins.get("disabled") or []))
+    except Exception:
+        return False
 
 
 def _raw_type(raw):
@@ -385,7 +404,8 @@ def present(args: dict, session_id: str = "", surface: str | None = None) -> str
         return _error(f"Card rejected: {size} bytes once ids and defaults are added (limit {limit}). "
                       "Shorten texts or split it into two cards.")
     surface = current_surface(session_id) if surface is None else surface
-    content_key = json.dumps([card, surface, bool(setting("enabled", True)), display_settings()],
+    content_key = json.dumps([card, surface, bool(setting("enabled", True)), display_settings(),
+                              _api_hui_enabled() if surface == "api_server" else None],
                              sort_keys=True, ensure_ascii=False)
     if not session_id:
         return _build(card, warnings, session_id, surface)
@@ -420,6 +440,8 @@ def present(args: dict, session_id: str = "", surface: str | None = None) -> str
 
 def _build(card: dict, warnings: list, session_id: str, surface: str) -> str:
     card = {"cardId": _new_card_id(card), **card}
+    if surface == "api_server" and len(card["cardId"]) > 40:
+        card["cardId"] = card["cardId"][:29] + card["cardId"][-11:]
     text = render_text(card)
     result: dict = {"ok": True, "cardId": card["cardId"], "type": card["type"]}
     if surface == "desktop" and bool(setting("enabled", True)):
@@ -437,6 +459,15 @@ def _build(card: dict, warnings: list, session_id: str, surface: str) -> str:
             "display": display_settings(),
             "next": DESKTOP_NEXT.format(tag=tag, card_id=card["cardId"]),
         })
+    elif surface == "api_server" and _api_hui_enabled():
+        from .hui_blocks import to_hui_node
+        node = to_hui_node(card)
+        if node is None:
+            result.update({"surface": surface, "text": text, "next": TEXT_NEXT})
+        else:
+            encoded = json.dumps(node, ensure_ascii=False).replace("`", "\\u0060")
+            result.update({"surface": surface, "hui": "```hui\n" + encoded + "\n```",
+                           "text": text, "next": HUI_NEXT})
     else:
         result.update({"surface": surface or "text", "text": text, "next": TEXT_NEXT})
     if warnings:

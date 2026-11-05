@@ -241,7 +241,7 @@ def test_register_matches_the_manifest():
     assert ctx.commands == ["cards"]
     assert all(path.exists() for _, path in ctx.skills)
     assert manifest["requires_hermes"] == ">=0.22.6"
-    assert set(manifest["config_schema"]) == {"enabled", "compact", "accent", "undo_seconds", "card_types"}
+    assert set(manifest["config_schema"]) == {"enabled", "compact", "accent", "undo_seconds", "card_types", "api_server_format"}
     assert manifest["config_schema"]["accent"]["choices"] == tool.ACCENTS
     undo = manifest["config_schema"]["undo_seconds"]
     # A str with choices is what Settings → Plugins draws as a dropdown (an int with choices is a free number box).
