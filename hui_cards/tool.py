@@ -179,7 +179,7 @@ def _messages_since_card(history, card_id: str, user_message: str) -> int | None
         return None
     shown = None
     for index, message in enumerate(history):
-        if isinstance(message, dict) and message.get("role") == "tool" and card_id in _message_text(message):
+        if isinstance(message, dict) and message.get("role") == "tool" and _presented_card_id(_message_text(message)) == card_id:
             shown = index
     if shown is None:
         return None
@@ -189,8 +189,43 @@ def _messages_since_card(history, card_id: str, user_message: str) -> int | None
     return len(later)
 
 
+def _json_object(value):
+    """A dict from a dict or a JSON object string, else None."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except (ValueError, RecursionError):
+            return None
+    return value if isinstance(value, dict) else None
+
+
+def _bridged_tool(args) -> str | None:
+    """The tool a ``tool_call`` bridge call ran, read the way Hermes reads it
+    (tools/tool_search_validation.normalize_tool_call_entries): ``{"calls": [{name, arguments}]}``
+    or the single shape ``{"name", "arguments"}``. A local tool runs only as the one entry of a
+    call, so anything else (a batch, no name, unparsable arguments) did not run hui_present."""
+    args = _json_object(args)
+    if args is None:
+        return None
+    calls = args.get("calls")
+    if calls is None:
+        calls = [{"name": args.get("name")}]
+    elif isinstance(calls, str):
+        try:
+            calls = json.loads(calls)
+        except (ValueError, RecursionError):
+            return None
+    if isinstance(calls, dict):
+        calls = [calls]
+    if not isinstance(calls, list) or len(calls) != 1 or not isinstance(calls[0], dict):
+        return None
+    name = calls[0].get("name")
+    return name.strip() if isinstance(name, str) else None
+
+
 def _present_call_ids(history) -> set:
-    """Ids of the tool calls in this history that ran hui_present (directly or through tool_call)."""
+    """Ids of the tool calls in this history that ran hui_present: called by name, or through the
+    ``tool_call`` bridge with hui_present as the selected tool (not merely mentioned somewhere)."""
     ids = set()
     for message in history:
         if not isinstance(message, dict) or message.get("role") != "assistant":
@@ -199,26 +234,48 @@ def _present_call_ids(history) -> set:
             if not isinstance(call, dict):
                 continue
             function = call.get("function") if isinstance(call.get("function"), dict) else {}
-            name, args = function.get("name"), function.get("arguments")
-            text = args if isinstance(args, str) else json.dumps(args, ensure_ascii=False) if args else ""
-            if name == TOOL_NAME or (name == "tool_call" and TOOL_NAME in text):
-                if isinstance(call.get("id"), str):
+            name = function.get("name")
+            if name == TOOL_NAME or (name == "tool_call" and _bridged_tool(function.get("arguments")) == TOOL_NAME):
+                if isinstance(call.get("id"), str) and call["id"]:
                     ids.add(call["id"])
     return ids
 
 
+# What Hermes keeps of a tool result too large for the context (tools/tool_result_storage.py):
+# a pointer plus the result's first characters. A hui_present result starts with ok and cardId.
+_PERSISTED_PREVIEW_RE = re.compile(r'\A<persisted-output>\n.*?\nPreview \(first \d+ chars\):\n'
+                                   r'\{"ok": true, "cardId": "([a-z0-9][a-z0-9_-]{0,63})"', re.S)
+
+
+def _presented_card_id(text: str) -> str | None:
+    """The card id of a successful hui_present result (or of Hermes' preview of one), else None."""
+    result = _json_object(text)
+    if result is not None and "ok" not in result and isinstance(result.get("result"), str):
+        result = _json_object(result["result"])  # a bridge that wraps the result once more
+        if result is None:
+            return None
+    if result is not None:
+        card_id = result.get("cardId")
+        if result.get("ok") is True and isinstance(card_id, str) and isinstance(result.get("type"), str):
+            return card_id
+        return None
+    match = _PERSISTED_PREVIEW_RE.match(text or "")
+    return match.group(1) if match else None
+
+
 def history_shows_card(history, card_id: str) -> bool:
-    """Whether this chat's own history holds the hui_present result that created the card (true for
-    the chat that showed it and for branches copied from it, false for any other chat)."""
+    """Whether this chat's own history holds the successful hui_present result that created the
+    card (true for the chat that showed it and for branches copied from it, false for any other
+    chat). The result must belong to a hui_present call and name exactly this card id: another
+    tool's output that merely contains the id proves nothing."""
     if not isinstance(history, list) or not isinstance(card_id, str) or not CARD_ID_RE.match(card_id):
         return False
     calls = _present_call_ids(history)
-    pattern = re.compile(r'cardId\\?"\s*:\s*\\?"' + re.escape(card_id) + r'\\?"')
     for message in history:
         if not isinstance(message, dict) or message.get("role") != "tool":
             continue
         if message.get("tool_call_id") in calls or message.get("name") == TOOL_NAME:
-            if pattern.search(_message_text(message)):
+            if _presented_card_id(_message_text(message)) == card_id:
                 return True
     return False
 

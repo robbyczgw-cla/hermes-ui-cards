@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { beforeEach, test } from 'node:test'
-import { mod, mount, toolResult, registerPlugin, makeStorage, click, type, buttonByText, lastReply, resetHost, testHost, key } from './dom.mjs'
+import { atom } from '@hermes/plugin-sdk'
+import { host, mod, mount, toolResult, registerPlugin, makeStorage, click, type, buttonByText, lastReply, resetHost, testHost, key } from './dom.mjs'
 
 beforeEach(resetHost)
 const React = await import('react')
@@ -195,10 +196,44 @@ test('Strict Mode permits only one submit on a rapid repeated click', async () =
 })
 
 
-test('a card keeps what the user did when its chat id changes from the runtime id to the stored id', async () => {
-  const { container, rerender, unmount } = await mount(toolResult({ type: 'rating', question: 'How useful?', comment: true }), { sessionId: 'runtime-1' })
+// The host's focused session view, as Hermes Desktop shows it: the primary view's runtime id
+// (host.state.focusedSessionId) and stored id (host.state.focusedStoredSessionId) — the same atoms
+// the transcript's tool-media slot reads to pass `sessionId` (stored id || runtime id).
+function focusView(runtimeId, storedId) {
+  host.state.focusedSessionId.set(runtimeId)
+  host.state.focusedStoredSessionId.set(storedId)
+}
+
+function withHostAtoms(fn) {
+  return async () => {
+    const saved = { ...host.state }
+    host.state.focusedSessionId = atom('sess-1')
+    host.state.focusedStoredSessionId = atom(null)
+    host.state.profile = atom('default')
+    host.state.connectionId = atom('local')
+    try {
+      await fn()
+    } finally {
+      for (const name of Object.keys(host.state)) if (!(name in saved)) delete host.state[name]
+      Object.assign(host.state, saved)
+    }
+  }
+}
+
+const RATING = { type: 'rating', question: 'How useful?', comment: true }
+const stars = c => [...c.querySelectorAll('[role="radio"]')]
+const checkedStar = c => stars(c).findIndex(s => s.getAttribute('aria-checked') === 'true')
+const storedKeys = (storage, part) => [...storage.map.keys()].filter(k => k.includes(part))
+
+test('a card keeps what the user did when its chat id changes from the runtime id to the stored id', withHostAtoms(async () => {
+  const storage = makeStorage()
+  const registration = registerPlugin(storage)
+  const result = toolResult(RATING)
+  focusView('runtime-1', null) // a new chat: no stored id yet
+  const { container, rerender, unmount } = await mount(result, { registration, sessionId: 'runtime-1' })
   await click(container.querySelectorAll('[role="radio"]')[3])
   await type(container.querySelector('textarea'), 'Very clear')
+  focusView('runtime-1', '20261105_stored') // the host stores the chat; the slot re-renders
   await rerender({ sessionId: '20261105_stored' })
   assert.ok(container.querySelectorAll('[role="radio"]')[3].getAttribute('aria-checked') === 'true', 'the picked star survives the id change')
   assert.ok(container.querySelector('textarea').value === 'Very clear')
@@ -206,4 +241,104 @@ test('a card keeps what the user did when its chat id changes from the runtime i
   await click(buttonByText(container, 'Send'))
   assert.ok(testHost.submissions.at(-1).sessionId === '20261105_stored', 'sent into the chat under its new id')
   await unmount()
-})
+  const again = await mount(result, { registration, sessionId: '20261105_stored' })
+  assert.match(again.container.textContent, /Your answer/, 'the receipt is kept under the stored id')
+  await again.unmount()
+}))
+
+test('a draft made under the runtime id is still there when the chat is reopened by its stored id', withHostAtoms(async () => {
+  const registration = registerPlugin(makeStorage())
+  const result = toolResult(RATING)
+  focusView('runtime-2', null)
+  const view = await mount(result, { registration, sessionId: 'runtime-2' })
+  await click(stars(view.container)[1])
+  focusView('runtime-2', '20261105_two')
+  await view.rerender({ sessionId: '20261105_two' })
+  await view.unmount()
+  const again = await mount(result, { registration, sessionId: '20261105_two' })
+  assert.ok(checkedStar(again.container) === 1, 'the draft moved with the confirmed id change')
+  await again.unmount()
+}))
+
+// Review 5, ba61671 regression: the same mounted card moving to ANOTHER chat (a branch made before
+// the trunk answered: both histories hold the same tool result) must not take the trunk's state.
+test('a branch never inherits the trunk answer through a reused card', withHostAtoms(async () => {
+  const storage = makeStorage()
+  const registration = registerPlugin(storage)
+  const result = toolResult(RATING)
+  focusView('rt-trunk', 'trunk')
+  const view = await mount(result, { registration, sessionId: 'trunk' })
+  await click(stars(view.container)[2])
+  await click(buttonByText(view.container, 'Send'))
+  assert.match(view.container.textContent, /Your answer/)
+  focusView('rt-branch', 'branch') // the user opened the branch; the host reuses the renderer
+  await view.rerender({ sessionId: 'branch' })
+  assert.ok(view.container.querySelector('.huic-answer') === null, 'the branch card is not answered')
+  assert.ok(checkedStar(view.container) === -1, 'nothing picked in the branch')
+  assert.ok(storedKeys(storage, 'branch').length === 0, 'nothing copied to the branch keys')
+  await click(stars(view.container)[0])
+  await click(buttonByText(view.container, 'Send'))
+  assert.ok(lastReply().sessionId === 'branch' && lastReply().json.value === 1, 'the branch answers on its own')
+  await view.unmount()
+}))
+
+test('a branch never inherits the trunk draft or private comment through a reused card', withHostAtoms(async () => {
+  const storage = makeStorage()
+  const registration = registerPlugin(storage)
+  focusView('rt-trunk', 'trunk')
+  const view = await mount(toolResult(RATING), { registration, sessionId: 'trunk' })
+  await click(stars(view.container)[4])
+  await type(view.container.querySelector('textarea'), 'Private A draft')
+  focusView('rt-branch', 'branch')
+  await view.rerender({ sessionId: 'branch' })
+  assert.ok(checkedStar(view.container) === -1, 'no picked star in the branch, not even in memory')
+  assert.ok(view.container.querySelector('textarea').value === '', 'the private comment stays in the trunk')
+  assert.ok(storedKeys(storage, 'branch').length === 0)
+  assert.ok(!JSON.stringify([...storage.map.entries()].filter(([k]) => !k.includes('trunk'))).includes('Private A draft'))
+  focusView('rt-trunk', 'trunk')
+  await view.rerender({ sessionId: 'trunk' })
+  assert.ok(checkedStar(view.container) === 4 && view.container.querySelector('textarea').value === 'Private A draft', 'the trunk keeps its own draft')
+  await view.unmount()
+}))
+
+test('an id change the host does not show as runtime → stored starts the card afresh', withHostAtoms(async () => {
+  for (const [label, setup] of [
+    ['focused view has another stored id', () => focusView('runtime-3', 'some-other-chat')],
+    ['focused view has another runtime id', () => focusView('runtime-x', '20261105_three')],
+    ['a host without the atoms', () => { delete host.state.focusedStoredSessionId }]
+  ]) {
+    host.state.focusedStoredSessionId = atom(null)
+    const storage = makeStorage()
+    const registration = registerPlugin(storage)
+    focusView('runtime-3', null)
+    const view = await mount(toolResult(RATING), { registration, sessionId: 'runtime-3' })
+    await click(stars(view.container)[3])
+    setup()
+    await view.rerender({ sessionId: '20261105_three' })
+    assert.ok(checkedStar(view.container) === -1, label)
+    assert.ok(storedKeys(storage, '20261105_three').length === 0, label)
+    await view.unmount()
+  }
+}))
+
+test('a profile or source switch starts a mounted card afresh and keeps each owner apart', withHostAtoms(async () => {
+  const storage = makeStorage()
+  const registration = registerPlugin(storage)
+  const result = toolResult(RATING)
+  const view = await mount(result, { registration, sessionId: 'copied-chat' })
+  await click(stars(view.container)[2])
+  await click(buttonByText(view.container, 'Send'))
+  assert.match(view.container.textContent, /Your answer/)
+  for (const [name, value] of [['profile', 'work'], ['connectionId', 'ssh-box']]) {
+    await act(async () => host.state[name].set(value))
+    await view.rerender()
+    assert.ok(view.container.querySelector('.huic-answer') === null, `${name}: the other owner's receipt is not shown`)
+    assert.ok(checkedStar(view.container) === -1, `${name}: nothing picked`)
+  }
+  await view.unmount()
+  host.state.profile.set('default')
+  host.state.connectionId.set('local')
+  const back = await mount(result, { registration, sessionId: 'copied-chat' })
+  assert.match(back.container.textContent, /Your answer/, 'the first owner still has its receipt')
+  await back.unmount()
+}))

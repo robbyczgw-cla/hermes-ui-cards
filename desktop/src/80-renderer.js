@@ -49,8 +49,27 @@ function cardFromResult(result) {
   return { card: { cardId, ...checked.card }, display: sanitizeDisplay(parsed.display), hasUndo }
 }
 
+// Which mounted instance shows the card: a new one whenever the owner (source + profile) changes
+// or the chat id changes other than by a confirmed runtime → stored move (confirmSessionMove), so
+// nothing the user did in one chat or profile shows up in another. The confirmed move keeps the
+// instance: what the user just picked in a new chat stays on screen.
+function useCardIdentity(sessionId) {
+  const owner = ownerScope()
+  const seen = useRef(null)
+  const prev = seen.current
+  if (!prev) {
+    seen.current = { owner, sessionId, generation: 0 }
+  } else if (prev.owner !== owner || prev.sessionId !== sessionId) {
+    const kept = prev.owner === owner && confirmSessionMove(prev.sessionId, sessionId)
+    seen.current = { owner, sessionId, generation: kept ? prev.generation : prev.generation + 1 }
+  }
+  return seen.current.generation
+}
+
 function CardView({ result, sessionId, fallback }) {
   const parsed = useMemo(() => cardFromResult(result), [result])
+  const chatId = typeof sessionId === 'string' && sessionId ? sessionId : null
+  const generation = useCardIdentity(chatId)
   const display = useLiveDisplay(parsed ? parsed.display : null)
   const Component = parsed && CARD_COMPONENTS[parsed.card.type]
   useEffect(() => {
@@ -66,11 +85,11 @@ function CardView({ result, sessionId, fallback }) {
     {
       card: parsed.card,
       display,
-      sessionId: typeof sessionId === 'string' && sessionId ? sessionId : null,
+      sessionId: chatId,
       lang
     },
-    // Keyed by the card alone: a new chat's id changes from its runtime id to its stored id
-    // while the card is on screen, and remounting then would drop what the user just did.
-    parsed.card.cardId
+    // Not keyed by the chat id: a new chat's id changes from its runtime id to its stored id while
+    // the card is on screen, and remounting then would drop what the user just did.
+    `${parsed.card.cardId}\u0000${generation}`
   )
 }

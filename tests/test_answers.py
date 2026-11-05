@@ -161,6 +161,25 @@ def test_a_branch_whose_history_holds_the_card_may_answer_it():
     [{"role": "assistant", "tool_calls": [{"id": "c1", "function": {"name": "read_file", "arguments": "{}"}}]},
      {"role": "tool", "tool_call_id": "c1", "content": '{"ok": true, "cardId": "%s"}'}],
     [{"role": "tool", "tool_call_id": "c9", "content": '{"ok": true, "cardId": "%s"}'}],
+    # Review 5 #2: the tool_call bridge ran terminal; its command mentions hui_present and echoes the id
+    [{"role": "assistant", "tool_calls": [{"id": "c1", "type": "function", "function": {
+        "name": "tool_call", "arguments": json.dumps({"name": "terminal", "arguments": {
+            "command": "printf '%%s\\n' hui_present '{\"cardId\": \"%s\"}'"}})}}]},
+     {"role": "tool", "tool_call_id": "c1",
+      "content": json.dumps({"output": 'hui_present\n{"cardId": "%s"}', "exit_code": 0})}],
+    # the same in the batch shape, and hui_present only as an argument value
+    [{"role": "assistant", "tool_calls": [{"id": "c1", "function": {"name": "tool_call", "arguments": json.dumps(
+        {"calls": [{"name": "terminal", "arguments": {"note": "hui_present", "cmd": "cat card.json"}}]})}}]},
+     {"role": "tool", "tool_call_id": "c1", "content": '{"ok": true, "cardId": "%s", "type": "confirm"}'}],
+    # a batch that names hui_present next to another tool never runs (local tools go one per call)
+    [{"role": "assistant", "tool_calls": [{"id": "c1", "function": {"name": "tool_call", "arguments": json.dumps(
+        {"calls": [{"name": "hui_present", "arguments": {}}, {"name": "terminal", "arguments": {}}]})}}]},
+     {"role": "tool", "tool_call_id": "c1", "content": '{"ok": true, "cardId": "%s", "type": "confirm"}'}],
+    # a real hui_present call whose result is an error that quotes the id, or another card's id
+    [{"role": "assistant", "tool_calls": [{"id": "c1", "function": {"name": "hui_present", "arguments": "{}"}}]},
+     {"role": "tool", "tool_call_id": "c1", "content": '{"error": "see {\\"cardId\\": \\"%s\\"}"}'}],
+    [{"role": "assistant", "tool_calls": [{"id": "c1", "function": {"name": "hui_present", "arguments": "{}"}}]},
+     {"role": "tool", "tool_call_id": "c1", "content": '{"ok": true, "cardId": "%s-2", "type": "confirm"}'}],
 ])
 def test_copied_card_ids_are_no_proof(history):
     cid = show("alice", CONFIRM_PRIVATE)["cardId"]
@@ -256,7 +275,7 @@ def test_storage_failure_never_breaks_the_turn(monkeypatch):
     monkeypatch.setattr(store, "_open", lambda *a: (_ for _ in ()).throw(sqlite3.OperationalError("disk full")))
     ctx = answer("s1", cid, history=history_with(show("s2")))
     assert "was not shown in this chat" in ctx["context"], "unprovable: nothing private is said"
-    ctx = answer("s1", cid, history=history_with({"ok": True, "cardId": cid}))
+    ctx = answer("s1", cid, history=history_with({"ok": True, "cardId": cid, "type": "choice"}))
     assert "This message answers your choice card" in ctx["context"], "its own history still proves it"
     assert store.lookup("s1", [cid]) == {"answers": {}, "open": []}
     assert json.loads(tool.present({"card": {**CHOICE, "question": "Again?"}}, session_id="s1",

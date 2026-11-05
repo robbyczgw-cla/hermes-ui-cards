@@ -154,12 +154,15 @@ def main() -> None:
         if not card_file.is_file():
             fail(f"card file missing: {card_file}")
         ok("desktop: card file written")
-        record_file = home / "plugin-data" / "hermes-ui-cards" / "answers" / f"{result['cardId']}.json"
-        if not record_file.is_file():
-            fail(f"answer memory: no record for the shown card ({record_file})")
-        shown = json.loads(record_file.read_text(encoding="utf-8")).get("shown") or {}
-        if shown.get("session") != stored:
-            fail(f"answer memory: card shown under {shown.get('session')!r}, Desktop asks with {stored!r}")
+        import sqlite3
+        db = home / "plugin-data" / "hermes-ui-cards" / "answers.db"
+        if not db.is_file():
+            fail(f"answer memory: no store ({db})")
+        conn = sqlite3.connect(str(db))
+        row = conn.execute("SELECT session FROM cards WHERE card = ?", (result["cardId"],)).fetchone()
+        conn.close()
+        if not row or row[0] != stored:
+            fail(f"answer memory: card shown under {row!r}, Desktop asks with {stored!r}")
         ok(f"answer memory: card recorded as shown in session {stored} (the id Desktop asks with)")
 
         result_path = home / "result.json"
@@ -186,11 +189,10 @@ def main() -> None:
         if want not in reaction:
             fail(f"follow-up reply: {reaction!r}")
         ok(f"follow-up: Hermes answered {reaction!r}")
-        recorded = [e for e in backend.plugin_events if e.get("type") == "plugin.hermes-ui-cards.answer.recorded"]
-        if not recorded or recorded[-1]["payload"].get("card") != result["cardId"] \
-                or recorded[-1]["payload"].get("session_id") != stored:
-            fail(f"no answer.recorded event for the card (plugin events: {backend.plugin_events!r:.400})")
-        ok("answer memory: connected client got plugin.hermes-ui-cards.answer.recorded")
+        changed = [e for e in backend.plugin_events if e.get("type") == "plugin.hermes-ui-cards.answers.changed"]
+        if not changed or changed[-1].get("payload") not in ({}, None):
+            fail(f"no empty answers.changed event (plugin events: {backend.plugin_events!r:.400})")
+        ok(f"answer memory: connected client got plugin.hermes-ui-cards.answers.changed, payload {changed[-1].get('payload')!r}")
 
         probe = subprocess.run([python, str(HERE / "route_probe.py"), stored, result["cardId"] + ",nope-0000000000"],
                                env=dict(os.environ, HERMES_HOME=str(home)), cwd=str(home), capture_output=True,

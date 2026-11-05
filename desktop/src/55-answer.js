@@ -1,7 +1,15 @@
 // One answer per card: send it into the card's own chat, remember it, never send twice.
 
-Object.assign(STRINGS.en, { checkingAnswer: 'Checking whether this card was already answered…' })
-Object.assign(STRINGS.de, { checkingAnswer: 'Prüfe, ob diese Karte schon beantwortet wurde …' })
+Object.assign(STRINGS.en, {
+  checkingAnswer: 'Checking whether this card was already answered…',
+  checkFailed: "Couldn't check whether this card was already answered elsewhere. Answer here only if you haven't yet.",
+  checkAgain: 'Check again'
+})
+Object.assign(STRINGS.de, {
+  checkingAnswer: 'Prüfe, ob diese Karte schon beantwortet wurde …',
+  checkFailed: 'Konnte nicht prüfen, ob diese Karte anderswo schon beantwortet wurde. Antworte hier nur, wenn du es noch nicht getan hast.',
+  checkAgain: 'Erneut prüfen'
+})
 
 const CHECKING_NOTICE_MS = 600 // a quick check shows nothing; a slow one says why the buttons wait
 
@@ -15,17 +23,21 @@ function undoDelayMs(display) {
 }
 
 function useCardAnswer(card, sessionId, lang) {
-  const key = sessionId ? `${sessionId}\u0000${card.cardId}` : null
-  // The card stays mounted when its chat's id changes (runtime id → stored id); keep its state.
-  const previousKey = useRef(key)
-  if (previousKey.current !== key) {
-    adoptCard(previousKey.current, key)
-    previousKey.current = key
+  const owner = ownerScope()
+  const key = sessionId ? cardKey(sessionId, card.cardId, owner) : null
+  // A new chat's card stays mounted while the chat's runtime id becomes its stored id (CardView
+  // keeps it only for a move the host confirms): carry the draft and answer to the new key.
+  const previous = useRef({ owner, sessionId })
+  if (previous.current.owner !== owner || previous.current.sessionId !== sessionId) {
+    if (previous.current.owner === owner) adoptCard(previous.current.sessionId, sessionId, card.cardId, owner)
+    previous.current = { owner, sessionId }
   }
   const record = useCardRecord(key)
-  // Answered elsewhere (another window, the Webapp, another computer)? Until the first reply (at
-  // most SYNC_WAIT) the card offers no actions, so a fresh device cannot send it a second time.
-  const syncing = useServerAnswer(card, sessionId)
+  // Answered elsewhere (another window, the Webapp, another computer)? Until the lookup settles
+  // (at most its timeout) the card offers no actions, so a fresh device cannot send it a second
+  // time. A lookup that failed says so on the card, which stays usable.
+  const server = useServerAnswer(card, sessionId)
+  const syncing = server.syncing
   const [problem, setProblem] = useState(null) // null | 'inactive' | 'failed' | 'oversize'
   const sending = useRef(false)
   const [focusAnswer, setFocusAnswer] = useState(false)
@@ -80,6 +92,11 @@ function useCardAnswer(card, sessionId, lang) {
         ? jsx(NoticeBar, { text: t(lang, 'oversize') })
       : syncing && slowCheck
         ? jsx(NoticeBar, { text: t(lang, 'checkingAnswer') })
+      : server.failed && !syncing
+        ? jsx(NoticeBar, {
+            text: t(lang, 'checkFailed'),
+            action: jsx(Btn, { variant: 'ghost', onClick: server.recheck, children: t(lang, 'checkAgain') })
+          })
       : null
 
   const canSend = Boolean(sessionId) && !answered && !syncing && problem !== 'failed'
@@ -90,6 +107,7 @@ function useCardAnswer(card, sessionId, lang) {
     answered,
     locked,
     syncing,
+    lookupFailed: server.failed,
     canSend,
     // No dead buttons: actions disappear while the card can't send (answered, still checking the
     // server, or chat unavailable).

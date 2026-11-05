@@ -329,3 +329,24 @@ def test_history_proof_reads_hermes_message_shapes():
     assert tool.history_shows_card(nested, cid), "a bridge result that wraps the JSON once more"
     assert not tool.history_shows_card(history, cid[:-1] + ("0" if cid[-1] != "0" else "1"))
     assert not tool.history_shows_card(None, cid) and not tool.history_shows_card("junk", cid)
+
+
+def test_history_proof_follows_the_bridge_selected_tool():
+    # Review 5 #2: the bridge's selected tool decides, in both of Hermes' shapes; a result Hermes
+    # moved to a file still counts by the preview of its first characters.
+    out = run({"card": CHOICE}, "desktop", session_id="h2")
+    cid = out["cardId"]
+    text = json.dumps(out)
+    for args in ({"calls": [{"name": "hui_present", "arguments": {"card": CHOICE}}]},
+                 json.dumps({"calls": json.dumps([{"name": " hui_present ", "arguments": "{}"}])}),
+                 {"name": "hui_present", "arguments": json.dumps({"card": CHOICE})}):
+        history = [{"role": "assistant", "tool_calls": [{"id": "b1", "function": {"name": "tool_call",
+                                                                                  "arguments": args}}]},
+                   {"role": "tool", "tool_call_id": "b1", "content": text}]
+        assert tool.history_shows_card(history, cid), args
+    persisted = ("<persisted-output>\nThis tool result was too large (30,000 characters, 29.3 KB).\n"
+                 "Full output saved to: /tmp/x\n\nPreview (first 2000 chars):\n" + text[:2000] + "\n...\n</persisted-output>")
+    history = [{"role": "assistant", "tool_calls": [{"id": "b2", "function": {"name": "hui_present", "arguments": "{}"}}]},
+               {"role": "tool", "tool_call_id": "b2", "content": persisted}]
+    assert tool.history_shows_card(history, cid)
+    assert not tool.history_shows_card([history[0], {**history[1], "content": "see " + persisted}], cid)

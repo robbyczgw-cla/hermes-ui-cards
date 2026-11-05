@@ -58,20 +58,24 @@ async function refreshDisplay(ctx, { fallback = false } = {}) {
   } catch {}
 }
 
-// Re-check open cards when this window comes back: reconnect, focus, network, profile switch.
+// Re-check open cards when this window comes back: reconnect, focus, network, a switch of profile
+// or source. A switch also re-renders every card: each one drops what belongs to the old owner
+// (state, display values) and reads the new backend's.
 function watchReconnects(ctx) {
-  listen(ctx, 'gateway.ready', () => nudgeServer())
+  const rescope = () => {
+    notifyDisplay()
+    nudgeServer()
+  }
+  listen(ctx, 'gateway.ready', rescope)
   if (typeof ctx.addEventListener === 'function' && typeof window !== 'undefined') {
     const soon = () => nudgeServer({ gap: NUDGE_GAP })
     ctx.addEventListener(window, 'focus', soon)
     ctx.addEventListener(window, 'online', soon)
   }
-  const atom = sdk.host && sdk.host.state && sdk.host.state.profile
-  if (atom && typeof atom.listen === 'function') {
-    const stop = atom.listen(() => {
-      notifyDisplay() // cards drop the old profile's values and read the new one's
-      nudgeServer()
-    })
+  for (const name of ['profile', 'connectionId']) {
+    const atom = sdk.host && sdk.host.state && sdk.host.state[name]
+    if (!atom || typeof atom.listen !== 'function') continue
+    const stop = atom.listen(rescope)
     if (typeof ctx.onDispose === 'function' && typeof stop === 'function') ctx.onDispose(stop)
   }
 }

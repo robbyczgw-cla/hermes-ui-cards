@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict'
 import { beforeEach, test } from 'node:test'
 
+import { atom } from '@hermes/plugin-sdk'
 import { act, buttonByText, click, host, lastReply, makeStorage, mod, mount, resetHost, testHost, toolResult } from './dom.mjs'
 
 beforeEach(resetHost)
@@ -21,7 +22,7 @@ function serverAnswer(cardId, extra = {}) {
 }
 
 // A ctx like Hermes Desktop's: storage, register, ctx.rest and ctx.onEvent.
-function registration({ rest, storage = makeStorage(), withEvents = true } = {}) {
+function registration({ rest, storage = makeStorage(), withEvents = true, timers } = {}) {
   const contributions = []
   const listeners = new Map()
   const calls = []
@@ -33,6 +34,7 @@ function registration({ rest, storage = makeStorage(), withEvents = true } = {})
     },
     os: { writeClipboard: async () => true }
   }
+  if (timers) ctx.setTimeout = timers.setTimeout
   if (rest) {
     ctx.rest = async (path, opts) => {
       calls.push(path)
@@ -287,4 +289,192 @@ test('undo delay comes from the tool result until the backend has been read', as
   assert.equal(mod.undoDelayMs(), 0)
   assert.equal(mod.undoDelayMs({ undo: 8 }), 8000)
   await unmount()
+})
+
+// ── Review 5 #9: the first lookup gates the actions until it settles ──
+
+// ctx.setTimeout that only records: a test fires the callbacks due by a simulated time.
+function manualTimers() {
+  const pending = []
+  return {
+    pending,
+    setTimeout: (fn, ms) => {
+      const entry = { fn, ms, done: false }
+      pending.push(entry)
+      return () => { entry.done = true }
+    },
+    // Simulate `ms` passing: Date.now moves on and the callbacks due by then run.
+    async advance(ms) {
+      const real = Date.now
+      const offset = (Date.now() - real.call(Date)) + ms
+      Date.now = () => real.call(Date) + offset
+      try {
+        await act(async () => {
+          for (const entry of pending.filter(e => !e.done && e.ms <= ms)) {
+            entry.done = true
+            entry.fn()
+          }
+        })
+      } finally {
+        Date.now = real
+      }
+    }
+  }
+}
+
+// A /answers route whose replies the test releases by hand.
+function heldRoute() {
+  const held = []
+  return {
+    held,
+    rest: path => (path.startsWith('/answers') ? new Promise(resolve => held.push(resolve)) : {}),
+    async release(reply) {
+      await act(async () => {
+        for (const resolve of held.splice(0)) resolve(reply)
+        await settle()
+      })
+    }
+  }
+}
+
+const RATE = { type: 'rating', question: 'Useful?' }
+const rateAnswer = cardId => ({ mark: '✓', summary: 'Rated 4/5', data: { card: cardId, type: 'rating', value: 4 }, at: Date.now() - 5000 })
+
+test('a slow lookup keeps the actions back until it answers, then the card is locked', async () => {
+  const result = toolResult(RATE)
+  const cardId = JSON.parse(result).cardId
+  const timers = manualTimers()
+  const route = heldRoute()
+  const reg = registration({ rest: route.rest, timers })
+  const view = await mount(result, { registration: reg })
+  await act(async () => new Promise(resolve => setTimeout(resolve, 40))) // the batched request leaves
+  assert.equal(route.held.length, 1, 'the lookup is in flight')
+  await timers.advance(3000) // past the old 2.5 s gate, well inside the 8 s request timeout
+  assert.ok(buttonByText(view.container, 'Send') === undefined, 'still no actions while the request runs')
+  await route.release({ answers: { [cardId]: rateAnswer(cardId) }, open: [] })
+  assert.match(view.container.querySelector('.huic-answer')?.textContent ?? '', /Rated 4\/5/)
+  assert.equal(testHost.submissions.length, 0, 'no second answer was sent')
+  await view.unmount()
+})
+
+test('a lookup that never answers ends at its timeout with an explicit notice and a re-check', async () => {
+  const result = toolResult(RATE)
+  const cardId = JSON.parse(result).cardId
+  const timers = manualTimers()
+  const route = heldRoute()
+  const reg = registration({ rest: route.rest, timers })
+  const view = await mount(result, { registration: reg })
+  await act(async () => new Promise(resolve => setTimeout(resolve, 40)))
+  await timers.advance(8000)
+  assert.ok(buttonByText(view.container, 'Send') === undefined, 'the gate holds up to the request timeout')
+  await timers.advance(9600)
+  const notice = view.container.textContent
+  assert.match(notice, /Couldn't check whether this card was already answered elsewhere/)
+  assert.ok(buttonByText(view.container, 'Check again'), 'the user can ask again')
+  await click(view.container.querySelectorAll('[role="radio"]')[2])
+  assert.ok(buttonByText(view.container, 'Send')?.disabled === false, 'offline, the card still works')
+  // Check again: a new request, actions held until it answers.
+  await click(buttonByText(view.container, 'Check again'))
+  await act(async () => new Promise(resolve => setTimeout(resolve, 40)))
+  assert.equal(route.held.length, 2)
+  assert.ok(buttonByText(view.container, 'Send') === undefined, 'held again while re-checking')
+  await route.release({ answers: { [cardId]: rateAnswer(cardId) }, open: [] })
+  assert.match(view.container.querySelector('.huic-answer')?.textContent ?? '', /Rated 4\/5/)
+  assert.ok(!/Couldn't check/.test(view.container.textContent), 'the notice goes once the check worked')
+  assert.equal(testHost.submissions.length, 0)
+  await view.unmount()
+})
+
+test('a failed lookup says so; a later successful one clears it', async () => {
+  const result = toolResult(RATE)
+  let fail = true
+  const timers = manualTimers()
+  const reg = registration({ timers, rest: path => (path.startsWith('/answers') ? (fail ? Promise.reject(new Error('HTTP 502')) : { answers: {}, open: [JSON.parse(result).cardId] }) : {}) })
+  const view = await mountAndSettle(result, { registration: reg })
+  assert.match(view.container.textContent, /Couldn't check/)
+  assert.ok(view.container.querySelectorAll('[role="radio"]').length === 5)
+  fail = false
+  await click(buttonByText(view.container, 'Check again'))
+  await act(async () => settle())
+  assert.ok(!/Couldn't check/.test(view.container.textContent))
+  await view.unmount()
+})
+
+// ── Review 5 #8: local receipts belong to one source + profile ──
+
+function withOwnerAtoms(fn) {
+  return async () => {
+    host.state.profile = atom('alpha')
+    host.state.connectionId = atom('local')
+    try {
+      await fn()
+    } finally {
+      delete host.state.profile
+      delete host.state.connectionId
+    }
+  }
+}
+
+test('another profile with the same chat and card ids neither sees the receipt nor skips its lookup', withOwnerAtoms(async () => {
+  const result = toolResult(RATE)
+  const cardId = JSON.parse(result).cardId
+  const storage = makeStorage()
+  const reg = registration({ storage, rest: path => (path.startsWith('/answers') ? { answers: {}, open: [cardId] } : {}) })
+  const a = await mountAndSettle(result, { registration: reg, sessionId: 'copied' })
+  await click(a.container.querySelectorAll('[role="radio"]')[3])
+  await click(buttonByText(a.container, 'Send'))
+  await a.unmount()
+  const asked = () => reg.calls.filter(p => p.startsWith('/answers')).length
+  const before = asked()
+  await act(async () => host.state.profile.set('beta'))
+  const b = await mountAndSettle(result, { registration: reg, sessionId: 'copied' })
+  assert.ok(b.container.querySelector('.huic-answer') === null, "profile beta does not show alpha's answer")
+  assert.equal(asked(), before + 1, 'beta asks its own route')
+  assert.ok(![...storage.map.keys()].some(k => k.includes('beta') && k.startsWith('answer.')), 'nothing written for beta')
+  await b.unmount()
+  await act(async () => host.state.connectionId.set('ssh-box'))
+  await act(async () => host.state.profile.set('alpha'))
+  const c = await mountAndSettle(result, { registration: reg, sessionId: 'copied' })
+  assert.ok(c.container.querySelector('.huic-answer') === null, 'same profile name on another source: separate too')
+  await c.unmount()
+  await act(async () => host.state.connectionId.set('local'))
+  const back = await mountAndSettle(result, { registration: reg, sessionId: 'copied' })
+  assert.ok(back.container.querySelector('.huic-answer') !== null, 'alpha on local keeps its receipt')
+  await back.unmount()
+}))
+
+test('a profile switch while a card is on screen remounts it under the new owner and re-reads settings', withOwnerAtoms(async () => {
+  const result = toolResult(RATE)
+  const cardId = JSON.parse(result).cardId
+  const reg = registration({ rest: path => (path.startsWith('/answers') ? { answers: {}, open: [cardId] } : { v: 1, display: { compact: false, accent: 'app', undo: 4 } }) })
+  const view = await mountAndSettle(result, { registration: reg, sessionId: 'copied' })
+  await click(view.container.querySelectorAll('[role="radio"]')[1])
+  await click(buttonByText(view.container, 'Send'))
+  assert.ok(view.container.querySelector('.huic-answer'))
+  const settings = () => reg.calls.filter(p => p === '/settings').length
+  const before = settings()
+  await act(async () => { host.state.profile.set('beta'); await settle() })
+  await act(async () => settle())
+  assert.ok(view.container.querySelector('.huic-answer') === null, 'the card on screen drops the old profile receipt')
+  assert.ok(settings() > before, "the new profile's display settings are read")
+  await view.unmount()
+}))
+
+test('gateway.ready re-renders cards so a new activation reads its display settings', async () => {
+  let epoch = 1
+  const original = mod.default
+  const reg = registration({ rest: path => (path.startsWith('/answers') ? { answers: {}, open: [] } : { v: 1, display: { compact: epoch > 1, accent: 'app', undo: 4 } }) })
+  const view = await mountAndSettle(toolResult(RATE), { registration: reg })
+  assert.equal(view.container.querySelector('section.huic').classList.contains('huic-compact'), false)
+  epoch = 2
+  host.state.connectionId = atom('other-source') // a reconnect onto another source
+  try {
+    await reg.emit('gateway.ready', {})
+    await act(async () => settle())
+    assert.equal(view.container.querySelector('section.huic').classList.contains('huic-compact'), true)
+  } finally {
+    delete host.state.connectionId
+  }
+  assert.ok(original === mod.default)
+  await view.unmount()
 })

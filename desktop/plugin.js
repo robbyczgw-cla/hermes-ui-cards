@@ -872,7 +872,8 @@ function fitReply(mark, summary, data) {
 // ── 40-store.js ──
 // Card state that must survive reopening the chat: the sent answer (no second send)
 // and work in progress (checklist ticks, form drafts). Kept in ctx.storage (plugin-
-// scoped, on this computer), keyed by session and card; the oldest cards are dropped beyond a cap.
+// scoped, on this computer), keyed by owner (source + profile), session and card; the oldest
+// cards are dropped beyond a cap.
 
 const STORE_CAP = 300
 const ANSWER_CAP = 5000
@@ -891,6 +892,28 @@ const cardListeners = new Map()
 function useStorage(storage) {
   cardStorage = storage || memoryStorage()
 
+}
+
+// The source (connection) and profile ctx.rest reaches right now: whose chats these are. Every
+// local key starts with it, so two profiles or sources that share a session and card id (a copied
+// history) never see each other's drafts or receipts. Empty on a host without those atoms; the
+// keys are then the plain `session\0card` older versions wrote.
+function hostValue(name) {
+  try {
+    const atom = sdk.host && sdk.host.state && sdk.host.state[name]
+    if (atom && typeof atom.get === 'function') return String(atom.get() ?? '')
+  } catch {}
+  return ''
+}
+
+function ownerScope() {
+  const connection = hostValue('connectionId')
+  const profile = hostValue('profile')
+  return connection || profile ? `${connection}\u0002${profile}` : ''
+}
+
+function cardKey(sessionId, cardId, owner = ownerScope()) {
+  return `${owner ? `${owner}\u0001` : ''}${sessionId}\u0000${cardId}`
 }
 
 function readCard(cardId) {
@@ -926,11 +949,28 @@ function writeCard(cardId, patch) {
   return next
 }
 
-// A new chat starts with a runtime session id and gets its stored id a moment later: carry what
-// the user already did (draft, answer) over to the new key instead of starting the card again.
-function adoptCard(fromKey, toKey) {
-  if (!fromKey || !toKey || fromKey === toKey) return
-  const old = readCard(fromKey)
+// A new chat starts with a runtime session id and gets its stored id a moment later, while its
+// cards stay on screen. Only that move keeps a card's state, and only when the host shows it: the
+// focused view pairs exactly this runtime id with exactly this stored id (host.state.focusedSessionId
+// / focusedStoredSessionId, the atoms the transcript's own session view reads). Runtime and stored
+// ids never coincide, so a branch or another chat (one stored id to another) never qualifies, and
+// a card id or tool result the two share proves nothing. Any other move starts the card afresh.
+const sessionMoves = new Map() // runtime id -> stored id, as the host showed it
+
+function confirmSessionMove(fromSession, toSession) {
+  if (!fromSession || !toSession || fromSession === toSession) return false
+  if (hostValue('focusedSessionId') !== fromSession || hostValue('focusedStoredSessionId') !== toSession) return false
+  sessionMoves.delete(fromSession)
+  sessionMoves.set(fromSession, toSession)
+  while (sessionMoves.size > 200) sessionMoves.delete(sessionMoves.keys().next().value)
+  return true
+}
+
+// Carry what the user already did (draft, answer) to the stored id of a confirmed move.
+function adoptCard(fromSession, toSession, cardId, owner = ownerScope()) {
+  if (!fromSession || !toSession || sessionMoves.get(fromSession) !== toSession) return
+  const toKey = cardKey(toSession, cardId, owner)
+  const old = readCard(cardKey(fromSession, cardId, owner))
   const cur = readCard(toKey)
   const patch = {}
   if (old.answer && !cur.answer) patch.answer = old.answer
@@ -960,8 +1000,9 @@ function useCardRecord(cardId) {
 // ── Answers kept by the plugin's backend (dashboard/plugin_api.py) ──
 // A card answered in another window, in the Webapp or on another computer is locked here too.
 // Each mounted card asks its chat's backend once (batched per chat, cached for SERVER_TTL) and
-// its actions wait for that first answer (at most SYNC_WAIT), so a fresh device cannot send a
-// card twice. The backend's `answers.changed` event carries nothing (it reaches every window,
+// its actions wait until that request settles or reaches its timeout (SYNC_LIMIT), so a fresh
+// device cannot send a card the server knows as answered. A lookup that failed or timed out says
+// so on the card (lookupFailed) instead of passing for "not answered"; the card stays usable. The backend's `answers.changed` event carries nothing (it reaches every window,
 // also other profiles'); it only makes the cards on screen ask again, through this window's own
 // profile-scoped route. While a card is on screen and open it is checked again with backoff
 // (POLL_*), after a failed request (RETRY_MS), on reconnect and when the window gets focus.
@@ -972,7 +1013,8 @@ function useCardRecord(cardId) {
 
 const SERVER_TTL = 60 * 1000
 const SERVER_BATCH = 50
-const SYNC_WAIT = 2500 // actions wait at most this long for the first server answer
+const LOOKUP_TIMEOUT = 8000 // ctx.rest timeout of one /answers request
+const SYNC_LIMIT = LOOKUP_TIMEOUT + 1500 // actions wait at most this long (batching and slack)
 const POLL_MIN = 30 * 1000
 const POLL_MAX = 10 * 60 * 1000
 const RETRY_MS = [5000, 15000, 45000, 120000, 300000]
@@ -980,8 +1022,9 @@ const NUDGE_GAP = 5000 // focus/online re-checks at most this often
 const SERVER_MARKS = ['✓', '✗', '✎', '⚠']
 let serverRest = null
 const serverChecked = new Map() // key -> time asked
-const serverQueue = new Map() // sessionId -> Map(cardId -> card type)
+const serverQueue = new Map() // owner + sessionId -> { owner, sessionId, cards: Map(cardId -> type) }
 const serverSync = new Map() // key -> deadline: first answer pending, actions wait
+const serverFailed = new Set() // keys whose last lookup failed or timed out
 const syncListeners = new Map() // key -> Set(fn)
 let serverTimer = null
 let serverBlocked = 0 // no requests before this time (after a failure)
@@ -1001,16 +1044,12 @@ let schedule = (fn, ms) => {
 // Which backend ctx.rest reaches right now: the active profile plus the host's activation counter
 // (a source or connection swap). A reply that comes back under another scope is dropped.
 function backendScope() {
-  let profile = ''
   let epoch = ''
-  try {
-    const atom = sdk.host && sdk.host.state && sdk.host.state.profile
-    if (atom && typeof atom.get === 'function') profile = String(atom.get() ?? '')
-  } catch {}
+  const profile = hostValue('profile')
   try {
     if (typeof sdk.gatewayActivationEpoch === 'function') epoch = String(sdk.gatewayActivationEpoch())
   } catch {}
-  return `${profile}\u0000${epoch}`
+  return `${hostValue('connectionId')}\u0000${profile}\u0000${epoch}`
 }
 
 function useServerAnswers(rest, timer) {
@@ -1020,6 +1059,7 @@ function useServerAnswers(rest, timer) {
   reconcileTimer = null
   serverChecked.clear()
   serverQueue.clear()
+  serverFailed.clear()
   for (const key of [...serverSync.keys()]) endSync(key)
   serverBlocked = 0
   serverFailures = 0
@@ -1034,6 +1074,7 @@ function followScope() {
   serverScope = scope
   serverChecked.clear()
   serverQueue.clear()
+  serverFailed.clear()
   serverBlocked = 0
   serverFailures = 0
   pollDelay = POLL_MIN
@@ -1045,9 +1086,24 @@ function isSyncing(key) {
   return deadline !== undefined && Date.now() < deadline
 }
 
-function endSync(key) {
-  if (!serverSync.delete(key)) return
+function notifyKey(key) {
   for (const fn of syncListeners.get(key) || []) fn()
+}
+
+function endSync(key) {
+  if (serverSync.delete(key)) notifyKey(key)
+}
+
+// The lookup of this card failed (route away, timeout): the card says so and stays usable.
+function setLookupFailed(key, failed) {
+  if (failed === serverFailed.has(key)) return
+  if (failed) serverFailed.add(key)
+  else serverFailed.delete(key)
+  notifyKey(key)
+}
+
+function lookupFailed(key) {
+  return serverFailed.has(key) && !readCard(key).answer
 }
 
 function subscribeSync(key, fn) {
@@ -1067,48 +1123,77 @@ function wouldAsk(key) {
     Date.now() - (serverChecked.get(key) || 0) >= SERVER_TTL
 }
 
-function askServer(sessionId, cardId, type, force = false) {
+// `manual`: the user pressed "Check again" (asks even while failures hold the route back).
+function askServer(sessionId, cardId, type, force = false, manual = false) {
   if (!serverRest || !sessionId || typeof cardId !== 'string') return false
   followScope()
-  const key = `${sessionId}\u0000${cardId}`
+  const owner = ownerScope()
+  const key = cardKey(sessionId, cardId, owner)
   const now = Date.now()
-  if (readCard(key).answer || now < serverBlocked) return false
+  if (readCard(key).answer || (!manual && now < serverBlocked)) return false
   if (!force && now - (serverChecked.get(key) || 0) < SERVER_TTL) return false
   serverChecked.set(key, now)
-  if (!serverQueue.has(sessionId)) serverQueue.set(sessionId, new Map())
-  serverQueue.get(sessionId).set(cardId, type)
+  const batch = `${owner}\u0001${sessionId}`
+  if (!serverQueue.has(batch)) serverQueue.set(batch, { owner, sessionId, cards: new Map() })
+  serverQueue.get(batch).cards.set(cardId, type)
   if (!serverTimer) serverTimer = setTimeout(() => { serverInflight = flushServer() }, 25)
   return true
+}
+
+// Hold this card's actions until its lookup settles; past SYNC_LIMIT (a request that never comes
+// back) the lookup counts as failed.
+function holdForLookup(key) {
+  serverSync.set(key, Date.now() + SYNC_LIMIT)
+  notifyKey(key)
+  return schedule(() => {
+    if (!serverSync.has(key)) return
+    endSync(key)
+    setLookupFailed(key, true)
+  }, SYNC_LIMIT)
+}
+
+// "Check again" on a card whose lookup failed.
+function recheckServer(sessionId, cardId, type) {
+  if (!askServer(sessionId, cardId, type, true, true)) return () => {}
+  return holdForLookup(cardKey(sessionId, cardId))
 }
 
 async function flushServer() {
   serverTimer = null
   const rest = serverRest
   const scope = serverScope
-  const batches = [...serverQueue]
+  const batches = [...serverQueue.values()]
   serverQueue.clear()
   let failed = false
-  for (const [sessionId, cards] of batches) {
+  for (const { owner, sessionId, cards } of batches) {
     const ids = [...cards.keys()]
     for (let i = 0; i < ids.length; i += SERVER_BATCH) {
       const chunk = ids.slice(i, i + SERVER_BATCH)
+      const keys = chunk.map(id => cardKey(sessionId, id, owner))
+      if (rest !== serverRest || scope !== backendScope() || owner !== ownerScope()) {
+        for (const key of keys) endSync(key) // queued for another backend: the new scope asks itself
+        continue
+      }
       let reply
       try {
-        reply = await rest(`/answers?session=${encodeURIComponent(sessionId)}&cards=${chunk.map(encodeURIComponent).join(',')}`, { timeoutMs: 8000 })
+        reply = await rest(`/answers?session=${encodeURIComponent(sessionId)}&cards=${chunk.map(encodeURIComponent).join(',')}`, { timeoutMs: LOOKUP_TIMEOUT })
       } catch {
         reply = undefined
         failed = true
       }
-      const keys = chunk.map(id => `${sessionId}\u0000${id}`)
-      if (rest !== serverRest || scope !== backendScope()) {
+      if (rest !== serverRest || scope !== backendScope() || owner !== ownerScope()) {
         for (const key of keys) endSync(key) // asked another backend: drop it, the new scope asks again
         continue
       }
       if (reply === undefined) {
-        // Route missing or backend away: keep the local state, try again later.
-        for (const key of keys) serverChecked.delete(key)
+        // Route missing or backend away: keep the local state, say so, try again later.
+        for (const key of keys) {
+          serverChecked.delete(key)
+          setLookupFailed(key, true)
+        }
       } else {
-        applyServerReply(sessionId, chunk.map(id => [id, cards.get(id)]), reply)
+        applyServerReply(sessionId, chunk.map(id => [id, cards.get(id)]), reply, owner)
+        for (const key of keys) setLookupFailed(key, false)
       }
       for (const key of keys) endSync(key)
     }
@@ -1124,22 +1209,24 @@ async function flushServer() {
   }
 }
 
-function applyServerReply(sessionId, cards, reply) {
+function applyServerReply(sessionId, cards, reply, owner) {
   if (!reply || typeof reply !== 'object') return
   const answers = reply.answers && typeof reply.answers === 'object' ? reply.answers : {}
   for (const [cardId, type] of cards) {
-    const key = `${sessionId}\u0000${cardId}`
+    const key = cardKey(sessionId, cardId, owner)
     if (Object.prototype.hasOwnProperty.call(answers, cardId)) applyServerAnswer(key, cardId, type, answers[cardId])
   }
 }
 
 // ── Re-checks of open cards on screen ──
 
-// Cards on screen (key -> type): the ones a re-check asks for.
+// Cards on screen (key -> { type, owner, sessionId, cardId }): the ones a re-check asks for. Only
+// those of the owner ctx.rest reaches now are asked.
 const mountedTypes = new Map()
 
 function openMounted() {
-  return [...mountedTypes].filter(([key]) => !readCard(key).answer)
+  const owner = ownerScope()
+  return [...mountedTypes].filter(([key, card]) => card.owner === owner && !readCard(key).answer)
 }
 
 function scheduleReconcile(ms) {
@@ -1162,10 +1249,7 @@ function reconcile() {
     return
   }
   if (Date.now() < serverBlocked) return scheduleReconcile(serverBlocked - Date.now())
-  for (const [key, type] of open) {
-    const cut = key.indexOf('\u0000')
-    askServer(key.slice(0, cut), key.slice(cut + 1), type, true)
-  }
+  for (const [, card] of open) askServer(card.sessionId, card.cardId, card.type, true)
 }
 
 // Something may have changed (the backend's event, reconnect, focus): check open cards soon.
@@ -1244,28 +1328,45 @@ function onAnswersChanged() {
   nudgeServer()
 }
 
-// A mounted card: ask the server once, and say whether its actions still wait for that answer.
+// A mounted card: ask the server once. `syncing`: its actions still wait for that answer;
+// `failed`: the lookup failed or timed out (the card says so; `recheck` asks again).
 function useServerAnswer(card, sessionId) {
-  const key = sessionId && card && card.cardId ? `${sessionId}\u0000${card.cardId}` : null
+  const key = sessionId && card && card.cardId ? cardKey(sessionId, card.cardId) : null
   const [, setTick] = useState(0)
+  const expire = useRef(null)
   // Decided during the first render, so a card that will ask never shows actions before the reply.
-  if (key && !serverSync.has(key) && !mountedTypes.has(key) && wouldAsk(key)) serverSync.set(key, Date.now() + SYNC_WAIT)
+  if (key && !serverSync.has(key) && !mountedTypes.has(key) && wouldAsk(key)) serverSync.set(key, Date.now() + SYNC_LIMIT)
   useEffect(() => {
     if (!key) return
-    mountedTypes.set(key, card.type)
+    const mounted = { type: card.type, owner: ownerScope(), sessionId, cardId: card.cardId }
+    mountedTypes.set(key, mounted)
     const stop = subscribeSync(key, () => setTick(n => n + 1))
     const asked = askServer(sessionId, card.cardId, card.type)
-    if (!asked) endSync(key)
-    const expire = serverSync.has(key) ? schedule(() => endSync(key), Math.max(0, serverSync.get(key) - Date.now())) : null
-    if (asked) scheduleReconcile(pollDelay)
+    if (asked) {
+      expire.current = holdForLookup(key)
+      scheduleReconcile(pollDelay)
+    } else {
+      endSync(key)
+      // Not asked because recent requests failed: this card was not checked either.
+      if (serverRest && Date.now() < serverBlocked && serverFailures > 0) setLookupFailed(key, true)
+    }
     return () => {
       stop()
-      if (expire) expire()
+      if (expire.current) expire.current()
+      expire.current = null
       endSync(key)
-      if (mountedTypes.get(key) === card.type) mountedTypes.delete(key)
+      if (mountedTypes.get(key) === mounted) {
+        mountedTypes.delete(key)
+        serverFailed.delete(key)
+      }
     }
   }, [key, card && card.type])
-  return key ? isSyncing(key) : false
+  const recheck = useCallback(() => {
+    if (!key) return
+    if (expire.current) expire.current()
+    expire.current = recheckServer(sessionId, card.cardId, card.type)
+  }, [key, card && card.type])
+  return { syncing: key ? isSyncing(key) : false, failed: key ? lookupFailed(key) : false, recheck }
 }
 
 // Resolves once queued and running answer requests are done (tests, and nothing else waits on it).
@@ -1695,8 +1796,16 @@ function CodeBlock({ code, lang, prompt }) {
 // ── 55-answer.js ──
 // One answer per card: send it into the card's own chat, remember it, never send twice.
 
-Object.assign(STRINGS.en, { checkingAnswer: 'Checking whether this card was already answered…' })
-Object.assign(STRINGS.de, { checkingAnswer: 'Prüfe, ob diese Karte schon beantwortet wurde …' })
+Object.assign(STRINGS.en, {
+  checkingAnswer: 'Checking whether this card was already answered…',
+  checkFailed: "Couldn't check whether this card was already answered elsewhere. Answer here only if you haven't yet.",
+  checkAgain: 'Check again'
+})
+Object.assign(STRINGS.de, {
+  checkingAnswer: 'Prüfe, ob diese Karte schon beantwortet wurde …',
+  checkFailed: 'Konnte nicht prüfen, ob diese Karte anderswo schon beantwortet wurde. Antworte hier nur, wenn du es noch nicht getan hast.',
+  checkAgain: 'Erneut prüfen'
+})
 
 const CHECKING_NOTICE_MS = 600 // a quick check shows nothing; a slow one says why the buttons wait
 
@@ -1710,17 +1819,21 @@ function undoDelayMs(display) {
 }
 
 function useCardAnswer(card, sessionId, lang) {
-  const key = sessionId ? `${sessionId}\u0000${card.cardId}` : null
-  // The card stays mounted when its chat's id changes (runtime id → stored id); keep its state.
-  const previousKey = useRef(key)
-  if (previousKey.current !== key) {
-    adoptCard(previousKey.current, key)
-    previousKey.current = key
+  const owner = ownerScope()
+  const key = sessionId ? cardKey(sessionId, card.cardId, owner) : null
+  // A new chat's card stays mounted while the chat's runtime id becomes its stored id (CardView
+  // keeps it only for a move the host confirms): carry the draft and answer to the new key.
+  const previous = useRef({ owner, sessionId })
+  if (previous.current.owner !== owner || previous.current.sessionId !== sessionId) {
+    if (previous.current.owner === owner) adoptCard(previous.current.sessionId, sessionId, card.cardId, owner)
+    previous.current = { owner, sessionId }
   }
   const record = useCardRecord(key)
-  // Answered elsewhere (another window, the Webapp, another computer)? Until the first reply (at
-  // most SYNC_WAIT) the card offers no actions, so a fresh device cannot send it a second time.
-  const syncing = useServerAnswer(card, sessionId)
+  // Answered elsewhere (another window, the Webapp, another computer)? Until the lookup settles
+  // (at most its timeout) the card offers no actions, so a fresh device cannot send it a second
+  // time. A lookup that failed says so on the card, which stays usable.
+  const server = useServerAnswer(card, sessionId)
+  const syncing = server.syncing
   const [problem, setProblem] = useState(null) // null | 'inactive' | 'failed' | 'oversize'
   const sending = useRef(false)
   const [focusAnswer, setFocusAnswer] = useState(false)
@@ -1775,6 +1888,11 @@ function useCardAnswer(card, sessionId, lang) {
         ? jsx(NoticeBar, { text: t(lang, 'oversize') })
       : syncing && slowCheck
         ? jsx(NoticeBar, { text: t(lang, 'checkingAnswer') })
+      : server.failed && !syncing
+        ? jsx(NoticeBar, {
+            text: t(lang, 'checkFailed'),
+            action: jsx(Btn, { variant: 'ghost', onClick: server.recheck, children: t(lang, 'checkAgain') })
+          })
       : null
 
   const canSend = Boolean(sessionId) && !answered && !syncing && problem !== 'failed'
@@ -1785,6 +1903,7 @@ function useCardAnswer(card, sessionId, lang) {
     answered,
     locked,
     syncing,
+    lookupFailed: server.failed,
     canSend,
     // No dead buttons: actions disappear while the card can't send (answered, still checking the
     // server, or chat unavailable).
@@ -3979,8 +4098,27 @@ function cardFromResult(result) {
   return { card: { cardId, ...checked.card }, display: sanitizeDisplay(parsed.display), hasUndo }
 }
 
+// Which mounted instance shows the card: a new one whenever the owner (source + profile) changes
+// or the chat id changes other than by a confirmed runtime → stored move (confirmSessionMove), so
+// nothing the user did in one chat or profile shows up in another. The confirmed move keeps the
+// instance: what the user just picked in a new chat stays on screen.
+function useCardIdentity(sessionId) {
+  const owner = ownerScope()
+  const seen = useRef(null)
+  const prev = seen.current
+  if (!prev) {
+    seen.current = { owner, sessionId, generation: 0 }
+  } else if (prev.owner !== owner || prev.sessionId !== sessionId) {
+    const kept = prev.owner === owner && confirmSessionMove(prev.sessionId, sessionId)
+    seen.current = { owner, sessionId, generation: kept ? prev.generation : prev.generation + 1 }
+  }
+  return seen.current.generation
+}
+
 function CardView({ result, sessionId, fallback }) {
   const parsed = useMemo(() => cardFromResult(result), [result])
+  const chatId = typeof sessionId === 'string' && sessionId ? sessionId : null
+  const generation = useCardIdentity(chatId)
   const display = useLiveDisplay(parsed ? parsed.display : null)
   const Component = parsed && CARD_COMPONENTS[parsed.card.type]
   useEffect(() => {
@@ -3996,12 +4134,12 @@ function CardView({ result, sessionId, fallback }) {
     {
       card: parsed.card,
       display,
-      sessionId: typeof sessionId === 'string' && sessionId ? sessionId : null,
+      sessionId: chatId,
       lang
     },
-    // Keyed by the card alone: a new chat's id changes from its runtime id to its stored id
-    // while the card is on screen, and remounting then would drop what the user just did.
-    parsed.card.cardId
+    // Not keyed by the chat id: a new chat's id changes from its runtime id to its stored id while
+    // the card is on screen, and remounting then would drop what the user just did.
+    `${parsed.card.cardId}\u0000${generation}`
   )
 }
 
@@ -6633,20 +6771,24 @@ async function refreshDisplay(ctx, { fallback = false } = {}) {
   } catch {}
 }
 
-// Re-check open cards when this window comes back: reconnect, focus, network, profile switch.
+// Re-check open cards when this window comes back: reconnect, focus, network, a switch of profile
+// or source. A switch also re-renders every card: each one drops what belongs to the old owner
+// (state, display values) and reads the new backend's.
 function watchReconnects(ctx) {
-  listen(ctx, 'gateway.ready', () => nudgeServer())
+  const rescope = () => {
+    notifyDisplay()
+    nudgeServer()
+  }
+  listen(ctx, 'gateway.ready', rescope)
   if (typeof ctx.addEventListener === 'function' && typeof window !== 'undefined') {
     const soon = () => nudgeServer({ gap: NUDGE_GAP })
     ctx.addEventListener(window, 'focus', soon)
     ctx.addEventListener(window, 'online', soon)
   }
-  const atom = sdk.host && sdk.host.state && sdk.host.state.profile
-  if (atom && typeof atom.listen === 'function') {
-    const stop = atom.listen(() => {
-      notifyDisplay() // cards drop the old profile's values and read the new one's
-      nudgeServer()
-    })
+  for (const name of ['profile', 'connectionId']) {
+    const atom = sdk.host && sdk.host.state && sdk.host.state[name]
+    if (!atom || typeof atom.listen !== 'function') continue
+    const stop = atom.listen(rescope)
     if (typeof ctx.onDispose === 'function' && typeof stop === 'function') ctx.onDispose(stop)
   }
 }
