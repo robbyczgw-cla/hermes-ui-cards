@@ -26,7 +26,8 @@ Object.assign(STRINGS.en, {
   planUndo: 'Undo',
   rPlan: 'Go ahead with {n} of {total} steps', rPlanAll: 'Go ahead with the plan ({total} steps)', rPlanOne: 'Go ahead with the plan (1 step)',
   rPlanSkipped: 'skipped: {x}',
-  rPlanReordered: 'reordered'
+  rPlanReordered: 'reordered',
+  rPlanNote: 'note on {x}: “{note}”', rPlanNotes: '{n} notes'
 })
 Object.assign(STRINGS.de, {
   planRun: 'Plan ausführen',
@@ -52,7 +53,8 @@ Object.assign(STRINGS.de, {
   planUndo: 'Rückgängig',
   rPlan: 'Leg los mit {n} von {total} Schritten', rPlanAll: 'Leg los mit dem Plan ({total} Schritte)', rPlanOne: 'Leg los mit dem Plan (1 Schritt)',
   rPlanSkipped: 'übersprungen: {x}',
-  rPlanReordered: 'neu geordnet'
+  rPlanReordered: 'neu geordnet',
+  rPlanNote: 'Notiz zu {x}: „{note}“', rPlanNotes: '{n} Notizen'
 })
 
 const PLAN_NOTE_MAX = 200
@@ -287,9 +289,9 @@ function planUseUndo(display, onSend) {
   return { pending, start, cancel, onKeyDown, undoRef, startRef }
 }
 
-function PlanPendingBar({ text, ms, undoRef, onUndo, lang }) {
+function PlanPendingBar({ say, ms, undoRef, onUndo, lang }) {
   return jsxs('div', { className: 'huic-plan-pending', role: 'status', 'aria-live': 'polite', style: { '--undo-ms': `${ms}ms` }, children: [
-    jsx('span', { className: 'huic-plan-pending-text', children: text }),
+    jsx('span', { className: 'huic-plan-pending-text', children: jsx(Countdown, { ms, say }) }),
     jsx(Btn, { ref: undoRef, variant: 'ghost', onClick: onUndo, children: t(lang, 'planUndo') }),
     jsx('span', { className: 'huic-plan-drain', 'aria-hidden': true })
   ] })
@@ -499,7 +501,7 @@ function PlanCard({ card, sessionId, display, lang }) {
   const footer = !editable ? null
     : undo.pending
       ? jsx('div', { className: 'huic-foot', children: jsx(PlanPendingBar, {
-          text: t(lang, 'planPending', { n: undo.pending.n, total, s: Math.round(undo.pending.ms / 1000) }),
+          say: s => t(lang, 'planPending', { n: undo.pending.n, total, s }),
           ms: undo.pending.ms, undoRef: undo.undoRef, onUndo: undo.cancel, lang
         }) })
       : jsx(Footer, {
@@ -537,5 +539,9 @@ REPLY_BUILDERS.plan = (card, answer, lang, data) => {
   let summary = t(lang, on < data.steps.length ? 'rPlan' : on === 1 ? 'rPlanOne' : 'rPlanAll', { n: on, total: data.steps.length })
   if (skipped.length) summary += ` · ${t(lang, 'rPlanSkipped', { x: joinList(skipped) })}`
   if (data.steps.some((s, i) => s.id !== card.steps[i]?.id)) summary += ` · ${t(lang, 'rPlanReordered')}`
+  // A note is an instruction, so the person reading the chat should see it too (in full in line 2).
+  const noted = data.steps.filter(s => s.included && s.note)
+  if (noted.length === 1) summary += ` · ${t(lang, 'rPlanNote', { x: clip(noted[0].title), note: clip(noted[0].note) })}`
+  else if (noted.length > 1) summary += ` · ${t(lang, 'rPlanNotes', { n: noted.length })}`
   return { summary }
 }

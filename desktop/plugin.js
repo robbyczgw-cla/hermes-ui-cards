@@ -1753,6 +1753,22 @@ function AnsweredBar({ lang, record, focus }) {
   })
 }
 
+// The undo window counts down where people can see it. Screen readers hear the start value once
+// (the bar is a polite live region; a per-second update would interrupt them every second).
+function Countdown({ ms, say }) {
+  const total = Math.max(1, Math.round(ms / 1000))
+  const [left, setLeft] = useState(total)
+  useEffect(() => {
+    if (left <= 1) return
+    const id = setTimeout(() => setLeft(n => n - 1), 1000)
+    return () => clearTimeout(id)
+  }, [left])
+  return jsxs(Fragment, { children: [
+    jsx('span', { className: 'huic-sr', children: say(total) }),
+    jsx('span', { className: 'huic-countdown', 'aria-hidden': true, children: say(left) })
+  ] })
+}
+
 function NoticeBar({ text, action }) {
   return jsxs('div', {
     className: 'huic-notice',
@@ -2515,8 +2531,8 @@ function ChecklistCard({ card, sessionId, display, lang }) {
 }
 
 // ── 62-compare.js ──
-Object.assign(STRINGS.en, { compareSources: 'sources', compareChecked: 'Prices checked', compareNoSources: "From the model’s knowledge, no web sources", compareUndo: 'Undo', comparePending: 'Picked {title} · sending in {s} s', compareMore: '+{count} more', compareLess: 'Show less', compareBest: 'best', compareBestOf: 'Best of {n}', compareSwitch: 'Compare options', compareYourPick: 'Your pick' })
-Object.assign(STRINGS.de, { compareSources: 'Quellen', compareChecked: 'Preise geprüft', compareNoSources: 'Aus dem Wissen des Modells, ohne Webquellen', compareUndo: 'Rückgängig', comparePending: 'Gewählt: {title} · wird in {s} s gesendet', compareMore: '+{count} weitere', compareLess: 'Weniger anzeigen', compareBest: 'bester Wert', compareBestOf: 'Bester von {n}', compareSwitch: 'Optionen vergleichen', compareYourPick: 'Deine Wahl' })
+Object.assign(STRINGS.en, { compareSources: 'sources', compareChecked: 'Prices checked', compareNoSources: 'No sources linked', compareUndo: 'Undo', comparePending: 'Picked {title} · sending in {s} s', compareMore: '+{count} more', compareLess: 'Show less', compareBest: 'best', compareBestOf: 'Best of {n}', compareSwitch: 'Compare options', compareYourPick: 'Your pick' })
+Object.assign(STRINGS.de, { compareSources: 'Quellen', compareChecked: 'Preise geprüft', compareNoSources: 'Ohne verlinkte Quellen', compareUndo: 'Rückgängig', comparePending: 'Gewählt: {title} · wird in {s} s gesendet', compareMore: '+{count} weitere', compareLess: 'Weniger anzeigen', compareBest: 'bester Wert', compareBestOf: 'Bester von {n}', compareSwitch: 'Optionen vergleichen', compareYourPick: 'Deine Wahl' })
 
 // A real table: full-bleed hairline rows, a quiet tinted column for the recommendation,
 // a dot for the best value per row, small source chips. Narrow views switch columns.
@@ -2682,7 +2698,7 @@ function CompareCard({ card, sessionId, display, lang }) {
     children: c.title
   }, c.id || i)) })
   const pendingBar = pending ? jsxs('div', { className: 'huic-compare-pending', role: 'status', 'aria-live': 'polite', style: { '--undo-ms': `${delay}ms` }, children: [
-    jsx('span', { children: t(lang, 'comparePending', { title: pending.title, s: Math.round(delay / 1000) }) }),
+    jsx('span', { children: jsx(Countdown, { ms: delay, say: s => t(lang, 'comparePending', { title: pending.title, s }) }) }),
     jsx(Btn, { ref: undoRef, variant: 'ghost', onClick: undo, children: t(lang, 'compareUndo') }),
     jsx('span', { className: 'huic-compare-drain', 'aria-hidden': true })
   ] }) : null
@@ -3265,7 +3281,7 @@ function ConfirmCard({ card, sessionId, display, lang }) {
   ] })
 
   const pendingBar = pending ? jsxs('div', { className: 'huic-confirm-pending', role: 'status', 'aria-live': 'polite', style: { '--undo-ms': `${pending.ms}ms` }, children: [
-    jsxs('span', { children: [jsx(Icon, { name: 'check' }), t(lang, 'confirmPending', { s: Math.round(pending.ms / 1000) })] }),
+    jsxs('span', { children: [jsx(Icon, { name: 'check' }), jsx(Countdown, { ms: pending.ms, say: s => t(lang, 'confirmPending', { s }) })] }),
     jsx(Btn, { ref: undoRef, variant: 'secondary', onClick: undo, children: jsxs(Fragment, { children: [jsx(Icon, { name: 'undo' }), t(lang, 'confirmUndo')] }) }),
     jsx('span', { className: 'huic-confirm-drain', 'aria-hidden': true })
   ] }) : null
@@ -4269,7 +4285,8 @@ Object.assign(STRINGS.en, {
   planUndo: 'Undo',
   rPlan: 'Go ahead with {n} of {total} steps', rPlanAll: 'Go ahead with the plan ({total} steps)', rPlanOne: 'Go ahead with the plan (1 step)',
   rPlanSkipped: 'skipped: {x}',
-  rPlanReordered: 'reordered'
+  rPlanReordered: 'reordered',
+  rPlanNote: 'note on {x}: “{note}”', rPlanNotes: '{n} notes'
 })
 Object.assign(STRINGS.de, {
   planRun: 'Plan ausführen',
@@ -4295,7 +4312,8 @@ Object.assign(STRINGS.de, {
   planUndo: 'Rückgängig',
   rPlan: 'Leg los mit {n} von {total} Schritten', rPlanAll: 'Leg los mit dem Plan ({total} Schritte)', rPlanOne: 'Leg los mit dem Plan (1 Schritt)',
   rPlanSkipped: 'übersprungen: {x}',
-  rPlanReordered: 'neu geordnet'
+  rPlanReordered: 'neu geordnet',
+  rPlanNote: 'Notiz zu {x}: „{note}“', rPlanNotes: '{n} Notizen'
 })
 
 const PLAN_NOTE_MAX = 200
@@ -4530,9 +4548,9 @@ function planUseUndo(display, onSend) {
   return { pending, start, cancel, onKeyDown, undoRef, startRef }
 }
 
-function PlanPendingBar({ text, ms, undoRef, onUndo, lang }) {
+function PlanPendingBar({ say, ms, undoRef, onUndo, lang }) {
   return jsxs('div', { className: 'huic-plan-pending', role: 'status', 'aria-live': 'polite', style: { '--undo-ms': `${ms}ms` }, children: [
-    jsx('span', { className: 'huic-plan-pending-text', children: text }),
+    jsx('span', { className: 'huic-plan-pending-text', children: jsx(Countdown, { ms, say }) }),
     jsx(Btn, { ref: undoRef, variant: 'ghost', onClick: onUndo, children: t(lang, 'planUndo') }),
     jsx('span', { className: 'huic-plan-drain', 'aria-hidden': true })
   ] })
@@ -4742,7 +4760,7 @@ function PlanCard({ card, sessionId, display, lang }) {
   const footer = !editable ? null
     : undo.pending
       ? jsx('div', { className: 'huic-foot', children: jsx(PlanPendingBar, {
-          text: t(lang, 'planPending', { n: undo.pending.n, total, s: Math.round(undo.pending.ms / 1000) }),
+          say: s => t(lang, 'planPending', { n: undo.pending.n, total, s }),
           ms: undo.pending.ms, undoRef: undo.undoRef, onUndo: undo.cancel, lang
         }) })
       : jsx(Footer, {
@@ -4780,6 +4798,10 @@ REPLY_BUILDERS.plan = (card, answer, lang, data) => {
   let summary = t(lang, on < data.steps.length ? 'rPlan' : on === 1 ? 'rPlanOne' : 'rPlanAll', { n: on, total: data.steps.length })
   if (skipped.length) summary += ` · ${t(lang, 'rPlanSkipped', { x: joinList(skipped) })}`
   if (data.steps.some((s, i) => s.id !== card.steps[i]?.id)) summary += ` · ${t(lang, 'rPlanReordered')}`
+  // A note is an instruction, so the person reading the chat should see it too (in full in line 2).
+  const noted = data.steps.filter(s => s.included && s.note)
+  if (noted.length === 1) summary += ` · ${t(lang, 'rPlanNote', { x: clip(noted[0].title), note: clip(noted[0].note) })}`
+  else if (noted.length > 1) summary += ` · ${t(lang, 'rPlanNotes', { n: noted.length })}`
   return { summary }
 }
 
@@ -4816,6 +4838,7 @@ Object.assign(STRINGS.en, {
   reviewItemsLabel: 'Items to review',
   reviewKept: 'Kept', reviewDropped: 'Dropped', reviewUndecided: 'Undecided',
   rReview: 'Review done: keep {keep}, drop {drop}',
+  rReviewAs: 'Review done: {keepLabel} {keep}, {dropLabel} {drop}',
   rReviewOpen: ', {n} undecided'
 })
 Object.assign(STRINGS.de, {
@@ -4846,6 +4869,7 @@ Object.assign(STRINGS.de, {
   reviewItemsLabel: 'Einträge zum Durchsehen',
   reviewKept: 'Behalten', reviewDropped: 'Verworfen', reviewUndecided: 'Offen',
   rReview: 'Durchgesehen: {keep} behalten, {drop} verwerfen',
+  rReviewAs: 'Durchgesehen: {keepLabel} {keep}, {dropLabel} {drop}',
   rReviewOpen: ', {n} offen'
 })
 
@@ -5171,7 +5195,7 @@ function ReviewCard({ card, sessionId, display, lang }) {
 
   const askId = `${labelId}-ask`
   const footer = !ans.showActions ? null
-    : undo.pending ? jsx(Footer, { children: jsxs('div', { className: 'huic-rev-pending', role: 'status', 'aria-live': 'polite', children: [jsx('span', { children: t(lang, 'reviewPending', { s: Math.round(undo.pending.ms / 1000) }) }), jsx(Btn, { ref: undo.undoRef, variant: 'ghost', onClick: undo.cancel, children: t(lang, 'planUndo') })] }) })
+    : undo.pending ? jsx(Footer, { children: jsxs('div', { className: 'huic-rev-pending', role: 'status', 'aria-live': 'polite', children: [jsx('span', { children: jsx(Countdown, { ms: undo.pending.ms, say: s => t(lang, 'reviewPending', { s }) }) }), jsx(Btn, { ref: undo.undoRef, variant: 'ghost', onClick: undo.cancel, children: t(lang, 'planUndo') })] }) })
     : asking
       ? jsxs('div', { className: 'huic-foot huic-rev-ask', role: 'group', 'aria-labelledby': askId, children: [
           jsx('span', { id: askId, className: 'huic-hint huic-rev-ask-text', children: t(lang, 'reviewAskOpen', { n: open }) }),
@@ -5203,7 +5227,10 @@ REPLY_BUILDERS.review = (card, answer, lang, data) => {
   data.undecided = (answer.undecided || []).filter(id => ids.has(id))
   data.notes = Object.fromEntries(Object.entries(answer.notes || {})
     .map(([id, text]) => [id, String(text ?? '').trim()]).filter(([id, note]) => ids.has(id) && note))
-  let summary = t(lang, 'rReview', { keep: data.keep.length, drop: data.drop.length })
+  // The card's own words ("Send/Skip", "Keep/Rewrite") so the line says what the user actually chose.
+  let summary = card.keepLabel || card.dropLabel
+    ? t(lang, 'rReviewAs', { keepLabel: card.keepLabel || t(lang, 'reviewKeep'), dropLabel: card.dropLabel || t(lang, 'reviewDrop'), keep: data.keep.length, drop: data.drop.length })
+    : t(lang, 'rReview', { keep: data.keep.length, drop: data.drop.length })
   if (data.undecided.length) summary += t(lang, 'rReviewOpen', { n: data.undecided.length })
   // Titles help the model, but only while the whole reply stays under the cap.
   const titles = Object.fromEntries(card.items.map(i => [i.id, i.title]))

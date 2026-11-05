@@ -82,7 +82,7 @@ test('plan: Alt+arrows reorder with focus kept and announced, optional steps swi
   assert.ok(buttonByText(c, 'Run plan').classList.contains('huic-btn-danger'))
   await runPlan(c)
   const r = lastReply()
-  assert.equal(r.line1, '✓ Go ahead with 3 of 4 steps · skipped: Stop workers · reordered')
+  assert.equal(r.line1, '✓ Go ahead with 3 of 4 steps · skipped: Stop workers · reordered · note on Run migration: “only after 22:00”')
   assert.deepEqual(r.json.steps, [
     { id: 'p1', title: 'Back up', included: true },
     { id: 'p4', title: 'Smoke test', included: true },
@@ -139,7 +139,7 @@ test('plan: order, switches and notes survive reopening; German line 1', async (
   assert.equal(c.querySelector('[data-step="p1"] input[data-plan-focus="note"]').value, 'vorher Platz prüfen')
   assert.match(c.querySelector('.huic-foot').textContent, /3 von 4 Schritten werden ausgeführt · neu geordnet/)
   await runPlan(c, 'Plan ausführen')
-  assert.equal(lastReply().line1, '✓ Leg los mit 3 von 4 Schritten · übersprungen: Smoke test · neu geordnet')
+  assert.equal(lastReply().line1, '✓ Leg los mit 3 von 4 Schritten · übersprungen: Smoke test · neu geordnet · Notiz zu Back up: „vorher Platz prüfen“')
   await m.unmount()
 })
 
@@ -267,7 +267,7 @@ test('review: defaultDecision, custom labels and draft restore', async () => {
   assert.match(c.querySelector('.huic-rev-counts').textContent, /Send 2.*Skip 1.*Open 0/)
   await click(c.querySelector('[data-item="r3"] [role="radio"].is-drop'))
   await click(buttonByText(c, 'Send replies'))
-  assert.equal(lastReply().line1, '✓ Review done: keep 1, drop 2')
+  assert.equal(lastReply().line1, '✓ Review done: Send 1, Skip 2')
   assert.deepEqual(lastReply().json.notes, { r1: 'shorter please' })
   // The receipt keeps the card's own words: "Send" / "Skip", never "Kept" / "Dropped".
   assert.deepEqual([...c.querySelectorAll('.huic-rev-stamp')].map(e => e.textContent), ['Send', 'Skip', 'Skip'])
@@ -568,7 +568,7 @@ test('review: open items ask first (Back, Escape, deciding the rest), custom lab
   assert.ok((buttonByText(c, 'Send anyway')) === (undefined))
   assert.equal(live(c), '4 more set to Send.')
   await click(buttonByText(c, 'Apply'))
-  assert.equal(lastReply().line1, '✓ Review done: keep 4, drop 1')
+  assert.equal(lastReply().line1, '✓ Review done: Send 4, Skip 1')
   assert.deepEqual([...c.querySelectorAll('.huic-rev-stamp')].map(e => e.textContent), ['Send', 'Skip', 'Send', 'Send', 'Send'])
   assert.ok(c.querySelector('.huic-answer'))
   await m.unmount()

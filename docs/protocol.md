@@ -55,8 +55,8 @@ the card (they are saved as a draft) and send nothing:
 
 | Type | Answer fields | Line 1 (English / German) |
 |---|---|---|
-| plan | `steps: [{id, title, included, note?}]`; optional steps with `off: true` start excluded | `✓ Go ahead with 5 of 6 steps · skipped: X` · `✓ Go ahead with the plan (6 steps)` / `✓ Leg los mit 5 von 6 Schritten · übersprungen: X` · `✓ Leg los mit dem Plan (6 Schritte)` |
-| review | `keep`, `drop`, `undecided`: ID arrays; `notes`, `titles?`: ID maps | `✓ Review done: keep 5, drop 3` / `✓ Durchgesehen: 5 behalten, 3 verwerfen` |
+| plan | `steps: [{id, title, included, note?}]`; optional steps with `off: true` start excluded | `✓ Go ahead with 5 of 6 steps · skipped: X` · `✓ Go ahead with the plan (6 steps) · note on X: “…”` (several: `· 2 notes`) / `✓ Leg los mit 5 von 6 Schritten · übersprungen: X` · `✓ Leg los mit dem Plan (6 Schritte)` |
+| review | `keep`, `drop`, `undecided`: ID arrays; `notes`, `titles?`: ID maps | `✓ Review done: keep 5, drop 3` / `✓ Durchgesehen: 5 behalten, 3 verwerfen`; with `keepLabel`/`dropLabel` the card's words: `✓ Review done: Keep 2, Rewrite 1` |
 | decision | `weights`, `ranking: [{id, label, score}]`, `picked?` | `✓ Top pick: A (8.4), ahead of B (7.9)` · `✓ Chose: A (8.4)` / `✓ Vorn: A (8,4), vor B (7,9)` · `✓ Gewählt: …` |
 | calc | `inputs: {name: value}`, `outputs: [{label, value}]` | `✓ Monthly rate: €1,234.56` / `✓ Monatliche Rate: 1.234,56 €` |
 | rank | `order: [id]`, `labels: [label]` | `✓ My order: 1. A, 2. B, 3. C` / `✓ Meine Reihenfolge: 1. A, 2. B, 3. C` |

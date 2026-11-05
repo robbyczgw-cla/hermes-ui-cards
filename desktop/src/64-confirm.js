@@ -200,7 +200,7 @@ function ConfirmCard({ card, sessionId, display, lang }) {
   ] })
 
   const pendingBar = pending ? jsxs('div', { className: 'huic-confirm-pending', role: 'status', 'aria-live': 'polite', style: { '--undo-ms': `${pending.ms}ms` }, children: [
-    jsxs('span', { children: [jsx(Icon, { name: 'check' }), t(lang, 'confirmPending', { s: Math.round(pending.ms / 1000) })] }),
+    jsxs('span', { children: [jsx(Icon, { name: 'check' }), jsx(Countdown, { ms: pending.ms, say: s => t(lang, 'confirmPending', { s }) })] }),
     jsx(Btn, { ref: undoRef, variant: 'secondary', onClick: undo, children: jsxs(Fragment, { children: [jsx(Icon, { name: 'undo' }), t(lang, 'confirmUndo')] }) }),
     jsx('span', { className: 'huic-confirm-drain', 'aria-hidden': true })
   ] }) : null

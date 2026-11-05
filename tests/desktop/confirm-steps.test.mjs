@@ -180,6 +180,27 @@ test('steps: completion leaves all content and navigation readable, inactive car
   assert.ok((inactive.container.querySelector('.huic-foot')) === (null))
 })
 
+test('undo window: the visible countdown moves, screen readers hear the start value once', async t => {
+  mock.timers.enable({ apis: ['setTimeout'] })
+  t.after(() => mock.timers.reset())
+  resetHost()
+  const { container, unmount } = await mount(toolResult({ ...confirm, title: 'Countdown', risk: { level: 'medium' } }))
+  await click(buttonByText(container, 'Yes, go ahead'))
+  const shown = () => container.querySelector('.huic-confirm-pending .huic-countdown').textContent
+  const spoken = () => container.querySelector('.huic-confirm-pending .huic-sr').textContent
+  assert.equal(shown(), 'Approved · sending in 4 s')
+  await act(async () => mock.timers.tick(1000))
+  assert.equal(shown(), 'Approved · sending in 3 s')
+  assert.equal(spoken(), 'Approved · sending in 4 s')
+  await act(async () => mock.timers.tick(1000))
+  await act(async () => mock.timers.tick(1000))
+  assert.equal(shown(), 'Approved · sending in 1 s')
+  assert.equal(testHost.submissions.length, 0, 'still undoable at 1 s')
+  await act(async () => mock.timers.tick(1000))
+  assert.equal(testHost.submissions.length, 1, 'sent when the window closes')
+  await unmount()
+})
+
 test('confirm: medium and high risk Yes waits 4 s with Undo inside the card; low risk sends at once', async t => {
   mock.timers.enable({ apis: ['setTimeout'] })
   t.after(() => mock.timers.reset())

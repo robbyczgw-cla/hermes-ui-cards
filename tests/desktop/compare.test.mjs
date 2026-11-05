@@ -32,7 +32,7 @@ test('aligned rows, best, sources and switcher', async () => {
 
 test('no sources note', async () => {
   const { container, unmount } = await mount(toolResult({ type: 'compare', columns: [{ title: 'A' }, { title: 'B' }] }))
-  assert.match(container.textContent, /From the model.s knowledge, no web sources/)
+  assert.match(container.textContent, /No sources linked/)
   await unmount()
 })
 

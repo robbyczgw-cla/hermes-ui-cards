@@ -30,6 +30,7 @@ Object.assign(STRINGS.en, {
   reviewItemsLabel: 'Items to review',
   reviewKept: 'Kept', reviewDropped: 'Dropped', reviewUndecided: 'Undecided',
   rReview: 'Review done: keep {keep}, drop {drop}',
+  rReviewAs: 'Review done: {keepLabel} {keep}, {dropLabel} {drop}',
   rReviewOpen: ', {n} undecided'
 })
 Object.assign(STRINGS.de, {
@@ -60,6 +61,7 @@ Object.assign(STRINGS.de, {
   reviewItemsLabel: 'Einträge zum Durchsehen',
   reviewKept: 'Behalten', reviewDropped: 'Verworfen', reviewUndecided: 'Offen',
   rReview: 'Durchgesehen: {keep} behalten, {drop} verwerfen',
+  rReviewAs: 'Durchgesehen: {keepLabel} {keep}, {dropLabel} {drop}',
   rReviewOpen: ', {n} offen'
 })
 
@@ -385,7 +387,7 @@ function ReviewCard({ card, sessionId, display, lang }) {
 
   const askId = `${labelId}-ask`
   const footer = !ans.showActions ? null
-    : undo.pending ? jsx(Footer, { children: jsxs('div', { className: 'huic-rev-pending', role: 'status', 'aria-live': 'polite', children: [jsx('span', { children: t(lang, 'reviewPending', { s: Math.round(undo.pending.ms / 1000) }) }), jsx(Btn, { ref: undo.undoRef, variant: 'ghost', onClick: undo.cancel, children: t(lang, 'planUndo') })] }) })
+    : undo.pending ? jsx(Footer, { children: jsxs('div', { className: 'huic-rev-pending', role: 'status', 'aria-live': 'polite', children: [jsx('span', { children: jsx(Countdown, { ms: undo.pending.ms, say: s => t(lang, 'reviewPending', { s }) }) }), jsx(Btn, { ref: undo.undoRef, variant: 'ghost', onClick: undo.cancel, children: t(lang, 'planUndo') })] }) })
     : asking
       ? jsxs('div', { className: 'huic-foot huic-rev-ask', role: 'group', 'aria-labelledby': askId, children: [
           jsx('span', { id: askId, className: 'huic-hint huic-rev-ask-text', children: t(lang, 'reviewAskOpen', { n: open }) }),
@@ -417,7 +419,10 @@ REPLY_BUILDERS.review = (card, answer, lang, data) => {
   data.undecided = (answer.undecided || []).filter(id => ids.has(id))
   data.notes = Object.fromEntries(Object.entries(answer.notes || {})
     .map(([id, text]) => [id, String(text ?? '').trim()]).filter(([id, note]) => ids.has(id) && note))
-  let summary = t(lang, 'rReview', { keep: data.keep.length, drop: data.drop.length })
+  // The card's own words ("Send/Skip", "Keep/Rewrite") so the line says what the user actually chose.
+  let summary = card.keepLabel || card.dropLabel
+    ? t(lang, 'rReviewAs', { keepLabel: card.keepLabel || t(lang, 'reviewKeep'), dropLabel: card.dropLabel || t(lang, 'reviewDrop'), keep: data.keep.length, drop: data.drop.length })
+    : t(lang, 'rReview', { keep: data.keep.length, drop: data.drop.length })
   if (data.undecided.length) summary += t(lang, 'rReviewOpen', { n: data.undecided.length })
   // Titles help the model, but only while the whole reply stays under the cap.
   const titles = Object.fromEntries(card.items.map(i => [i.id, i.title]))

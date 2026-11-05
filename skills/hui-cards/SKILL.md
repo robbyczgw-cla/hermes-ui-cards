@@ -73,7 +73,7 @@ later → `checklist` of what is left. Put earlier answers into the next card (t
 
 - Values you looked up get `rows[].sources` (the https URL you actually read) and `asOf` (the date
   you checked). Never set `asOf` or sources for figures from memory: a compare card without sources
-  says "From the model's knowledge" by itself, which is honest and fine.
+  says "No sources linked" by itself, which is honest and fine.
 - Images only from URLs a tool or the user gave you. Never invent URLs.
 - `calc` formulas must not break on edge values: guard divisions, e.g. a loan payment
   `if(rate == 0, amount / months, amount * r / (1 - (1 + r) ^ -months))`.

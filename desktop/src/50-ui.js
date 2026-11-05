@@ -301,6 +301,22 @@ function AnsweredBar({ lang, record, focus }) {
   })
 }
 
+// The undo window counts down where people can see it. Screen readers hear the start value once
+// (the bar is a polite live region; a per-second update would interrupt them every second).
+function Countdown({ ms, say }) {
+  const total = Math.max(1, Math.round(ms / 1000))
+  const [left, setLeft] = useState(total)
+  useEffect(() => {
+    if (left <= 1) return
+    const id = setTimeout(() => setLeft(n => n - 1), 1000)
+    return () => clearTimeout(id)
+  }, [left])
+  return jsxs(Fragment, { children: [
+    jsx('span', { className: 'huic-sr', children: say(total) }),
+    jsx('span', { className: 'huic-countdown', 'aria-hidden': true, children: say(left) })
+  ] })
+}
+
 function NoticeBar({ text, action }) {
   return jsxs('div', {
     className: 'huic-notice',

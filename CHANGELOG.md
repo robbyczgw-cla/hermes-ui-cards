@@ -12,7 +12,8 @@ First version.
   message to that chat (a readable line plus a `[hui-card]` JSON line for the model).
 - Answered cards show a receipt and lock; a small plugin backend records answers, so other windows and
   devices on the same Hermes lock the card once they have checked (eventual, not exactly-once).
-- Undo window (0/4/8 s) for compare picks, plan Run and medium/high-risk confirms.
+- Undo window (0/4/8 s) for compare picks, plan Run, review Apply and medium/high-risk confirms, with a
+  visible countdown (screen readers hear the start value once).
 - The model is told which card an answer belongs to, what a confirm card approved, and (when the history
   shows it) that an answer is stale; a card shown in another chat approves nothing.
 - Drafts (checklist ticks, form input, comments) survive reopening the chat.

@@ -1,5 +1,5 @@
-Object.assign(STRINGS.en, { compareSources: 'sources', compareChecked: 'Prices checked', compareNoSources: "From the model’s knowledge, no web sources", compareUndo: 'Undo', comparePending: 'Picked {title} · sending in {s} s', compareMore: '+{count} more', compareLess: 'Show less', compareBest: 'best', compareBestOf: 'Best of {n}', compareSwitch: 'Compare options', compareYourPick: 'Your pick' })
-Object.assign(STRINGS.de, { compareSources: 'Quellen', compareChecked: 'Preise geprüft', compareNoSources: 'Aus dem Wissen des Modells, ohne Webquellen', compareUndo: 'Rückgängig', comparePending: 'Gewählt: {title} · wird in {s} s gesendet', compareMore: '+{count} weitere', compareLess: 'Weniger anzeigen', compareBest: 'bester Wert', compareBestOf: 'Bester von {n}', compareSwitch: 'Optionen vergleichen', compareYourPick: 'Deine Wahl' })
+Object.assign(STRINGS.en, { compareSources: 'sources', compareChecked: 'Prices checked', compareNoSources: 'No sources linked', compareUndo: 'Undo', comparePending: 'Picked {title} · sending in {s} s', compareMore: '+{count} more', compareLess: 'Show less', compareBest: 'best', compareBestOf: 'Best of {n}', compareSwitch: 'Compare options', compareYourPick: 'Your pick' })
+Object.assign(STRINGS.de, { compareSources: 'Quellen', compareChecked: 'Preise geprüft', compareNoSources: 'Ohne verlinkte Quellen', compareUndo: 'Rückgängig', comparePending: 'Gewählt: {title} · wird in {s} s gesendet', compareMore: '+{count} weitere', compareLess: 'Weniger anzeigen', compareBest: 'bester Wert', compareBestOf: 'Bester von {n}', compareSwitch: 'Optionen vergleichen', compareYourPick: 'Deine Wahl' })
 
 // A real table: full-bleed hairline rows, a quiet tinted column for the recommendation,
 // a dot for the best value per row, small source chips. Narrow views switch columns.
@@ -165,7 +165,7 @@ function CompareCard({ card, sessionId, display, lang }) {
     children: c.title
   }, c.id || i)) })
   const pendingBar = pending ? jsxs('div', { className: 'huic-compare-pending', role: 'status', 'aria-live': 'polite', style: { '--undo-ms': `${delay}ms` }, children: [
-    jsx('span', { children: t(lang, 'comparePending', { title: pending.title, s: Math.round(delay / 1000) }) }),
+    jsx('span', { children: jsx(Countdown, { ms: delay, say: s => t(lang, 'comparePending', { title: pending.title, s }) }) }),
     jsx(Btn, { ref: undoRef, variant: 'ghost', onClick: undo, children: t(lang, 'compareUndo') }),
     jsx('span', { className: 'huic-compare-drain', 'aria-hidden': true })
   ] }) : null
