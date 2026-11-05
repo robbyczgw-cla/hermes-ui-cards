@@ -12,6 +12,7 @@ provides_tools:
 provides_hooks:
   - pre_llm_call
   - transform_llm_output
+  - post_compaction
 requires_env: []
 config_schema:
   api_server_format:

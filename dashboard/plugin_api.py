@@ -2,14 +2,17 @@
 
 The Desktop half reaches them with ctx.rest (Hermes Desktop and the Webapp alike):
 
-- GET /answers?session=<id>&cards=<cardId>,<cardId>  which of these cards the chat already
-  answered (from any window or computer), and which it showed but did not answer yet
+- GET /answers?session=<id>&cards=<cardId>,<cardId>  which of these cards the chat (or a chat it
+  continues after compaction) already answered, from any window or computer, and which it showed
+  but did not answer yet. Cards of other chats are left out; so is everything when this profile's
+  store is unreachable (fail closed, never another profile's data).
 - GET /settings  the display settings (compact, accent, undo time) to apply to cards already
   on screen after a save in Settings → Plugins
 
 Read-only: the agent half (tool + pre_llm_call hook) writes the records (hui_cards/store.py).
 Handlers are plain `def`, so Hermes runs them in a worker thread with the request's profile
-scope, never blocking the gateway's event loop.
+scope, never blocking the gateway's event loop. Both routes read that profile only: its plugin
+data dir and its config.yaml.
 """
 from __future__ import annotations
 

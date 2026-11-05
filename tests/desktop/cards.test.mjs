@@ -37,7 +37,7 @@ test('choice: click an option, Send → reply in the card chat, then locked', as
   assert.deepEqual(reply.json, { card: reply.json.card, type: 'choice', selected: ['o3'], labels: ['Spa'] })
   assert.match(reply.json.card, /^trip-/)
   // answered: no button left, answer shown, a second click does nothing
-  assert.equal(buttonByText(container, 'Send'), undefined)
+  assert.ok((buttonByText(container, 'Send')) === (undefined))
   assert.match(container.textContent, /Your answer: Chose: Spa/)
   await click(radios[0])
   assert.equal(testHost.submissions.length, 1, 'no second send')
@@ -83,8 +83,8 @@ test('reopening the chat shows the sent answer and does not allow another send',
   await click(buttonByText(first.container, 'Send'))
   await first.unmount()
   const again = await mount(result, { registration })
-  assert.equal(buttonByText(again.container, 'Send'), undefined)
-  assert.equal(again.container.querySelectorAll('[role="radio"]')[1].getAttribute('aria-checked'), 'true')
+  assert.ok((buttonByText(again.container, 'Send')) === (undefined))
+  assert.ok((again.container.querySelectorAll('[role="radio"]')[1].getAttribute('aria-checked')) === ('true'))
   assert.match(again.container.textContent, /Your answer: Chose: Hiking/)
   await again.unmount()
 })
@@ -95,7 +95,7 @@ test('a chat that is no longer active shows a notice instead of a dead button', 
   await click(container.querySelectorAll('[role="radio"]')[0])
   await click(buttonByText(container, 'Send'))
   assert.match(container.textContent, /Couldn't send. Open this chat and check that Hermes is connected/ )
-  assert.equal(buttonByText(container, 'Send'), undefined)
+  assert.ok((buttonByText(container, 'Send')) === (undefined))
   // after the user opens the chat, "Try again" brings the button back
   testHost.submitResult = true
   await click(buttonByText(container, 'Try again'))
@@ -107,7 +107,7 @@ test('a chat that is no longer active shows a notice instead of a dead button', 
 test('no session id: fail closed, nothing is sent anywhere', async () => {
   const { container, unmount } = await mount(toolResult(choiceCard), { sessionId: null })
   await click(container.querySelectorAll('[role="radio"]')[0])
-  assert.equal(buttonByText(container, 'Send'), undefined)
+  assert.ok((buttonByText(container, 'Send')) === (undefined))
   assert.equal(testHost.submissions.length, 0)
   assert.match(container.textContent, /no longer active/)
   await unmount()
@@ -239,13 +239,13 @@ test('confirm: yes, no and change', async () => {
     assert.equal(testHost.submissions.length, 0, 'high risk: Yes waits out the undo window')
     await act(async () => mock.timers.tick(4000))
   } finally { mock.timers.reset() }
-  assert.equal(lastReply().line1, '✓ Yes, go ahead: Delete old logs?')
+  assert.equal(lastReply().line1, '✓ Yes, go ahead: Delete old logs')
   assert.equal(lastReply().json.decision, 'yes')
   await m.unmount()
 
   m = await mount(toolResult(card))
   await click(buttonByText(m.container, 'No'))
-  assert.equal(lastReply().line1, "✗ No, don't: Delete old logs?")
+  assert.equal(lastReply().line1, "✗ No, don't: Delete old logs")
   await m.unmount()
 
   m = await mount(toolResult(card))

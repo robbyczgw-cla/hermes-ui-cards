@@ -32,15 +32,20 @@ function RatingCard({ card, sessionId, display, lang }) {
   const labelId = useId()
   const ans = useCardAnswer(card, sessionId, lang)
   const sent = ans.answer && ans.answer.data
-  const [picked, setPicked] = useState(null)
-  const [comment, setComment] = useState('')
+  const draft = ans.draft && typeof ans.draft === 'object' ? ans.draft : {}
+  const [picked, setPicked] = useState(() => (Number.isInteger(draft.value) ? draft.value : null))
+  const [comment, setComment] = useState(() => (typeof draft.comment === 'string' ? draft.comment : ''))
   const [hover, setHover] = useState(null)
   const [focused, setFocused] = useState(null)
   const value = sent ? sent.value : picked
   const scale = card.scale ?? 5
   const numbers = card.style === 'numbers'
   const roving = useRovingFocus(scale)
-  const choose = n => { if (!ans.locked) setPicked(n) }
+  const choose = n => {
+    if (ans.locked) return
+    setPicked(n)
+    ans.saveDraft({ value: n, comment })
+  }
   const send = n => { if (n !== null && n !== undefined) ans.submit({ value: n, comment }) }
   const shown = ans.locked ? value : (hover ?? focused ?? value)
 
@@ -116,7 +121,11 @@ function RatingCard({ card, sessionId, display, lang }) {
             jsx('span', { className: 'huic-label', children: t(lang, 'comment') }),
             jsx('textarea', {
               className: 'huic-input', disabled: ans.locked, maxLength: 2000,
-              value: sent ? sent.comment || '' : comment, onChange: e => setComment(limitText(e.target.value, 1000))
+              value: sent ? sent.comment || '' : comment, onChange: e => {
+                const next = limitText(e.target.value, 1000)
+                setComment(next)
+                ans.saveDraft({ value: picked, comment: next })
+              }
             })
           ]
         }) : null

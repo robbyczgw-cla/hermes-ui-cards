@@ -27,13 +27,14 @@ function sanitizeDisplay(display) {
   return out
 }
 
-// Read the current display settings from the backend once, when the first card is on screen
-// (set by register(); a no-op without the backend route).
+// Read the current display settings from the backend once per profile/connection, when the first
+// card of that scope is on screen (set by register(); a no-op without the backend route).
 let loadDisplay = null
-let displayRequested = false
+let displayRequested = null // the scope already asked
 function requestDisplayOnce() {
-  if (displayRequested || !loadDisplay) return
-  displayRequested = true
+  const scope = backendScope()
+  if (displayRequested === scope || !loadDisplay) return
+  displayRequested = scope
   loadDisplay()
 }
 
@@ -53,10 +54,11 @@ function CardView({ result, sessionId, fallback }) {
   const display = useLiveDisplay(parsed ? parsed.display : null)
   const Component = parsed && CARD_COMPONENTS[parsed.card.type]
   useEffect(() => {
-    if (!Component) return
-    if (parsed.hasUndo) lastResultDisplay = parsed.display
-    requestDisplayOnce()
+    if (Component && parsed.hasUndo) lastResultDisplay = { scope: backendScope(), display: parsed.display }
   }, [Component, parsed])
+  useEffect(() => {
+    if (Component) requestDisplayOnce() // every render: a profile switch reads that profile's values
+  })
   if (!Component) return fallback ?? null
   const lang = cardLang(parsed.card)
   return jsx(
@@ -67,6 +69,8 @@ function CardView({ result, sessionId, fallback }) {
       sessionId: typeof sessionId === 'string' && sessionId ? sessionId : null,
       lang
     },
-    `${sessionId || ''}\u0000${parsed.card.cardId}`
+    // Keyed by the card alone: a new chat's id changes from its runtime id to its stored id
+    // while the card is on screen, and remounting then would drop what the user just did.
+    parsed.card.cardId
   )
 }

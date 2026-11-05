@@ -299,19 +299,33 @@ def test_stale_confirm_answer_is_flagged():
     answer = _answer(out["cardId"], type="confirm", decision="yes")
     history = [
         {"role": "user", "content": "clean up"},
-        {"role": "assistant", "content": "", "tool_calls": []},
-        {"role": "tool", "content": json.dumps(out)},
+        {"role": "assistant", "content": "", "tool_calls": [
+            {"id": "call_1", "type": "function", "function": {"name": "hui_present", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "call_1", "content": json.dumps(out)},
         {"role": "assistant", "content": "Please confirm"},
         {"role": "user", "content": "No, leave them"},
         {"role": "assistant", "content": "OK"},
         {"role": "user", "content": answer},
     ]
-    ctx = tool.answer_context(answer, history)
+    ctx = tool.answer_turn("c2", answer, history)
     assert "wrote 1 other message after this card" in ctx and "ask again before you act" in ctx
 
 
-def test_answer_context_ignores_unknown_or_hostile_ids():
-    assert tool.answer_context(_answer("../../etc/passwd"), []) is None
-    assert tool.answer_context(_answer("nope-000"), []) is None
-    assert tool.answer_context("just text", []) is None
-    assert tool.answer_context("[hui-card] {not json", []) is None
+def test_answer_turn_ignores_unknown_or_hostile_ids():
+    assert "was not shown in this chat" in tool.answer_turn("s1", _answer("nope-000"), [])
+    assert tool.answer_turn("s1", _answer("../../etc/passwd"), []) is None
+    assert tool.answer_turn("s1", "just text", []) is None
+    assert tool.answer_turn("s1", "[hui-card] {not json", []) is None
+
+
+def test_history_proof_reads_hermes_message_shapes():
+    out = run({"card": CHOICE}, "desktop", session_id="h1")
+    cid = out["cardId"]
+    bridge = {"name": "tool_call", "arguments": {"name": "hui_present", "arguments": {"card": CHOICE}}}
+    history = [{"role": "assistant", "tool_calls": [{"id": "x1", "function": bridge}]},
+               {"role": "tool", "tool_call_id": "x1", "content": [{"type": "text", "text": json.dumps(out)}]}]
+    assert tool.history_shows_card(history, cid)
+    nested = [history[0], {"role": "tool", "tool_call_id": "x1", "content": json.dumps({"result": json.dumps(out)})}]
+    assert tool.history_shows_card(nested, cid), "a bridge result that wraps the JSON once more"
+    assert not tool.history_shows_card(history, cid[:-1] + ("0" if cid[-1] != "0" else "1"))
+    assert not tool.history_shows_card(None, cid) and not tool.history_shows_card("junk", cid)

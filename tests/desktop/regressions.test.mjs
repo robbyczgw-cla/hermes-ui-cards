@@ -77,7 +77,7 @@ test('draft eviction retains the answered tombstone', async () => {
   await other.unmount()
   m = await mount(result, { registration })
   assert.match(m.container.textContent, /Your answer/)
-  assert.equal(buttonByText(m.container, 'Yes, go ahead'), undefined)
+  assert.ok((buttonByText(m.container, 'Yes, go ahead')) === (undefined))
   await m.unmount()
 })
 
@@ -117,9 +117,9 @@ test('sending and cancelling a change preserve keyboard focus', async () => {
   const m = await mount(toolResult({ type: 'confirm', title: 'Proceed?', action: 'Proceed' }))
   await click(buttonByText(m.container, 'Change…'))
   await key(m.container.querySelector('textarea'), 'Escape')
-  assert.equal(document.activeElement, buttonByText(m.container, 'Change…'))
+  assert.ok((document.activeElement) === (buttonByText(m.container, 'Change…')))
   await click(buttonByText(m.container, 'Yes, go ahead'))
-  assert.equal(document.activeElement, m.container.querySelector('.huic-answer'))
+  assert.ok((document.activeElement) === (m.container.querySelector('.huic-answer')))
   await m.unmount()
 })
 
@@ -192,4 +192,18 @@ test('Strict Mode permits only one submit on a rapid repeated click', async () =
   assert.equal(testHost.submissions.length, 1)
   await act(async () => root.unmount())
   container.remove()
+})
+
+
+test('a card keeps what the user did when its chat id changes from the runtime id to the stored id', async () => {
+  const { container, rerender, unmount } = await mount(toolResult({ type: 'rating', question: 'How useful?', comment: true }), { sessionId: 'runtime-1' })
+  await click(container.querySelectorAll('[role="radio"]')[3])
+  await type(container.querySelector('textarea'), 'Very clear')
+  await rerender({ sessionId: '20261105_stored' })
+  assert.ok(container.querySelectorAll('[role="radio"]')[3].getAttribute('aria-checked') === 'true', 'the picked star survives the id change')
+  assert.ok(container.querySelector('textarea').value === 'Very clear')
+  assert.ok(buttonByText(container, 'Send').disabled === false)
+  await click(buttonByText(container, 'Send'))
+  assert.ok(testHost.submissions.at(-1).sessionId === '20261105_stored', 'sent into the chat under its new id')
+  await unmount()
 })

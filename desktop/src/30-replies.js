@@ -129,10 +129,10 @@ function buildReply(card, answer, lang) {
     case 'confirm': {
       data.decision = answer.decision
       if (answer.decision === 'yes') {
-        summary = t(L, 'rYes', { x: clip(card.title) })
+        summary = t(L, 'rYes', { x: clip(card.title).replace(/\s*[?？]+$/, '') })
       } else if (answer.decision === 'no') {
         mark = '✗'
-        summary = t(L, 'rNo', { x: clip(card.title) })
+        summary = t(L, 'rNo', { x: clip(card.title).replace(/\s*[?？]+$/, '') })
       } else {
         mark = '✎'
         data.change = String(answer.change ?? '').trim()

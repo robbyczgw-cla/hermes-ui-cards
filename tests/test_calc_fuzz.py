@@ -23,6 +23,7 @@ def test_seeded_calc_fuzz():
         return f + '(' + ','.join(gen(depth - 1) for _ in range(rng.randint(lo, hi))) + ')'
     exprs = [gen(rng.randrange(1, 6)) for _ in range(3000)]
     exprs += ['٢+1', '1\u0085+2', 'min(2)', 'max(2)', 'exp(log(0))', '(10^200*10^200)>0', 'round(1,100000000)', 'round(1,-1)', 'if(0,1/0,5)']
+    exprs += ['floor(exp(log(max(-(-1),3))))', 'ceil((pow(0.5,-0.5)^ceil(10)))']
     script = r'''const fs=require('fs'), vm=require('vm'); const s=fs.readFileSync('desktop/src/10-validate.js','utf8'); vm.runInThisContext(s.slice(s.indexOf('function calcParse('))); const exprs=JSON.parse(fs.readFileSync(0,'utf8')); process.stdout.write(JSON.stringify(exprs.map(e=>{const a=calcParse(e,['x','y']); return [a,Array.isArray(a)?calcEval(a,{x:2.5,y:-1}):null]})));'''
     result = subprocess.run(['node', '-e', script], input=json.dumps(exprs), cwd=ROOT, text=True, capture_output=True, check=True)
     for expr, (js_ast, js_value) in zip(exprs, json.loads(result.stdout), strict=True):

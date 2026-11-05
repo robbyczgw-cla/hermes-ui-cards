@@ -36,9 +36,16 @@ for(const e of JSON.parse(process.argv[1])) { const ast=parse(e,['x','y','x_1'])
         if value is None: assert js_value is None, expr
         else: assert value == pytest.approx(js_value), expr
 
-@pytest.mark.parametrize('expr, expected', [('2^3^2',512),('-2^2',-4),('if(0,1/0,5)',5),('1/0',None),('sqrt(-1)',None)])
+@pytest.mark.parametrize('expr, expected', [('2^3^2',512),('-2^2',-4),('if(0,1/0,5)',5),('1/0',None),('sqrt(-1)',None),
+    ('floor(exp(log(max(-(-1),3))))',3), ('ceil((pow(0.5,-0.5)^ceil(10)))',32),
+    ('floor(2.9999999999999996)',3), ('ceil(-2.9999999999999996)',-3),
+    ('floor(2.9999999999999)',2), ('ceil(-2.9999999999999)',-2),
+    ('floor(-0.0000000000000001)',-1), ('ceil(0.0000000000000001)',1)])
 def test_expression_results(expr, expected):
     assert calc_eval(calc_parse(expr, []), {}) == expected
+    script = r'''const fs=require('fs'),vm=require('vm'); const s=fs.readFileSync('desktop/src/10-validate.js','utf8'); vm.runInThisContext(s.slice(s.indexOf('function calcParse('))); console.log(JSON.stringify(calcEval(calcParse(process.argv[1],[]),{})));'''
+    result = subprocess.run(['node', '-e', script, '--', expr], cwd=ROOT, text=True, capture_output=True, check=True)
+    assert json.loads(result.stdout) == expected
 
 @pytest.mark.parametrize('value, output, card, lang, expected', [
     (2.675, {'format': 'currency'}, {'currency': 'EUR'}, 'en', '€2.68'),

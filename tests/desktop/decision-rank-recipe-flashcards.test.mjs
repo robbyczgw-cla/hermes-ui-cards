@@ -53,7 +53,7 @@ test('decision: weights re-rank the options live, ties are flagged and a leader 
   const { container } = await render(t, decision)
   assert.deepEqual(optionNames(container), ['Alpha', 'Beta', 'Gamma'], 'equal weights keep the card order')
   assert.ok(container.querySelector('.huic-dec-name .huic-badge').textContent === 'Tied')
-  assert.equal(container.querySelector('.huic-dec-lead'), null)
+  assert.ok((container.querySelector('.huic-dec-lead')) === (null))
   await type(sliderFor(container, 'Price'), '10')
   await type(sliderFor(container, 'Build quality'), '0')
   assert.deepEqual(optionNames(container), ['Alpha', 'Gamma', 'Beta'])
@@ -82,7 +82,7 @@ test('decision: "Send weights" replies with weights and the live ranking, no pic
   assert.equal(reply.json.type, 'decision')
   assert.ok(container.querySelector('.huic-answer'))
   assert.equal(container.querySelectorAll('input[type=range]:disabled').length, 2)
-  assert.equal(container.querySelector('.huic-foot'), null)
+  assert.ok((container.querySelector('.huic-foot')) === (null))
   assert.equal(testHost.submissions.length, 1)
 })
 
@@ -129,14 +129,14 @@ test('decision: weights and pick are saved as a draft and restored; answered vie
   assert.ok(container.querySelector('.huic-answer'))
   assert.equal(sliderFor(container, 'Price').disabled, true)
   assert.equal(sliderFor(container, 'Price').value, '9')
-  assert.equal([...container.querySelectorAll('.huic-dec-opt')].every(b => b.disabled), true)
+  assert.ok(([...container.querySelectorAll('.huic-dec-opt')].every(b => b.disabled)) === (true))
   assert.equal(container.querySelector('.huic-dec-opt[aria-pressed="true"]').textContent.includes('Beta'), true)
-  assert.equal(container.querySelector('.huic-foot'), null)
+  assert.ok((container.querySelector('.huic-foot')) === (null))
 })
 
 test('decision: no actions when the chat cannot send', async t => {
   const { container } = await render(t, decision, { sessionId: null })
-  assert.equal(buttonByText(container, 'Send weights'), undefined)
+  assert.ok((buttonByText(container, 'Send weights')) === (undefined))
   assert.match(container.querySelector('.huic-notice').textContent, /no longer active/)
 })
 
@@ -157,7 +157,7 @@ test('rank: Alt+arrows and move buttons reorder, focus stays, moves are announce
   await altKey(down, 'ArrowDown')
   assert.deepEqual(rankLabels(container), ['Offline sync', 'Dark mode', 'Export to PDF', 'Team sharing'])
   assert.equal(container.querySelector('[role=status][aria-live=polite]').textContent, 'Dark mode moved to position 2 of 4.')
-  assert.equal(document.activeElement.getAttribute('aria-label'), 'Move Dark mode down')
+  assert.ok((document.activeElement.getAttribute('aria-label')) === ('Move Dark mode down'))
   await altKey(document.activeElement, 'ArrowDown')
   assert.deepEqual(rankLabels(container), ['Offline sync', 'Export to PDF', 'Dark mode', 'Team sharing'])
   await altKey(document.activeElement, 'ArrowUp')
@@ -185,8 +185,8 @@ test('rank: sending replies with ids and labels in order', async t => {
   assert.deepEqual(reply.json.order, ['k3', 'k1', 'k2', 'k4'])
   assert.deepEqual(reply.json.labels, ['Export to PDF', 'Dark mode', 'Offline sync', 'Team sharing'])
   assert.ok(container.querySelector('.huic-answer'))
-  assert.equal(container.querySelector('.huic-rank-move'), null)
-  assert.equal(container.querySelector('.huic-foot'), null)
+  assert.ok((container.querySelector('.huic-rank-move')) === (null))
+  assert.ok((container.querySelector('.huic-foot')) === (null))
 })
 
 test('rank: long lists are shortened after five, German line 1, unchanged order can be sent', async t => {
@@ -207,7 +207,7 @@ test('rank: draft order is restored and a bad draft falls back to the card order
   assert.deepEqual(rankLabels(container), ['Dark mode', 'Team sharing', 'Offline sync', 'Export to PDF'])
   await click(buttonByText(container, 'Reset order'))
   assert.deepEqual(rankLabels(container), ['Dark mode', 'Offline sync', 'Export to PDF', 'Team sharing'])
-  assert.equal(buttonByText(container, 'Reset order'), undefined)
+  assert.ok((buttonByText(container, 'Reset order')) === (undefined))
   // a draft that is not a permutation of the items is ignored
   const registration = registerPlugin()
   const result = toolResult(rank)
@@ -349,7 +349,7 @@ test('flashcards: flip with click, Space and Enter; Knew it / Again only after f
   const { container } = await render(t, flash)
   assert.equal(faceText(container, 'front'), 'la casa')
   assert.equal(cardEl(container).dataset.flipped, 'false')
-  assert.equal(buttonByText(container, '✓ Knew it'), undefined)
+  assert.ok((buttonByText(container, '✓ Knew it')) === (undefined))
   await click(cardEl(container))
   assert.equal(cardEl(container).dataset.flipped, 'true')
   assert.equal(cardEl(container).getAttribute('aria-pressed'), 'true')
@@ -361,7 +361,7 @@ test('flashcards: flip with click, Space and Enter; Knew it / Again only after f
   await pressKey(cardEl(container), 'ArrowRight')
   assert.equal(faceText(container, 'front'), 'el perro')
   assert.equal(cardEl(container).dataset.flipped, 'false')
-  assert.equal(document.activeElement, cardEl(container))
+  assert.ok((document.activeElement) === (cardEl(container)))
   await pressKey(cardEl(container), 'ArrowLeft') // not flipped: ignored
   assert.equal(faceText(container, 'front'), 'el perro')
   assert.match(container.textContent, /Card 2 of 4/)
@@ -369,13 +369,13 @@ test('flashcards: flip with click, Space and Enter; Knew it / Again only after f
 
 test('flashcards: hint is revealed on demand', async t => {
   const { container } = await render(t, flash)
-  assert.equal(buttonByText(container, 'Show hint'), undefined)
+  assert.ok((buttonByText(container, 'Show hint')) === (undefined))
   await click(buttonByText(container, 'Show answer'))
   await knew(container)
-  assert.equal(container.querySelector('.huic-fc-hinttext'), null)
+  assert.ok((container.querySelector('.huic-fc-hinttext')) === (null))
   await click(buttonByText(container, 'Show hint'))
   assert.equal(container.querySelector('.huic-fc-hinttext').textContent, 'barks')
-  assert.equal(buttonByText(container, 'Show hint'), undefined)
+  assert.ok((buttonByText(container, 'Show hint')) === (undefined))
 })
 
 test('flashcards: Again cards return in the next round (max 3), then the result is sent', async t => {
@@ -406,7 +406,7 @@ test('flashcards: Again cards return in the next round (max 3), then the result 
   assert.equal(reply.line1, '✓ Flashcards: 3 of 4 known, 1 to practise')
   assert.deepEqual(reply.json, { card: reply.json.card, type: 'flashcards', known: [0, 1, 2], again: [3], rounds: 3, practise: ['el libro'] })
   assert.ok(container.querySelector('.huic-answer'))
-  assert.equal(container.querySelector('.huic-foot'), null)
+  assert.ok((container.querySelector('.huic-foot')) === (null))
   assert.equal(testHost.submissions.length, 1)
 })
 
@@ -478,7 +478,7 @@ test('flashcards: finished deck is read-only when the chat cannot send; flip is 
   await click(buttonByText(container, 'Show answer'))
   await knew(container)
   assert.ok(container.querySelector('.huic-fc-big'))
-  assert.equal(buttonByText(container, 'Send result'), undefined)
+  assert.ok((buttonByText(container, 'Send result')) === (undefined))
   assert.ok(container.querySelector('.huic-notice'))
 })
 
@@ -538,7 +538,7 @@ test('rank: a drag ends when the pointer is released outside the grip, and leave
   await fire(grip, 'pointermove', 130)
   assert.ok(container.querySelector('.huic-rank-drag'))
   await fire(document.body, 'pointerup', 400) // released far outside the grip, on another element
-  assert.equal(container.querySelector('.huic-rank-drag'), null)
+  assert.ok((container.querySelector('.huic-rank-drag')) === (null))
   assert.equal(rows[0].style.transform, '')
   // a further move does nothing: no listener is left
   const before = rankLabels(container)
@@ -550,7 +550,7 @@ test('rank: a drag ends when the pointer is released outside the grip, and leave
   await fire(grip2, 'pointerdown', 70)
   assert.ok(container.querySelector('.huic-rank-drag'))
   await fire(document.body, 'pointercancel', 70)
-  assert.equal(container.querySelector('.huic-rank-drag'), null)
+  assert.ok((container.querySelector('.huic-rank-drag')) === (null))
 })
 
 test('rank: unmounting during a drag removes the window listeners', async t => {
@@ -578,8 +578,8 @@ test('rank: the reorder affordances are the grip, Alt+arrows and the compact mov
   assert.match(all, /\[data-pos="1"\] \.huic-rank-pos\{[^}]*color:var\(--huic-on-accent\)/)
   assert.match(all, /\.huic-rank-moves\{[^}]*opacity:0/)
   await click(buttonByText(container, 'Send order'))
-  assert.equal(container.querySelector('.huic-rank-grip'), null, 'answered: no grip')
-  assert.equal(container.querySelector('.huic-rank-move'), null, 'answered: no move buttons')
+  assert.ok((container.querySelector('.huic-rank-grip')) === (null), 'answered: no grip')
+  assert.ok((container.querySelector('.huic-rank-move')) === (null), 'answered: no move buttons')
 })
 
 test('recipe: scaling a small amount down never rounds it up; metric units stay decimal', async t => {
@@ -625,13 +625,13 @@ test('flashcards: focus follows a repeated single card into the next round and l
   await click(buttonByText(container, 'Show answer'))
   await again(container)
   assert.match(container.textContent, /Round 2 of 3/)
-  assert.equal(document.activeElement, cardEl(container))
+  assert.ok((document.activeElement) === (cardEl(container)))
   await click(buttonByText(container, 'Show answer'))
   await again(container)
-  assert.equal(document.activeElement, cardEl(container))
+  assert.ok((document.activeElement) === (cardEl(container)))
   await click(buttonByText(container, 'Show answer'))
   await again(container)
-  assert.equal(document.activeElement, buttonByText(container, 'Send result'))
+  assert.ok((document.activeElement) === (buttonByText(container, 'Send result')))
 })
 
 test('flashcards: a revealed hint is readable by screen readers and announced', async t => {
@@ -641,5 +641,5 @@ test('flashcards: a revealed hint is readable by screen readers and announced', 
   await click(buttonByText(container, 'Show hint'))
   assert.match(cardEl(container).getAttribute('aria-label'), /Hint: barks/)
   assert.equal(container.querySelector('[role=status][aria-live=polite]').textContent, 'Hint: barks')
-  assert.equal(document.activeElement, cardEl(container), 'focus stays on the card when the hint button disappears')
+  assert.ok((document.activeElement) === (cardEl(container)), 'focus stays on the card when the hint button disappears')
 })

@@ -381,6 +381,12 @@ function calcParse(expr, names) {
   }
   try { if ([...expr].length > 300) throw {message:'expression too long', at:300}; const result=parse(); skip(); if (pos !== expr.length) fail('unexpected character'); return result } catch (e) { return e }
 }
+// For floor/ceil, snap within eight binary64 epsilons of a nonzero integer.
+// Zero is excluded so tiny nonzero values keep their sign.
+function calcIntegerBoundary(value) {
+  const lower=Math.floor(value), nearest=value-lower<=0.5 ? lower : lower+1
+  return nearest!==0 && Math.abs(value-nearest)<=8*Number.EPSILON*Math.abs(nearest) ? nearest : value
+}
 function calcEval(ast, values) {
   function ev(n) {
     const [type, op] = n
@@ -399,7 +405,8 @@ function calcEval(ast, values) {
         if (digits<0) throw new Error('negative digits')
         const f=10**Math.min(digits,12)
         value=Math.floor(a[0]*f+0.5)/f
-      } else value=Math[op](...a)
+      } else if (op==='floor' || op==='ceil') value=Math[op](calcIntegerBoundary(a[0]))
+      else value=Math[op](...a)
     }
     if (!Number.isFinite(value)) throw new Error('invalid result')
     return value

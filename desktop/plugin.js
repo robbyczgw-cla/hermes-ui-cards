@@ -390,6 +390,12 @@ function calcParse(expr, names) {
   }
   try { if ([...expr].length > 300) throw {message:'expression too long', at:300}; const result=parse(); skip(); if (pos !== expr.length) fail('unexpected character'); return result } catch (e) { return e }
 }
+// For floor/ceil, snap within eight binary64 epsilons of a nonzero integer.
+// Zero is excluded so tiny nonzero values keep their sign.
+function calcIntegerBoundary(value) {
+  const lower=Math.floor(value), nearest=value-lower<=0.5 ? lower : lower+1
+  return nearest!==0 && Math.abs(value-nearest)<=8*Number.EPSILON*Math.abs(nearest) ? nearest : value
+}
 function calcEval(ast, values) {
   function ev(n) {
     const [type, op] = n
@@ -408,7 +414,8 @@ function calcEval(ast, values) {
         if (digits<0) throw new Error('negative digits')
         const f=10**Math.min(digits,12)
         value=Math.floor(a[0]*f+0.5)/f
-      } else value=Math[op](...a)
+      } else if (op==='floor' || op==='ceil') value=Math[op](calcIntegerBoundary(a[0]))
+      else value=Math[op](...a)
     }
     if (!Number.isFinite(value)) throw new Error('invalid result')
     return value
@@ -764,10 +771,10 @@ function buildReply(card, answer, lang) {
     case 'confirm': {
       data.decision = answer.decision
       if (answer.decision === 'yes') {
-        summary = t(L, 'rYes', { x: clip(card.title) })
+        summary = t(L, 'rYes', { x: clip(card.title).replace(/\s*[?？]+$/, '') })
       } else if (answer.decision === 'no') {
         mark = '✗'
-        summary = t(L, 'rNo', { x: clip(card.title) })
+        summary = t(L, 'rNo', { x: clip(card.title).replace(/\s*[?？]+$/, '') })
       } else {
         mark = '✎'
         data.change = String(answer.change ?? '').trim()
@@ -919,6 +926,18 @@ function writeCard(cardId, patch) {
   return next
 }
 
+// A new chat starts with a runtime session id and gets its stored id a moment later: carry what
+// the user already did (draft, answer) over to the new key instead of starting the card again.
+function adoptCard(fromKey, toKey) {
+  if (!fromKey || !toKey || fromKey === toKey) return
+  const old = readCard(fromKey)
+  const cur = readCard(toKey)
+  const patch = {}
+  if (old.answer && !cur.answer) patch.answer = old.answer
+  if (old.draft && !cur.draft) patch.draft = old.draft
+  if (Object.keys(patch).length) writeCard(toKey, patch)
+}
+
 function subscribeCard(cardId, fn) {
   if (!cardListeners.has(cardId)) cardListeners.set(cardId, new Set())
   cardListeners.get(cardId).add(fn)
@@ -940,48 +959,135 @@ function useCardRecord(cardId) {
 
 // ── Answers kept by the plugin's backend (dashboard/plugin_api.py) ──
 // A card answered in another window, in the Webapp or on another computer is locked here too.
-// Each mounted card asks once (batched per chat, cached for SERVER_TTL); the backend's
-// `answer.recorded` event locks cards that are already on screen. ctx.storage stays the fast
-// path and the offline fallback: without the route (an older Hermes, a remote backend without
-// the agent half, a failed request) cards behave exactly as before, silently.
-// When the two disagree the server wins: an answer it knows locks the card. A local answer the
-// server never received (it tracks the card as shown and unanswered) is released after
-// SERVER_GRACE, so a click that got lost on the way does not leave a dead card behind.
+// Each mounted card asks its chat's backend once (batched per chat, cached for SERVER_TTL) and
+// its actions wait for that first answer (at most SYNC_WAIT), so a fresh device cannot send a
+// card twice. The backend's `answers.changed` event carries nothing (it reaches every window,
+// also other profiles'); it only makes the cards on screen ask again, through this window's own
+// profile-scoped route. While a card is on screen and open it is checked again with backoff
+// (POLL_*), after a failed request (RETRY_MS), on reconnect and when the window gets focus.
+// ctx.storage stays the fast path and the offline fallback: without the route (an older Hermes,
+// a remote backend without the agent half, a failed request) cards behave exactly as before.
+// When the two disagree the server can only add a lock: a receipt this window holds is never
+// removed (the server not knowing an answer proves nothing about its delivery).
 
 const SERVER_TTL = 60 * 1000
-const SERVER_GRACE = 10 * 60 * 1000
 const SERVER_BATCH = 50
+const SYNC_WAIT = 2500 // actions wait at most this long for the first server answer
+const POLL_MIN = 30 * 1000
+const POLL_MAX = 10 * 60 * 1000
+const RETRY_MS = [5000, 15000, 45000, 120000, 300000]
+const NUDGE_GAP = 5000 // focus/online re-checks at most this often
 const SERVER_MARKS = ['✓', '✗', '✎', '⚠']
 let serverRest = null
 const serverChecked = new Map() // key -> time asked
 const serverQueue = new Map() // sessionId -> Map(cardId -> card type)
+const serverSync = new Map() // key -> deadline: first answer pending, actions wait
+const syncListeners = new Map() // key -> Set(fn)
 let serverTimer = null
-let serverPaused = 0 // no requests before this time (after a failure)
+let serverBlocked = 0 // no requests before this time (after a failure)
+let serverFailures = 0
 let serverInflight = Promise.resolve()
-
-function useServerAnswers(rest) {
-  serverRest = typeof rest === 'function' ? rest : null
-  serverChecked.clear()
-  serverQueue.clear()
-  serverPaused = 0
+let serverScope = ''
+let pollDelay = POLL_MIN
+let reconcileTimer = null // { at, stop }
+let lastNudge = 0
+// Timers for the slow re-checks: ctx.setTimeout (cleared with the plugin) once registered.
+let schedule = (fn, ms) => {
+  const id = setTimeout(fn, ms)
+  if (id && typeof id.unref === 'function') id.unref()
+  return () => clearTimeout(id)
 }
 
-function askServer(sessionId, card) {
-  if (!serverRest || !sessionId || !card || typeof card.cardId !== 'string') return
-  const key = `${sessionId}\u0000${card.cardId}`
+// Which backend ctx.rest reaches right now: the active profile plus the host's activation counter
+// (a source or connection swap). A reply that comes back under another scope is dropped.
+function backendScope() {
+  let profile = ''
+  let epoch = ''
+  try {
+    const atom = sdk.host && sdk.host.state && sdk.host.state.profile
+    if (atom && typeof atom.get === 'function') profile = String(atom.get() ?? '')
+  } catch {}
+  try {
+    if (typeof sdk.gatewayActivationEpoch === 'function') epoch = String(sdk.gatewayActivationEpoch())
+  } catch {}
+  return `${profile}\u0000${epoch}`
+}
+
+function useServerAnswers(rest, timer) {
+  serverRest = typeof rest === 'function' ? rest : null
+  if (typeof timer === 'function') schedule = timer
+  if (reconcileTimer) reconcileTimer.stop()
+  reconcileTimer = null
+  serverChecked.clear()
+  serverQueue.clear()
+  for (const key of [...serverSync.keys()]) endSync(key)
+  serverBlocked = 0
+  serverFailures = 0
+  pollDelay = POLL_MIN
+  serverScope = backendScope()
+}
+
+// Another profile or connection: what this window learned belongs to the old backend.
+function followScope() {
+  const scope = backendScope()
+  if (scope === serverScope) return false
+  serverScope = scope
+  serverChecked.clear()
+  serverQueue.clear()
+  serverBlocked = 0
+  serverFailures = 0
+  pollDelay = POLL_MIN
+  return true
+}
+
+function isSyncing(key) {
+  const deadline = serverSync.get(key)
+  return deadline !== undefined && Date.now() < deadline
+}
+
+function endSync(key) {
+  if (!serverSync.delete(key)) return
+  for (const fn of syncListeners.get(key) || []) fn()
+}
+
+function subscribeSync(key, fn) {
+  if (!syncListeners.has(key)) syncListeners.set(key, new Set())
+  syncListeners.get(key).add(fn)
+  return () => {
+    const set = syncListeners.get(key)
+    set.delete(fn)
+    if (!set.size) syncListeners.delete(key)
+  }
+}
+
+// Whether a card mounted now would ask the server (then its actions wait for the reply).
+function wouldAsk(key) {
+  followScope()
+  return Boolean(serverRest) && !readCard(key).answer && Date.now() >= serverBlocked &&
+    Date.now() - (serverChecked.get(key) || 0) >= SERVER_TTL
+}
+
+function askServer(sessionId, cardId, type, force = false) {
+  if (!serverRest || !sessionId || typeof cardId !== 'string') return false
+  followScope()
+  const key = `${sessionId}\u0000${cardId}`
   const now = Date.now()
-  if (now < serverPaused || now - (serverChecked.get(key) || 0) < SERVER_TTL) return
+  if (readCard(key).answer || now < serverBlocked) return false
+  if (!force && now - (serverChecked.get(key) || 0) < SERVER_TTL) return false
   serverChecked.set(key, now)
   if (!serverQueue.has(sessionId)) serverQueue.set(sessionId, new Map())
-  serverQueue.get(sessionId).set(card.cardId, card.type)
+  serverQueue.get(sessionId).set(cardId, type)
   if (!serverTimer) serverTimer = setTimeout(() => { serverInflight = flushServer() }, 25)
+  return true
 }
 
 async function flushServer() {
   serverTimer = null
   const rest = serverRest
+  const scope = serverScope
   const batches = [...serverQueue]
   serverQueue.clear()
+  let failed = false
   for (const [sessionId, cards] of batches) {
     const ids = [...cards.keys()]
     for (let i = 0; i < ids.length; i += SERVER_BATCH) {
@@ -990,25 +1096,89 @@ async function flushServer() {
       try {
         reply = await rest(`/answers?session=${encodeURIComponent(sessionId)}&cards=${chunk.map(encodeURIComponent).join(',')}`, { timeoutMs: 8000 })
       } catch {
-        // Route missing or backend away: keep the local state, try again after a pause.
-        serverPaused = Date.now() + SERVER_TTL
-        for (const id of chunk) serverChecked.delete(`${sessionId}\u0000${id}`)
+        reply = undefined
+        failed = true
+      }
+      const keys = chunk.map(id => `${sessionId}\u0000${id}`)
+      if (rest !== serverRest || scope !== backendScope()) {
+        for (const key of keys) endSync(key) // asked another backend: drop it, the new scope asks again
         continue
       }
-      applyServerReply(sessionId, chunk.map(id => [id, cards.get(id)]), reply)
+      if (reply === undefined) {
+        // Route missing or backend away: keep the local state, try again later.
+        for (const key of keys) serverChecked.delete(key)
+      } else {
+        applyServerReply(sessionId, chunk.map(id => [id, cards.get(id)]), reply)
+      }
+      for (const key of keys) endSync(key)
     }
+  }
+  if (failed) {
+    serverBlocked = Date.now() + RETRY_MS[Math.min(serverFailures, RETRY_MS.length - 1)]
+    serverFailures += 1
+    scheduleReconcile(serverBlocked - Date.now())
+  } else if (batches.length) {
+    serverFailures = 0
+    scheduleReconcile(pollDelay)
+    pollDelay = Math.min(pollDelay * 2, POLL_MAX)
   }
 }
 
 function applyServerReply(sessionId, cards, reply) {
   if (!reply || typeof reply !== 'object') return
   const answers = reply.answers && typeof reply.answers === 'object' ? reply.answers : {}
-  const open = new Set(Array.isArray(reply.open) ? reply.open : [])
   for (const [cardId, type] of cards) {
     const key = `${sessionId}\u0000${cardId}`
     if (Object.prototype.hasOwnProperty.call(answers, cardId)) applyServerAnswer(key, cardId, type, answers[cardId])
-    else if (open.has(cardId)) releaseLostAnswer(key)
   }
+}
+
+// ── Re-checks of open cards on screen ──
+
+// Cards on screen (key -> type): the ones a re-check asks for.
+const mountedTypes = new Map()
+
+function openMounted() {
+  return [...mountedTypes].filter(([key]) => !readCard(key).answer)
+}
+
+function scheduleReconcile(ms) {
+  if (!serverRest || !openMounted().length) return
+  const at = Date.now() + Math.max(0, ms)
+  if (reconcileTimer && reconcileTimer.at <= at) return // an earlier check is already due
+  if (reconcileTimer) reconcileTimer.stop()
+  const timer = { at, stop: () => {} }
+  timer.stop = schedule(() => {
+    if (reconcileTimer === timer) reconcileTimer = null
+    reconcile()
+  }, Math.max(0, ms)) || (() => {})
+  reconcileTimer = timer
+}
+
+function reconcile() {
+  const open = openMounted()
+  if (!open.length) {
+    pollDelay = POLL_MIN // nothing to watch: no polling until a card shows again
+    return
+  }
+  if (Date.now() < serverBlocked) return scheduleReconcile(serverBlocked - Date.now())
+  for (const [key, type] of open) {
+    const cut = key.indexOf('\u0000')
+    askServer(key.slice(0, cut), key.slice(cut + 1), type, true)
+  }
+}
+
+// Something may have changed (the backend's event, reconnect, focus): check open cards soon.
+function nudgeServer({ soon = 250, gap = 0 } = {}) {
+  const now = Date.now()
+  if (gap && now - lastNudge < gap) return
+  lastNudge = now
+  pollDelay = POLL_MIN
+  if (reconcileTimer) {
+    reconcileTimer.stop()
+    reconcileTimer = null
+  }
+  scheduleReconcile(Math.max(soon, serverBlocked - now))
 }
 
 const isPlain = v => v !== null && typeof v === 'object' && !Array.isArray(v)
@@ -1068,36 +1238,34 @@ function applyServerAnswer(key, cardId, type, rec) {
   writeCard(key, { answer })
 }
 
-function releaseLostAnswer(key) {
-  const answer = cardStorage.get(`answer.${key}`, null)
-  if (!answer || answer.source === 'server' || !(Date.now() - (Number(answer.at) || 0) > SERVER_GRACE)) return
-  cardStorage.remove(`answer.${key}`)
-  const index = cardStorage.get('answerIndex', [])
-  if (Array.isArray(index)) cardStorage.set('answerIndex', index.filter(id => id !== key))
-  const next = readCard(key)
-  for (const fn of cardListeners.get(key) || []) fn(next)
+// The backend's live event (hui_cards/tool.py announces every recorded answer). It carries no
+// answer: whatever it holds is ignored, the cards on screen ask their own route.
+function onAnswersChanged() {
+  nudgeServer()
 }
 
-// The backend's live event (hui_cards/tool.py broadcasts it when a turn starts with a card answer).
-function onAnswerRecorded(event) {
-  const payload = event && isPlain(event.payload) ? event.payload : null
-  if (!payload || typeof payload.session_id !== 'string' || typeof payload.card !== 'string') return
-  const key = `${payload.session_id}\u0000${payload.card}`
-  const type = mountedTypes.get(key)
-  if (type) applyServerAnswer(key, payload.card, type, payload.answer)
-}
-
-// Cards on screen (key -> type), so a live event is applied only to a card this window shows.
-const mountedTypes = new Map()
-
+// A mounted card: ask the server once, and say whether its actions still wait for that answer.
 function useServerAnswer(card, sessionId) {
+  const key = sessionId && card && card.cardId ? `${sessionId}\u0000${card.cardId}` : null
+  const [, setTick] = useState(0)
+  // Decided during the first render, so a card that will ask never shows actions before the reply.
+  if (key && !serverSync.has(key) && !mountedTypes.has(key) && wouldAsk(key)) serverSync.set(key, Date.now() + SYNC_WAIT)
   useEffect(() => {
-    if (!sessionId || !card || !card.cardId) return
-    const key = `${sessionId}\u0000${card.cardId}`
+    if (!key) return
     mountedTypes.set(key, card.type)
-    askServer(sessionId, card)
-    return () => { if (mountedTypes.get(key) === card.type) mountedTypes.delete(key) }
-  }, [sessionId, card && card.cardId, card && card.type])
+    const stop = subscribeSync(key, () => setTick(n => n + 1))
+    const asked = askServer(sessionId, card.cardId, card.type)
+    if (!asked) endSync(key)
+    const expire = serverSync.has(key) ? schedule(() => endSync(key), Math.max(0, serverSync.get(key) - Date.now())) : null
+    if (asked) scheduleReconcile(pollDelay)
+    return () => {
+      stop()
+      if (expire) expire()
+      endSync(key)
+      if (mountedTypes.get(key) === card.type) mountedTypes.delete(key)
+    }
+  }, [key, card && card.type])
+  return key ? isSyncing(key) : false
 }
 
 // Resolves once queued and running answer requests are done (tests, and nothing else waits on it).
@@ -1107,18 +1275,28 @@ async function serverIdle() {
 }
 
 // ── Display settings (Settings → Plugins), applied live to cards already on screen ──
-// A card starts with the `display` its tool result carries; once the backend has been read
-// (first card on screen, and after every save in Settings → Plugins) the current values win.
+// A card starts with the `display` its tool result carries; once the backend of the current
+// profile has been read (first card on screen, after every save in Settings → Plugins, after a
+// profile switch) its values win. Values read for another profile or connection are never used.
 
-let liveDisplay = null
-let lastResultDisplay = null
+let liveDisplay = null // { scope, display }
+let lastResultDisplay = null // { scope, display }
 const displayListeners = new Set()
 
-function setLiveDisplay(display) {
-  if (!display) return
-  const same = liveDisplay && Object.keys(display).every(k => liveDisplay[k] === display[k])
-  liveDisplay = display
+function currentLiveDisplay() {
+  return liveDisplay && liveDisplay.scope === backendScope() ? liveDisplay.display : null
+}
+
+function setLiveDisplay(display, scope = backendScope()) {
+  if (!display || scope !== backendScope()) return // read for another backend: drop it
+  const before = currentLiveDisplay()
+  const same = before && Object.keys(display).every(k => before[k] === display[k])
+  liveDisplay = { scope, display }
   if (!same) for (const fn of displayListeners) fn(display)
+}
+
+function notifyDisplay() {
+  for (const fn of displayListeners) fn(currentLiveDisplay())
 }
 
 function useLiveDisplay(initial) {
@@ -1128,7 +1306,8 @@ function useLiveDisplay(initial) {
     displayListeners.add(fn)
     return () => void displayListeners.delete(fn)
   }, [])
-  return liveDisplay ? { ...(initial || {}), ...liveDisplay } : initial
+  const live = currentLiveDisplay()
+  return live ? { ...(initial || {}), ...live } : initial
 }
 
 // ── 50-ui.js ──
@@ -1516,26 +1695,48 @@ function CodeBlock({ code, lang, prompt }) {
 // ── 55-answer.js ──
 // One answer per card: send it into the card's own chat, remember it, never send twice.
 
+Object.assign(STRINGS.en, { checkingAnswer: 'Checking whether this card was already answered…' })
+Object.assign(STRINGS.de, { checkingAnswer: 'Prüfe, ob diese Karte schon beantwortet wurde …' })
+
+const CHECKING_NOTICE_MS = 600 // a quick check shows nothing; a slow one says why the buttons wait
+
 // Seconds a pick waits before it is sent so it can be undone (Settings → Plugins → Undo time:
-// 0, 4 or 8). Cards call it when the pick happens, so a changed setting applies at once.
+// 0, 4 or 8). Cards call it when the pick happens, so a changed setting applies at once. Only
+// values of the backend this window talks to right now count (never another profile's).
 function undoDelayMs(display) {
-  const pick = [liveDisplay, display, lastResultDisplay].find(d => d && [0, 4, 8].includes(d.undo))
+  const lastResult = lastResultDisplay && lastResultDisplay.scope === backendScope() ? lastResultDisplay.display : null
+  const pick = [currentLiveDisplay(), display, lastResult].find(d => d && [0, 4, 8].includes(d.undo))
   return (pick ? pick.undo : 4) * 1000
 }
 
 function useCardAnswer(card, sessionId, lang) {
   const key = sessionId ? `${sessionId}\u0000${card.cardId}` : null
+  // The card stays mounted when its chat's id changes (runtime id → stored id); keep its state.
+  const previousKey = useRef(key)
+  if (previousKey.current !== key) {
+    adoptCard(previousKey.current, key)
+    previousKey.current = key
+  }
   const record = useCardRecord(key)
-  useServerAnswer(card, sessionId) // answered elsewhere (another window, the Webapp, another computer)
+  // Answered elsewhere (another window, the Webapp, another computer)? Until the first reply (at
+  // most SYNC_WAIT) the card offers no actions, so a fresh device cannot send it a second time.
+  const syncing = useServerAnswer(card, sessionId)
   const [problem, setProblem] = useState(null) // null | 'inactive' | 'failed' | 'oversize'
   const sending = useRef(false)
   const [focusAnswer, setFocusAnswer] = useState(false)
+  const [slowCheck, setSlowCheck] = useState(false)
+
+  useEffect(() => {
+    if (!syncing) return void setSlowCheck(false)
+    const id = setTimeout(() => setSlowCheck(true), CHECKING_NOTICE_MS)
+    return () => clearTimeout(id)
+  }, [syncing])
 
   const answered = Boolean(record.answer)
 
   const submit = useCallback(
     answer => {
-      if (!key || sending.current || readCard(key).answer) return false
+      if (!key || sending.current || readCard(key).answer || isSyncing(key)) return false
       sending.current = true
       try {
         const reply = buildReply(card, answer, lang)
@@ -1572,17 +1773,22 @@ function useCardAnswer(card, sessionId, lang) {
         })
       : problem === 'oversize'
         ? jsx(NoticeBar, { text: t(lang, 'oversize') })
+      : syncing && slowCheck
+        ? jsx(NoticeBar, { text: t(lang, 'checkingAnswer') })
       : null
 
+  const canSend = Boolean(sessionId) && !answered && !syncing && problem !== 'failed'
   return {
     record,
     draft: record.draft,
     answer: record.answer,
     answered,
     locked,
-    canSend: Boolean(sessionId) && !answered && problem !== 'failed',
-    // No dead buttons: actions disappear while the card can't send (answered or chat unavailable).
-    showActions: Boolean(sessionId) && !answered && problem !== 'failed',
+    syncing,
+    canSend,
+    // No dead buttons: actions disappear while the card can't send (answered, still checking the
+    // server, or chat unavailable).
+    showActions: canSend,
     submit,
     saveDraft,
     status
@@ -2249,7 +2455,8 @@ function CompareCard({ card, sessionId, display, lang }) {
     jsxs('div', { className: 'huic-compare-tags', children: [
       picked !== undefined && picked === c.id ? jsxs('span', { className: 'huic-badge huic-best huic-compare-pick', children: [jsx(Icon, { name: 'check' }), t(lang, 'compareYourPick')] }) : null,
       c.best ? jsx('span', { className: 'huic-badge huic-best', children: '★ ' + t(lang, 'recommended') }) : null,
-      c.badge ? jsx('span', { className: 'huic-badge', title: c.badge, children: c.badge }) : null,
+      // The model often writes "Recommended" as the badge of its best column too: show it once.
+      c.badge && !(c.best && /^\W*(recommended|empfehlung|empfohlen|best pick|top pick)\W*$/i.test(c.badge)) ? jsx('span', { className: 'huic-badge', title: c.badge, children: c.badge }) : null,
       c.source ? jsx(CompareSource, { url: c.source.url, label: c.source.label }) : null
     ] })
   ] })
@@ -2943,15 +3150,20 @@ function RatingCard({ card, sessionId, display, lang }) {
   const labelId = useId()
   const ans = useCardAnswer(card, sessionId, lang)
   const sent = ans.answer && ans.answer.data
-  const [picked, setPicked] = useState(null)
-  const [comment, setComment] = useState('')
+  const draft = ans.draft && typeof ans.draft === 'object' ? ans.draft : {}
+  const [picked, setPicked] = useState(() => (Number.isInteger(draft.value) ? draft.value : null))
+  const [comment, setComment] = useState(() => (typeof draft.comment === 'string' ? draft.comment : ''))
   const [hover, setHover] = useState(null)
   const [focused, setFocused] = useState(null)
   const value = sent ? sent.value : picked
   const scale = card.scale ?? 5
   const numbers = card.style === 'numbers'
   const roving = useRovingFocus(scale)
-  const choose = n => { if (!ans.locked) setPicked(n) }
+  const choose = n => {
+    if (ans.locked) return
+    setPicked(n)
+    ans.saveDraft({ value: n, comment })
+  }
   const send = n => { if (n !== null && n !== undefined) ans.submit({ value: n, comment }) }
   const shown = ans.locked ? value : (hover ?? focused ?? value)
 
@@ -3027,7 +3239,11 @@ function RatingCard({ card, sessionId, display, lang }) {
             jsx('span', { className: 'huic-label', children: t(lang, 'comment') }),
             jsx('textarea', {
               className: 'huic-input', disabled: ans.locked, maxLength: 2000,
-              value: sent ? sent.comment || '' : comment, onChange: e => setComment(limitText(e.target.value, 1000))
+              value: sent ? sent.comment || '' : comment, onChange: e => {
+                const next = limitText(e.target.value, 1000)
+                setComment(next)
+                ans.saveDraft({ value: picked, comment: next })
+              }
             })
           ]
         }) : null
@@ -3741,13 +3957,14 @@ function sanitizeDisplay(display) {
   return out
 }
 
-// Read the current display settings from the backend once, when the first card is on screen
-// (set by register(); a no-op without the backend route).
+// Read the current display settings from the backend once per profile/connection, when the first
+// card of that scope is on screen (set by register(); a no-op without the backend route).
 let loadDisplay = null
-let displayRequested = false
+let displayRequested = null // the scope already asked
 function requestDisplayOnce() {
-  if (displayRequested || !loadDisplay) return
-  displayRequested = true
+  const scope = backendScope()
+  if (displayRequested === scope || !loadDisplay) return
+  displayRequested = scope
   loadDisplay()
 }
 
@@ -3767,10 +3984,11 @@ function CardView({ result, sessionId, fallback }) {
   const display = useLiveDisplay(parsed ? parsed.display : null)
   const Component = parsed && CARD_COMPONENTS[parsed.card.type]
   useEffect(() => {
-    if (!Component) return
-    if (parsed.hasUndo) lastResultDisplay = parsed.display
-    requestDisplayOnce()
+    if (Component && parsed.hasUndo) lastResultDisplay = { scope: backendScope(), display: parsed.display }
   }, [Component, parsed])
+  useEffect(() => {
+    if (Component) requestDisplayOnce() // every render: a profile switch reads that profile's values
+  })
   if (!Component) return fallback ?? null
   const lang = cardLang(parsed.card)
   return jsx(
@@ -3781,7 +3999,9 @@ function CardView({ result, sessionId, fallback }) {
       sessionId: typeof sessionId === 'string' && sessionId ? sessionId : null,
       lang
     },
-    `${sessionId || ''}\u0000${parsed.card.cardId}`
+    // Keyed by the card alone: a new chat's id changes from its runtime id to its stored id
+    // while the card is on screen, and remounting then would drop what the user just did.
+    parsed.card.cardId
   )
 }
 
@@ -6374,7 +6594,7 @@ let pluginCtx = null
 
 const PLUGIN_ID = 'hermes-ui-cards'
 const EVENT_SETTINGS = `plugin.${PLUGIN_ID}.settings.changed`
-const EVENT_ANSWER = `plugin.${PLUGIN_ID}.answer.recorded`
+const EVENT_ANSWERS = `plugin.${PLUGIN_ID}.answers.changed`
 
 // Hear a gateway event for as long as the plugin lives (ctx.onEvent is tracked by the host).
 function listen(ctx, type, fn) {
@@ -6398,16 +6618,37 @@ async function displayFromPluginList() {
   return { compact: value('compact') === true, accent: value('accent'), undo: Number(value('undo_seconds')) }
 }
 
+// Every read is tied to the backend scope it started in; a reply that arrives after a profile or
+// connection switch is dropped by setLiveDisplay.
 async function refreshDisplay(ctx, { fallback = false } = {}) {
+  const scope = backendScope()
   try {
     const reply = await ctx.rest('/settings', { timeoutMs: 8000 })
-    if (reply && reply.display && typeof reply.display === 'object') return setLiveDisplay(sanitizeDisplay(reply.display))
+    if (reply && reply.display && typeof reply.display === 'object') return setLiveDisplay(sanitizeDisplay(reply.display), scope)
   } catch {}
   if (!fallback) return
   try {
     const display = await displayFromPluginList()
-    if (display) setLiveDisplay(sanitizeDisplay(display))
+    if (display) setLiveDisplay(sanitizeDisplay(display), scope)
   } catch {}
+}
+
+// Re-check open cards when this window comes back: reconnect, focus, network, profile switch.
+function watchReconnects(ctx) {
+  listen(ctx, 'gateway.ready', () => nudgeServer())
+  if (typeof ctx.addEventListener === 'function' && typeof window !== 'undefined') {
+    const soon = () => nudgeServer({ gap: NUDGE_GAP })
+    ctx.addEventListener(window, 'focus', soon)
+    ctx.addEventListener(window, 'online', soon)
+  }
+  const atom = sdk.host && sdk.host.state && sdk.host.state.profile
+  if (atom && typeof atom.listen === 'function') {
+    const stop = atom.listen(() => {
+      notifyDisplay() // cards drop the old profile's values and read the new one's
+      nudgeServer()
+    })
+    if (typeof ctx.onDispose === 'function' && typeof stop === 'function') ctx.onDispose(stop)
+  }
 }
 
 const DEMO_PROMPT = 'Show me the hui_present demo card for "{type}".'
@@ -6419,12 +6660,14 @@ const plugin = {
     pluginCtx = ctx
     useStorage(ctx.storage)
     const hasRest = typeof ctx.rest === 'function'
-    useServerAnswers(hasRest ? (path, opts) => ctx.rest(path, opts) : null)
+    useServerAnswers(hasRest ? (path, opts) => ctx.rest(path, opts) : null,
+      typeof ctx.setTimeout === 'function' ? (fn, ms) => ctx.setTimeout(fn, ms) : null)
     loadDisplay = hasRest ? () => refreshDisplay(ctx) : null
-    displayRequested = false
+    displayRequested = null
     liveDisplay = null
     lastResultDisplay = null
-    listen(ctx, EVENT_ANSWER, onAnswerRecorded)
+    listen(ctx, EVENT_ANSWERS, onAnswersChanged)
+    if (hasRest) watchReconnects(ctx)
     // A save in Settings → Plugins: re-read and apply to every card on screen. The plugin list is
     // the fallback here (one call per save), not on every start.
     listen(ctx, EVENT_SETTINGS, () => (hasRest ? refreshDisplay(ctx, { fallback: true }) : displayFromPluginList().then(d => d && setLiveDisplay(sanitizeDisplay(d)), () => {})))

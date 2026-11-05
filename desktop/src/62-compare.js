@@ -124,7 +124,8 @@ function CompareCard({ card, sessionId, display, lang }) {
     jsxs('div', { className: 'huic-compare-tags', children: [
       picked !== undefined && picked === c.id ? jsxs('span', { className: 'huic-badge huic-best huic-compare-pick', children: [jsx(Icon, { name: 'check' }), t(lang, 'compareYourPick')] }) : null,
       c.best ? jsx('span', { className: 'huic-badge huic-best', children: '★ ' + t(lang, 'recommended') }) : null,
-      c.badge ? jsx('span', { className: 'huic-badge', title: c.badge, children: c.badge }) : null,
+      // The model often writes "Recommended" as the badge of its best column too: show it once.
+      c.badge && !(c.best && /^\W*(recommended|empfehlung|empfohlen|best pick|top pick)\W*$/i.test(c.badge)) ? jsx('span', { className: 'huic-badge', title: c.badge, children: c.badge }) : null,
       c.source ? jsx(CompareSource, { url: c.source.url, label: c.source.label }) : null
     ] })
   ] })

@@ -4,6 +4,15 @@ import re
 
 _FUNCS = {'min': (1, 99), 'max': (1, 99), 'round': (1, 2), 'floor': (1, 1), 'ceil': (1, 1), 'sqrt': (1, 1), 'abs': (1, 1), 'pow': (2, 2), 'log': (1, 1), 'exp': (1, 1), 'if': (3, 3)}
 
+def _integer_boundary(value):
+    # For floor/ceil, snap within eight binary64 epsilons of a nonzero
+    # integer. Zero is excluded so tiny nonzero values keep their sign.
+    lower = math.floor(value)
+    nearest = lower if value - lower <= 0.5 else lower + 1
+    if nearest and abs(value - nearest) <= 8 * 2**-52 * abs(nearest):
+        return float(nearest)
+    return value
+
 class _Error(Exception):
     def __init__(self, message, at): self.message, self.at = message, at
 
@@ -94,6 +103,7 @@ def calc_eval(ast, values):
                     if not math.isfinite(scaled): raise ValueError('invalid result')
                     value = float(math.floor(scaled)) / factor
                 elif name in ('min', 'max'): value = (min if name == 'min' else max)(a)
+                elif name in ('floor', 'ceil'): value = (math.floor if name == 'floor' else math.ceil)(_integer_boundary(a[0]))
                 else: value = {'floor': math.floor, 'ceil': math.ceil, 'sqrt': math.sqrt, 'abs': abs, 'pow': math.pow, 'log': math.log, 'exp': math.exp}[name](*a)
         value = float(value)
         if not math.isfinite(value): raise ValueError('invalid result')

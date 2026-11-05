@@ -27,7 +27,7 @@ test('choice: number badges, digit selects, Enter sends, hint names the keys', a
   assert.match(container.textContent, /Best value/)
   await key(radios[0], '3')
   assert.equal(radios[2].getAttribute('aria-checked'), 'true')
-  assert.equal(document.activeElement, radios[2])
+  assert.ok((document.activeElement) === (radios[2]))
   await key(radios[2], 'Enter')
   assert.equal(lastReply().line1, '✓ Chose: Gamma')
   assert.equal(testHost.submissions.length, 1)
@@ -55,7 +55,7 @@ test('choice: digits are ignored while typing in the Other field', async t => {
   await click(container.querySelectorAll('[role="radio"]')[3])
   const input = container.querySelector('input')
   await key(input, '1')
-  assert.equal(container.querySelectorAll('[role="radio"]')[0].getAttribute('aria-checked'), 'false')
+  assert.ok((container.querySelectorAll('[role="radio"]')[0].getAttribute('aria-checked')) === ('false'))
 })
 
 test('choice with images: tiles, badge, broken or missing image keeps a placeholder', async t => {
@@ -71,11 +71,11 @@ test('choice with images: tiles, badge, broken or missing image keeps a placehol
   const img = tiles[0].querySelector('img')
   assert.ok(img, 'image renders first')
   await act(async () => { img.dispatchEvent(new window.Event('error')) })
-  assert.equal(tiles[0].querySelector('img'), null)
+  assert.ok((tiles[0].querySelector('img')) === (null))
   assert.equal(tiles[0].querySelector('.huic-tile-ph').textContent, '', 'no initials: a neutral placeholder')
   assert.ok(tiles[0].querySelector('.huic-tile-ph svg.huic-ico'), 'line picture icon on the placeholder')
   assert.equal(tiles[1].querySelector('.huic-tile-ph').textContent, '👥')
-  assert.equal(tiles[2].querySelector('.huic-tile-ph'), null, 'still loading, shown with neutral background')
+  assert.ok((tiles[2].querySelector('.huic-tile-ph')) === (null), 'still loading, shown with neutral background')
   assert.ok(tiles[0].querySelector('.huic-tile-label'), 'label stays visible on the placeholder')
 })
 
@@ -98,7 +98,7 @@ test('rating: numbers style is a segmented row; 0 means ten', async t => {
   const { container } = await render(t, toolResult({ type: 'rating', question: 'NPS?', scale: 10, style: 'numbers' }))
   assert.ok(container.querySelector('.huic-segs'))
   await key(container.querySelector('[role="radio"]'), '0')
-  assert.equal(container.querySelectorAll('[role="radio"]')[9].getAttribute('aria-checked'), 'true')
+  assert.ok((container.querySelectorAll('[role="radio"]')[9].getAttribute('aria-checked')) === ('true'))
 })
 
 test('slider: typed value clamps and snaps on blur; Enter corrects first, then sends', async t => {
@@ -143,7 +143,7 @@ test('schedule: chips with numbers skip unavailable slots; digit and Enter work;
   const chips = container.querySelectorAll('[role="radio"]')
   assert.equal(container.querySelector('.huic-head .huic-sub').textContent, 'Vienna time')
   assert.equal(chips[1].disabled, true, 'unavailable chip is not focusable')
-  assert.equal(chips[1].querySelector('.huic-num'), null)
+  assert.ok((chips[1].querySelector('.huic-num')) === (null))
   assert.equal(chips[2].querySelector('.huic-num').textContent, '2', 'numbers count available slots only')
   assert.match(container.querySelector('.huic-hint').textContent, /1–2 choose · Enter send/)
   await key(chips[0], '2')

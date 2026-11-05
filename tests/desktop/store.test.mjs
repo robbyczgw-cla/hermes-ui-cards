@@ -79,7 +79,7 @@ test('a card answered on another device is locked with its receipt', async () =>
   assert.equal(answers.length, 1)
   assert.deepEqual(query(answers[0]), { session: 'sess-1', cards: cardId })
   assert.match(container.querySelector('.huic-answer').textContent, /Chose: Lisbon/)
-  assert.equal(buttonByText(container, 'Send'), undefined, 'no actions on an answered card')
+  assert.ok((buttonByText(container, 'Send')) === (undefined), 'no actions on an answered card')
   assert.equal(container.querySelector('[aria-checked="true"]')?.textContent.includes('Lisbon'), true, 'shows what was picked')
   const stored = reg.storage.get(`answer.sess-1\u0000${cardId}`, null)
   assert.equal(stored.source, 'server')
@@ -115,7 +115,7 @@ test('a failing or missing route leaves the card working as before', async () =>
   ]) {
     resetHost()
     const { container, unmount } = await mountAndSettle(toolResult(CHOICE), { registration: reg })
-    assert.equal(container.querySelector('.huic-answer'), null)
+    assert.ok((container.querySelector('.huic-answer')) === (null))
     await click(container.querySelector('[role="radio"]'))
     const send = buttonByText(container, 'Send')
     if (send) await click(send)
@@ -135,16 +135,22 @@ test('after a failure the route is not hammered', async () => {
   await two.unmount()
 })
 
-test('the live answer event locks a card on screen', async () => {
+test('the live answer event makes cards on screen ask their own route', async () => {
+  // The event carries no answer (it may reach other profiles' windows): it only makes the cards
+  // on screen ask this window's route again, which then knows the answer.
   const result = toolResult(CHOICE)
   const cardId = JSON.parse(result).cardId
-  const reg = registration({ rest: path => (path.startsWith('/answers') ? { answers: {}, open: [cardId] } : {}) })
+  let known = false
+  const reg = registration({ rest: path => (path.startsWith('/answers') ? (known ? { answers: { [cardId]: serverAnswer(cardId) }, open: [] } : { answers: {}, open: [cardId] }) : {}) })
   const { container, unmount } = await mountAndSettle(result, { registration: reg })
-  assert.equal(container.querySelector('.huic-answer'), null)
-  await reg.emit('plugin.hermes-ui-cards.answer.recorded', { session_id: 'other', card: cardId, answer: serverAnswer(cardId) })
-  assert.equal(container.querySelector('.huic-answer'), null, 'another chat: ignored')
-  await reg.emit('plugin.hermes-ui-cards.answer.recorded', { session_id: 'sess-1', card: cardId, answer: serverAnswer(cardId) })
-  assert.match(container.querySelector('.huic-answer').textContent, /Chose: Lisbon/)
+  assert.ok(container.querySelector('.huic-answer') === null)
+  await reg.emit('plugin.hermes-ui-cards.answers.changed', { card: cardId, answer: serverAnswer(cardId) })
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 320)); await settle() })
+  assert.ok(container.querySelector('.huic-answer') === null, 'an answer inside the event itself is never trusted')
+  known = true
+  await reg.emit('plugin.hermes-ui-cards.answers.changed', {})
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 320)); await settle() })
+  assert.match(container.querySelector('.huic-answer')?.textContent ?? '', /Chose: Lisbon/)
   await unmount()
 })
 
@@ -162,7 +168,7 @@ test('server data that does not fit the card is ignored', async () => {
   for (const answer of bad) {
     const reg = registration({ rest: path => (path.startsWith('/answers') ? { answers: { [cardId]: answer }, open: [] } : {}) })
     const { container, unmount } = await mountAndSettle(result, { registration: reg })
-    assert.equal(container.querySelector('.huic-answer'), null, JSON.stringify(answer))
+    assert.ok((container.querySelector('.huic-answer')) === (null), JSON.stringify(answer))
     await unmount()
   }
 })
@@ -175,8 +181,8 @@ test('a hostile receipt is clipped and its mark checked', async () => {
   const { container, unmount } = await mountAndSettle(result, { registration: reg })
   const bar = container.querySelector('.huic-answer')
   assert.ok(bar, 'locked')
-  assert.equal(bar.querySelector('img'), null)
-  assert.equal(bar.querySelector('b'), null, 'no markup from the receipt')
+  assert.ok((bar.querySelector('img')) === (null))
+  assert.ok((bar.querySelector('b')) === (null), 'no markup from the receipt')
   assert.ok(!bar.textContent.includes('<img'), 'an unknown mark is replaced by ✓')
   assert.ok(bar.textContent.includes('<b>bold</b>'), 'shown as text, not markup')
   assert.ok(reg.storage.get(`answer.sess-1\u0000${cardId}`, null).summary.length <= 300)
@@ -195,7 +201,8 @@ test('this window keeps its own receipt when the server has another answer', asy
   await unmount()
 })
 
-test('a local answer the server never got is released after the grace period, not before', async () => {
+test('a receipt this window holds is never removed by the server, however old', async () => {
+  // The server not knowing an answer proves nothing about its delivery (review 4, finding 4).
   const result = toolResult(CHOICE)
   const cardId = JSON.parse(result).cardId
   const key = `answer.sess-1\u0000${cardId}`
@@ -220,9 +227,8 @@ test('a local answer the server never got is released after the grace period, no
   lost.set('answerIndex', [`sess-1\u0000${cardId}`])
   reg = registration({ storage: lost, rest: () => ({ answers: {}, open: [cardId] }) })
   view = await mountAndSettle(result, { registration: reg })
-  assert.equal(view.container.querySelector('.huic-answer'), null, 'shown, never answered on the server: answerable again')
-  assert.equal(lost.get(key, null), null)
-  assert.deepEqual(lost.get('answerIndex', null), [])
+  assert.ok(view.container.querySelector('.huic-answer') !== null, 'shown, never answered on the server: still locked here')
+  assert.ok(lost.get(key, null) !== null, 'the local receipt is kept')
   await view.unmount()
 })
 

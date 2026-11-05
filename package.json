@@ -7,7 +7,7 @@
   "scripts": {
     "build": "python3 scripts/build.py",
     "check": "python3 scripts/build.py --check",
-    "test": "node --import ./tests/desktop/register.mjs --test 'tests/desktop/*.test.mjs'"
+    "test": "timeout 300 env NODE_OPTIONS=--max-old-space-size=1024 node --max-old-space-size=1024 --import ./tests/desktop/register.mjs --test --test-timeout=30000 'tests/desktop/*.test.mjs'"
   },
   "devDependencies": {
     "jsdom": "^26.1.0",

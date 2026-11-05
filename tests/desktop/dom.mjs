@@ -69,6 +69,12 @@ export async function mount(result, { sessionId = 'sess-1', registration } = {})
   return {
     container,
     reg,
+    // Render the same tool result again, e.g. after the chat's id changed (runtime → stored id).
+    rerender: async (next = {}) => {
+      await act(async () => {
+        root.render(renderer.data.render({ file: { path: '/tmp/x.md' }, args: {}, result, sessionId, fallback, toolName: 'hui_present', ...next }))
+      })
+    },
     unmount: async () => {
       await act(async () => root.unmount())
       container.remove()

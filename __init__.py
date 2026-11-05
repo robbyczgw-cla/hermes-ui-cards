@@ -1,7 +1,8 @@
 """hermes-ui-cards: interactive answer cards for Hermes.
 
 Registers the `hui_present` tool, the /cards command, the card-writing skill and
-two hooks that make sure a Desktop card's MEDIA line reaches the reply. The
+the hooks that make sure a Desktop card's MEDIA line reaches the reply, record
+card answers for the chat that showed the card and follow a chat through compaction. The
 Desktop half that draws the cards lives in desktop/plugin.js.
 """
 from __future__ import annotations
@@ -27,6 +28,7 @@ def register(ctx):
     )
     ctx.register_hook("pre_llm_call", tool.on_turn_start)
     ctx.register_hook("transform_llm_output", tool.ensure_media_lines)
+    ctx.register_hook("post_compaction", tool.on_compaction)  # a compacted chat keeps its cards' state
     ctx.register_command(
         "cards",
         handle_cards,
