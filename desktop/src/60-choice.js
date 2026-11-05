@@ -2,18 +2,18 @@
 // Options carry number badges: digits pick, Enter sends (same helpers serve schedule and quiz).
 
 Object.assign(STRINGS.en, {
-  keyChoose: '{keys} choose · Enter send',
-  keyToggle: '{keys} toggle · Enter send',
-  keyCheck: '{keys} choose · Enter check',
-  keyNext: 'Enter next',
-  keySend: 'Enter send'
+  keyChoose: '[{keys}] to choose · [Enter] to send',
+  keyToggle: '[{keys}] to select · [Enter] to send',
+  keyCheck: '[{keys}] to choose · [Enter] to check',
+  keyNext: '[Enter] to continue',
+  keySend: '[Enter] to send'
 })
 Object.assign(STRINGS.de, {
-  keyChoose: '{keys} wählen · Enter senden',
-  keyToggle: '{keys} umschalten · Enter senden',
-  keyCheck: '{keys} wählen · Enter prüfen',
-  keyNext: 'Enter weiter',
-  keySend: 'Enter senden'
+  keyChoose: '[{keys}] zum Wählen · [Enter] zum Senden',
+  keyToggle: '[{keys}] zum Auswählen · [Enter] zum Senden',
+  keyCheck: '[{keys}] zum Wählen · [Enter] zum Prüfen',
+  keyNext: '[Enter] zum Weitermachen',
+  keySend: '[Enter] zum Senden'
 })
 
 const KEYS_CSS = `
@@ -301,7 +301,8 @@ function ChoiceCard({ card, sessionId, display, lang }) {
     footer: !ans.showActions
       ? null
       : jsx(Footer, {
-          hint: joinHints(pickHint(card, lang), t(lang, card.multiple ? 'keyToggle' : 'keyChoose', { keys: keyRange(options.length) })),
+          hint: pickHint(card, lang),
+          keys: t(lang, card.multiple ? 'keyToggle' : 'keyChoose', { keys: keyRange(options.length) }),
           children: jsx(Btn, {
             variant: 'primary',
             disabled: !valid,

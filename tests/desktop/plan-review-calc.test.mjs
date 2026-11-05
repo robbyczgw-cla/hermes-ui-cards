@@ -82,7 +82,7 @@ test('plan: Alt+arrows reorder with focus kept and announced, optional steps swi
   assert.ok(buttonByText(c, 'Run plan').classList.contains('huic-btn-danger'))
   await runPlan(c)
   const r = lastReply()
-  assert.equal(r.line1, '✓ Run the plan: 3 of 4 steps · skipped: Stop workers · reordered')
+  assert.equal(r.line1, '✓ Go ahead with 3 of 4 steps · skipped: Stop workers · reordered')
   assert.deepEqual(r.json.steps, [
     { id: 'p1', title: 'Back up', included: true },
     { id: 'p4', title: 'Smoke test', included: true },
@@ -98,7 +98,7 @@ test('plan: Alt+arrows reorder with focus kept and announced, optional steps swi
   assert.ok(c.querySelector('[data-step="p2"]').classList.contains('is-off'))
   assert.equal(c.querySelectorAll('.huic-plan-step:not(.is-off) .huic-plan-node svg').length, 3, 'steps that ran are ticked')
   assert.match(c.textContent, /only after 22:00/)
-  assert.match(c.querySelector('.huic-answer').textContent, /Run the plan: 3 of 4 steps/)
+  assert.match(c.querySelector('.huic-answer').textContent, /Go ahead with 3 of 4 steps/)
   await m.unmount()
 })
 
@@ -139,7 +139,7 @@ test('plan: order, switches and notes survive reopening; German line 1', async (
   assert.equal(c.querySelector('[data-step="p1"] input[data-plan-focus="note"]').value, 'vorher Platz prüfen')
   assert.match(c.querySelector('.huic-foot').textContent, /3 von 4 Schritten werden ausgeführt · neu geordnet/)
   await runPlan(c, 'Plan ausführen')
-  assert.equal(lastReply().line1, '✓ Plan ausführen: 3 von 4 Schritten · übersprungen: Smoke test · neu geordnet')
+  assert.equal(lastReply().line1, '✓ Leg los mit 3 von 4 Schritten · übersprungen: Smoke test · neu geordnet')
   await m.unmount()
 })
 
@@ -150,12 +150,12 @@ test('plan: unchanged plan has a plain line 1; all optional steps off disables R
   assert.match(m.container.querySelector('.huic-foot').textContent, /Switch on at least one step/)
   await click(m.container.querySelector('input[role="switch"]'))
   await runPlan(m.container, 'Go')
-  assert.equal(lastReply().line1, '✓ Run the plan: 1 of 2 steps · skipped: B')
+  assert.equal(lastReply().line1, '✓ Go ahead with 1 of 2 steps · skipped: B')
   await m.unmount()
   m = await mount(toolResult({ type: 'plan', title: 'One', steps: [{ title: 'Only step' }] }))
   assert.equal(m.container.querySelectorAll('[data-plan-focus="up"]').length, 0, 'no move buttons for a single step')
   await runPlan(m.container)
-  assert.equal(lastReply().line1, '✓ Run the plan: 1 of 1 steps')
+  assert.equal(lastReply().line1, '✓ Go ahead with the plan (1 step)')
   await m.unmount()
 })
 
@@ -340,7 +340,7 @@ test('calc: outputs recompute on every change; division by zero shows "–"; Sen
   assert.equal(buttonByText(c, 'Send').disabled, false)
   await click(buttonByText(c, 'Send'))
   const r = lastReply()
-  assert.equal(r.line1, '✓ Calculated: Monthly payment €3,181.97')
+  assert.equal(r.line1, '✓ Monthly payment: €3,181.97')
   assert.deepEqual(r.json.inputs, { amount: 300000, rate: 5, years: 10 })
   assert.deepEqual(r.json.outputs, [{ label: 'Monthly payment', value: 3181.97 }, { label: 'Total interest', value: 81836 }])
   // Locked: inputs disabled, values kept.
@@ -422,7 +422,7 @@ test('calc: segmented select, toggle, percent and German formats; draft restore'
   assert.match(c.textContent, /Trinkgeld wird auf alle verteilt\./)
   await click(buttonByText(c, 'Senden'))
   const r = lastReply()
-  assert.equal(r.line1, '✓ Berechnet: Pro Person 58,00 €')
+  assert.equal(r.line1, '✓ Pro Person: 58,00 €')
   assert.deepEqual(r.json.inputs, { total: 200.5, people: 4, tip: 0.15, roundup: 1 })
   assert.deepEqual(r.json.outputs, [{ label: 'Pro Person', value: 58 }, { label: 'Trinkgeld', value: 0.15 }, { label: 'Trinkgeld gesamt', value: 30.08 }])
   await m.unmount()
@@ -444,7 +444,7 @@ test('calc: number and integer formats, units, other currencies and the first ou
   assert.equal(heroText(c), '7.4 l')
   assert.deepEqual(rowText(c), ['Tins3', 'CostCHF\u00a0119.70', 'Bad–'])
   await click(buttonByText(c, 'Send'))
-  assert.equal(lastReply().line1, '✓ Calculated: Paint needed 7.4 l')
+  assert.equal(lastReply().line1, '✓ Paint needed: 7.4 l')
   assert.equal(lastReply().json.outputs[3].value, null)
   await m.unmount()
 })
@@ -491,7 +491,7 @@ test('plan: Run waits 4 s with Undo; Escape and Undo cancel, focus returns to Ru
     await click(buttonByText(c, 'Run plan'))
     await act(async () => mock.timers.tick(4000))
     assert.equal(testHost.submissions.length, 1)
-    assert.equal(lastReply().line1, '✓ Run the plan: 2 of 2 steps')
+    assert.equal(lastReply().line1, '✓ Go ahead with the plan (2 steps)')
     await m.unmount()
 
     const second = await mount(toolResult(card))

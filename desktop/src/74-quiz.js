@@ -5,13 +5,17 @@ Object.assign(STRINGS.en, {
   questionOf: 'Question {n} of {total}',
   quizResult: 'Result',
   seeResult: 'See result',
-  correctAnswer: 'Correct answer: {x}'
+  correctAnswer: 'Correct answer: {x}',
+  quizScoreWord: 'correct',
+  quizAllRight: 'All correct'
 })
 Object.assign(STRINGS.de, {
   questionOf: 'Frage {n} von {total}',
   quizResult: 'Ergebnis',
   seeResult: 'Ergebnis ansehen',
-  correctAnswer: 'Richtig: {x}'
+  correctAnswer: 'Richtig: {x}',
+  quizScoreWord: 'richtig',
+  quizAllRight: 'Alle richtig'
 })
 
 const QUIZ_CSS = `
@@ -126,7 +130,11 @@ function QuizCard({ card, sessionId, display, lang }) {
         className: 'huic-score', role: 'status',
         children: [
           jsx('span', { className: 'huic-score-big', 'aria-hidden': true, children: `${score}/${total}` }),
-          jsx('h4', { id: questionId, ref: headingRef, tabIndex: -1, className: 'huic-title', children: t(lang, 'score', { score, total }) })
+          // The big number already says "1/2": the heading adds the word, screen readers get the sentence.
+          jsxs('h4', { id: questionId, ref: headingRef, tabIndex: -1, className: 'huic-title', children: [
+            jsx('span', { className: 'huic-sr', children: t(lang, 'score', { score, total }) }),
+            jsx('span', { 'aria-hidden': true, children: t(lang, score === total ? 'quizAllRight' : 'quizScoreWord') })
+          ] })
         ]
       }),
       jsx('ul', {
@@ -183,7 +191,7 @@ function QuizCard({ card, sessionId, display, lang }) {
       children: [jsx('style', { children: KEYS_CSS + QUIZ_CSS }), bar, ...body]
     }),
     footer: ans.showActions ? jsx(Footer, {
-      hint: t(lang, hintKey, { keys: keyRange(q ? q.options.length : 0) }),
+      keys: t(lang, hintKey, { keys: keyRange(q ? q.options.length : 0) }),
       children: jsxs('span', { className: 'huic-foot-group', children: [
         index > 0 ? jsx(Btn, { onClick: () => update({ index: index - 1 }), children: t(lang, 'back') }) : null,
         inResult

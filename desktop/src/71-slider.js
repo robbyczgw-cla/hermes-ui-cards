@@ -1,5 +1,5 @@
-Object.assign(STRINGS.en, { keySlider: 'Type a value or drag · Enter send' })
-Object.assign(STRINGS.de, { keySlider: 'Wert eintippen oder ziehen · Enter senden' })
+Object.assign(STRINGS.en, { sliderHint: 'Drag or type a value' })
+Object.assign(STRINGS.de, { sliderHint: 'Ziehen oder Wert eintippen' })
 
 // Snap relative to min, just like the native range input, without float noise.
 function sliderInitialValue(card) {
@@ -116,7 +116,8 @@ function SliderCard({ card, sessionId, display, lang }) {
       })
     ],
     footer: ans.showActions ? jsx(Footer, {
-      hint: t(lang, 'keySlider'),
+      hint: t(lang, 'sliderHint'),
+      keys: t(lang, 'keySend'),
       children: jsx(Btn, {
         variant: 'primary', onClick: () => send(commit().n), children: card.submitLabel || t(lang, 'send')
       })

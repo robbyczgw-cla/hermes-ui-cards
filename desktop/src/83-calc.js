@@ -12,7 +12,7 @@ Object.assign(STRINGS.en, {
   calcNotPossible: 'Not possible with these values',
   calcFix: 'Fix the marked input to see the result',
   calcSent: 'Sent',
-  rCalc: 'Calculated: {x}'
+  rCalc: '{label}: {value}'
 })
 Object.assign(STRINGS.de, {
   calcSend: 'Senden',
@@ -23,7 +23,7 @@ Object.assign(STRINGS.de, {
   calcNotPossible: 'Mit diesen Werten nicht möglich',
   calcFix: 'Markierte Eingabe korrigieren, dann gibt es ein Ergebnis',
   calcSent: 'Gesendet',
-  rCalc: 'Berechnet: {x}'
+  rCalc: '{label}: {value}'
 })
 
 const CALC_CSS = `
@@ -448,5 +448,5 @@ REPLY_BUILDERS.calc = (card, answer, lang, data) => {
   const i = calcHeroIndexes(card)[0]
   const output = card.outputs[i]
   const value = answer.outputs[i]?.value
-  return { summary: t(lang, 'rCalc', { x: `${clip(output.label, 40)} ${calcShown(output, value, card, lang)}` }) }
+  return { summary: t(lang, 'rCalc', { label: clip(output.label, 40), value: calcShown(output, value, card, lang) }) }
 }

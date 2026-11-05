@@ -5,7 +5,8 @@ off) and as the Markdown file behind the Desktop attachment. See docs/protocol.m
 
 render_text() takes a card as returned by schema.validate_card() (ids assigned, defaults applied)
 and returns plain text without Markdown: a title or question line, the content, and as the last
-line one hint that tells the user how to answer by typing. It is a pure function, stdlib only,
+line one hint that tells the user how to answer by typing. Blank lines set the title and the hint
+apart, so it reads tidy in a chat bubble (Telegram, Discord) as well as in a terminal. It is a pure function, stdlib only,
 and never raises: if a renderer fails or the type is unknown, a generic text is returned.
 
 Chrome (labels and hints) is German when card["lang"] starts with "de", else English. The card's
@@ -35,6 +36,10 @@ _DE = {
     "low": "niedrig",
     "medium": "mittel",
     "high": "hoch",
+    "risk_low": "Geringes Risiko",
+    "risk_medium": "Mittleres Risiko",
+    "risk_high": "Hohes Risiko",
+    "steps": "Zubereitung",
 }
 _EN = {
     "recommended": "★ Recommended",
@@ -53,6 +58,10 @@ _EN = {
     "low": "low",
     "medium": "medium",
     "high": "high",
+    "risk_low": "Low risk",
+    "risk_medium": "Medium risk",
+    "risk_high": "High risk",
+    "steps": "Steps",
 }
 
 _WEEKDAYS = {
@@ -127,7 +136,9 @@ def _example(k: int, n: int) -> str:
 
 
 def _head(card: dict, *keys: str) -> list[str]:
-    return [_one(card[k]) for k in keys if card.get(k)]
+    """Title lines, then a blank line that sets them apart from the content."""
+    lines = [_one(card[k]) for k in keys if card.get(k)]
+    return lines + [""] if lines else lines
 
 
 def _hint_pick_many(n: int, lo, hi, L: _L) -> str:
@@ -163,7 +174,7 @@ def _choice(card: dict, L: _L) -> list[str]:
     else:
         hint = L(f"Reply with a number (1–{n}).", f"Antworte mit einer Zahl (1–{n}).")
     if card.get("allowOther"):
-        hint += L(" Or write your own.", " Oder schreib etwas Eigenes.")
+        hint += L(" You can also write your own.", " Du kannst auch etwas Eigenes schreiben.")
     return lines + [hint]
 
 
@@ -253,9 +264,9 @@ def _field_info(f: dict, L: _L) -> str:
         if "default" not in f and not f.get("required"):
             info += L(" (leave blank if unanswered)", " (leer lassen, falls unbeantwortet)")
     elif kind == "date":
-        info = L("Date (YYYY-MM-DD)", "Datum (JJJJ-MM-TT)")
+        info = L("Format: YYYY-MM-DD", "Format: JJJJ-MM-TT")
     elif kind == "time":
-        info = L("Time (HH:MM)", "Uhrzeit (HH:MM)")
+        info = L("Format: HH:MM", "Format: HH:MM")
     elif kind == "email":
         info = L("Email address", "E-Mail-Adresse")
     d = f.get("default")
@@ -289,8 +300,9 @@ def _confirm(card: dict, L: _L) -> list[str]:
         lines.append(f"{L['why']}: {_one(card['reason'])}")
     risk = card.get("risk")
     if isinstance(risk, dict) and risk.get("level"):
-        label = f"{L['risk']} ({L[risk['level']] if risk['level'] in ('low', 'medium', 'high') else _one(risk['level'])})"
-        lines.append(_join([label, _one(risk.get("text", ""))], ": "))
+        level = risk["level"]
+        label = L[f"risk_{level}"] if level in ("low", "medium", "high") else f"{L['risk']} ({_one(level)})"
+        lines.append(("⚠ " if level == "high" else "") + _join([label, _one(risk.get("text", ""))], ": "))
     if card.get("command"):
         lines.append(f"{L['command']}:")
         lines += _indent(_block(card["command"]), "  ")
@@ -401,11 +413,20 @@ def _schedule(card: dict, L: _L) -> list[str]:
     return lines + [hint]
 
 
+def _spaced(items, has_detail) -> bool:
+    """Items with indented detail lines get a blank line between them (easier to scan on a phone)."""
+    return any(has_detail(it) for it in items or [])
+
+
 def _steps(card: dict, L: _L) -> list[str]:
     lines = _head(card, "title")
-    for i, st in enumerate(card.get("steps") or [], start=1):
+    steps = card.get("steps") or []
+    spaced = _spaced(steps, lambda st: st.get("body") or st.get("command"))
+    for i, st in enumerate(steps, start=1):
         prefix = f"{i}. "
         pad = " " * len(prefix)
+        if spaced and i > 1:
+            lines.append("")
         lines.append(prefix + _one(st.get("title", "")))
         if st.get("body"):
             lines += _indent(_block(st["body"]), pad)
@@ -420,6 +441,8 @@ def _quiz(card: dict, L: _L) -> list[str]:
     lines = _head(card, "title")
     questions = card.get("questions") or []
     for i, q in enumerate(questions, start=1):
+        if i > 1:
+            lines.append("")
         lines.append(f"{i}. {_one(q.get('question', ''))}")
         for j, o in enumerate(q.get("options") or []):
             lines.append(f"   {chr(ord('A') + j)}) {_one(o)}")
@@ -428,30 +451,39 @@ def _quiz(card: dict, L: _L) -> list[str]:
         letter = "A" if i == 1 else ("C" if len(q.get("options") or []) >= 3 else "B")
         ex.append(f"{i}{letter}")
     ex_s = " ".join(ex) or "1A"
-    return lines + [L(f"Reply with your answers, e.g. {ex_s}.", f"Antworte mit deinen Antworten, z. B. {ex_s}.")]
+    return lines + [L(f"Reply with your answers, e.g. {ex_s}.", f"Antworte mit deinen Lösungen, z. B. {ex_s}.")]
 
 
 def _plan(card, L):
     lines = _head(card, 'title', 'summary')
+    spaced = _spaced(card['steps'], lambda st: st.get('detail') or st.get('command'))
     for i, step in enumerate(card['steps'], 1):
-        tags = [L('optional', 'optional') if step.get('optional') else '', L[step['risk']] if step.get('risk') else '']
-        lines.append(f"{i}. {_one(step['title'])}" + (f" ({', '.join(x for x in tags if x)})" if any(tags) else '') + (L(f' (off — reply \"include {i}\" to run it)', f' (aus — antworte mit \"Schritt {i} einschließen\", um ihn auszuführen)') if step.get('off') else ''))
+        if spaced and i > 1: lines.append('')
+        tags = [L('optional', 'optional') if step.get('optional') else '', L[f"risk_{step['risk']}"].lower() if step.get('risk') in ('low', 'medium', 'high') else '']
+        lines.append(f"{i}. {_one(step['title'])}" + (f" ({' · '.join(x for x in tags if x)})" if any(tags) else '') + (L(f' (off — reply \"include {i}\" to run it)', f' (aus — antworte mit \"Schritt {i} einschließen\", um ihn auszuführen)') if step.get('off') else ''))
         for key in ('detail', 'command'):
             if step.get(key): lines += _indent(_block(step[key]), '   ')
     return lines + [L('Reply "go", or list the step numbers to skip / a new order, e.g. "skip 3" or "2, 1, 3".', 'Antworte mit "Los", den zu überspringenden Schritten oder einer neuen Reihenfolge, z. B. "Schritt 3 überspringen" oder "2, 1, 3".')]
 
 def _review(card, L):
     lines = _head(card, 'title', 'summary')
+    spaced = _spaced(card['items'], lambda it: it.get('preview'))
     for i, item in enumerate(card['items'], 1):
+        if spaced and i > 1: lines.append('')
         lines.append(f"{i}. " + _join([_one(item['title']), _one(item.get('tag', '')), _one(item.get('detail', ''))]))
         if item.get('preview'): lines += _indent(_block(item['preview']), '   ')
     return lines + [L('Reply with the numbers to drop, e.g. "drop 2, 5" (everything else is kept).', 'Antworte mit den Nummern zum Verwerfen, z. B. "2, 5 verwerfen" (alles andere bleibt).')]
 
 def _decision(card, L):
     lines = _head(card, 'title', 'note'); criteria = card['criteria']; total = sum(c['weight'] for c in criteria)
+    scores = [sum(c['weight'] * option['scores'][c['id']] for c in criteria) / total if total else None for option in card['options']]
+    shown = [round(s, 1) if s is not None else None for s in scores]
+    top = max((s for s in shown if s is not None), default=None)
+    lead = shown.count(top) == 1 and top is not None  # a tie gets no star
     for i, option in enumerate(card['options'], 1):
-        score = sum(c['weight'] * option['scores'][c['id']] for c in criteria) / total if total else None
-        lines.append(f"{i}. {_one(option['label'])}: " + (f'{score:.1f}'.replace('.', ',') if L.de and score is not None else f'{score:.1f}' if score is not None else '–'))
+        score = scores[i - 1]
+        lines.append(f"{i}. {_one(option['label'])}: " + (f'{score:.1f}'.replace('.', ',') if L.de and score is not None else f'{score:.1f}' if score is not None else '–') + (' ★' if lead and shown[i - 1] == top else ''))
+    lines.append('')
     lines.append(L('Weights: ', 'Gewichte: ') + ', '.join(f"{_one(c['label'])} {_num(c['weight'], L)}" for c in criteria))
     return lines + [L('Reply with changed weights or a pick.', 'Antworte mit geänderten Gewichten oder deiner Wahl.')]
 
@@ -489,6 +521,7 @@ def _calc(card, L):
     lines = _head(card, 'title', 'note'); values = {x['name']: x['default'] for x in card['inputs']}
     for item in card['inputs']:
         lines.append(f"{_one(item['label'])} ({item['name']}): {_with_unit(item['default'], item.get('unit'), L)}")
+    lines.append('')
     for output in card['outputs']:
         val = calc_eval(calc_parse(output['expr'], list(values)), values)
         shown = calc_format(val, output, card, 'de' if L.de else 'en')
@@ -502,23 +535,50 @@ def _rank(card, L):
     for i, item in enumerate(card['items'], 1): lines.append(f"{i}. " + _join([_one(item['label']), _one(item.get('detail', ''))]))
     return lines + [L('Reply with the numbers in your order, e.g. "3, 1, 2".', 'Antworte mit den Nummern in deiner Reihenfolge, z. B. "3, 1, 2".')]
 
+_FRACTIONS = {0.125: '⅛', 0.25: '¼', 0.375: '⅜', 0.5: '½', 0.625: '⅝', 0.75: '¾', 0.875: '⅞'}
+
+
+def _qty(qty, unit, L: _L) -> str:
+    """Like the Desktop card: kitchen fractions (1½ tsp), decimals for g/ml/mg."""
+    if isinstance(qty, (int, float)) and not isinstance(qty, bool) and qty > 0 and not re.fullmatch(r"(?i)mg|g|ml", unit or ""):
+        whole = int(qty + 1e-9)
+        frac = round(qty - whole, 3)
+        if frac in _FRACTIONS:
+            return ((str(whole) if whole else "") + _FRACTIONS[frac]) + (f" {unit}" if unit else "")
+    return _with_unit(qty, unit, L)
+
+
+def _minutes(minutes, L: _L) -> str:
+    """45 min, 2 h, 2 h 30 min (Desktop card style)."""
+    unit = L("min", "Min.")
+    if not isinstance(minutes, int) or minutes < 60:
+        return f"{minutes} {unit}"
+    h, m = divmod(minutes, 60)
+    return f"{h} h {m} {unit}" if m else f"{h} h"
+
+
 def _recipe(card, L):
-    lines = _head(card, 'title'); lines.append(L(f"Servings: {card['servings']}", f"Portionen: {card['servings']}"))
+    servings = card['servings']
+    lines = _head(card, 'title')
+    lines.append(L(f"For {servings} serving" + ("" if servings == 1 else "s"), f"Für {servings} Portion" + ("" if servings == 1 else "en")))
     groups = {}
     for item in card['ingredients']: groups.setdefault(item.get('group', ''), []).append(item)
     for group, items in groups.items():
+        lines.append("")
         if group: lines.append(_one(group))
         for item in items:
-            amount = _with_unit(item['qty'], item.get('unit'), L) if 'qty' in item else _one(item.get('unit', ''))
-            lines.append(_join([_join([amount, _one(item['item'])], ' '), _one(item.get('note', ''))]))
+            amount = _qty(item['qty'], item.get('unit'), L) if 'qty' in item else _one(item.get('unit', ''))
+            lines.append("• " + _join([_join([amount, _one(item['item'])], ' '), _one(item.get('note', ''))]))
+    if card.get('steps'):
+        lines += ["", L["steps"]]
     for i, step in enumerate(card.get('steps', []), 1):
-        lines.append(f"{i}. {_one(step['text'])}" + (L(f" ({step['minutes']} min)", f" ({step['minutes']} Min.)") if 'minutes' in step else ''))
+        lines.append(f"{i}. {_one(step['text'])}" + (f" ({_minutes(step['minutes'], L)})" if 'minutes' in step else ''))
     return lines + [L('Reply with the ingredients you are missing, or a number of servings.', 'Antworte mit den fehlenden Zutaten oder einer Portionszahl.')]
 
 def _flashcards(card, L):
     lines = _head(card, 'title')
     for i, item in enumerate(card['cards'], 1): lines.append(f"{i}. {_one(item['front'])}")
-    return lines + [L('Reply with your answers, or "show 3" to see a back.', 'Antworte mit deinen Antworten oder mit "3 zeigen", um eine Rückseite zu sehen.')]
+    return lines + [L('Reply with what each card means, or "show 3" to see the back of card 3.', 'Antworte mit der Bedeutung jeder Karte oder mit "3 zeigen", um die Rückseite von Karte 3 zu sehen.')]
 
 
 _RENDERERS = {
@@ -555,4 +615,17 @@ def render_text(card: dict) -> str:
             lines = _generic(card, _L(card if isinstance(card, dict) else {}))
         except Exception:
             lines = ["Reply with your answer."]
-    return "\n".join(lines)
+    return _layout(lines)
+
+
+def _layout(lines: list[str]) -> str:
+    """One blank line at most between blocks, none at the edges, and one before the hint."""
+    out: list[str] = []
+    for line in lines:
+        if line or (out and out[-1]):
+            out.append(line)
+    while out and not out[-1]:
+        out.pop()
+    if len(out) > 1 and out[-2]:
+        out.insert(-1, "")
+    return "\n".join(out)

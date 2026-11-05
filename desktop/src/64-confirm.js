@@ -8,7 +8,7 @@ const RISK_BARS = { low: 1, medium: 2, high: 3 }
 Object.assign(STRINGS.en, {
   confirmApprovalHint: 'Hermes may still ask for its own approval before running it.',
   confirmCommand: 'Command',
-  confirmChangeHint: 'Ctrl/⌘+Enter to send',
+  confirmChangeHint: '[Ctrl]/[⌘]+[Enter] to send',
   confirmApproved: 'Approved', confirmDeclined: 'Declined', confirmChanged: 'Change requested',
   confirmChangeExample: 'For example: keep the last 90 days',
   confirmPending: 'Approved · sending in {s} s', confirmUndo: 'Undo'
@@ -16,7 +16,7 @@ Object.assign(STRINGS.en, {
 Object.assign(STRINGS.de, {
   confirmApprovalHint: 'Hermes fragt vor dem Ausführen möglicherweise noch nach einer eigenen Freigabe.',
   confirmCommand: 'Befehl',
-  confirmChangeHint: 'Mit Strg/⌘+Enter senden',
+  confirmChangeHint: '[Strg]/[⌘]+[Enter] zum Senden',
   confirmApproved: 'Freigegeben', confirmDeclined: 'Abgelehnt', confirmChanged: 'Änderung angefragt',
   confirmChangeExample: 'Zum Beispiel: die letzten 90 Tage behalten',
   confirmPending: 'Freigegeben · wird in {s} s gesendet', confirmUndo: 'Rückgängig'
@@ -193,7 +193,7 @@ function ConfirmCard({ card, sessionId, display, lang }) {
       }
     }),
     jsxs('div', { className: 'huic-confirm-edit-row', children: [
-      jsx('span', { id: changeId, className: 'huic-help', children: t(lang, 'confirmChangeHint') }),
+      jsx(KeyHint, { id: changeId, text: t(lang, 'confirmChangeHint'), className: 'huic-help' }),
       jsx(Btn, { variant: 'ghost', onClick: () => setChanging(false), children: t(lang, 'cancel') }),
       jsx(Btn, { variant: 'primary', disabled: !change.trim(), onClick: sendChange, children: t(lang, 'sendChange') })
     ] })

@@ -55,22 +55,22 @@ the card (they are saved as a draft) and send nothing:
 
 | Type | Answer fields | Line 1 (English / German) |
 |---|---|---|
-| plan | `steps: [{id, title, included, note?}]`; optional steps with `off: true` start excluded | `✓ Run the plan: 5 of 6 steps` / `✓ Plan ausführen: 5 von 6 Schritten` |
+| plan | `steps: [{id, title, included, note?}]`; optional steps with `off: true` start excluded | `✓ Go ahead with 5 of 6 steps · skipped: X` · `✓ Go ahead with the plan (6 steps)` / `✓ Leg los mit 5 von 6 Schritten · übersprungen: X` · `✓ Leg los mit dem Plan (6 Schritte)` |
 | review | `keep`, `drop`, `undecided`: ID arrays; `notes`, `titles?`: ID maps | `✓ Review done: keep 5, drop 3` / `✓ Durchgesehen: 5 behalten, 3 verwerfen` |
-| decision | `weights`, `ranking: [{id, label, score}]`, `picked?` | `✓ Decision: A (8.4) ahead of B (7.9)` / `✓ Entscheidung: …` |
-| calc | `inputs: {name: value}`, `outputs: [{label, value}]` | `✓ Calculated: Monthly rate 1,234.56 €` / `✓ Berechnet: …` |
-| rank | `order: [id]`, `labels: [label]` | `✓ Ranked: A > B > C` / `✓ Reihenfolge: A > B > C` |
-| recipe | `servings`, `missing: [{id, item, qty?, unit?}]`, `have: [id]` | `✓ Shopping list for 6: …` / `✓ Einkaufsliste für 6: …` |
+| decision | `weights`, `ranking: [{id, label, score}]`, `picked?` | `✓ Top pick: A (8.4), ahead of B (7.9)` · `✓ Chose: A (8.4)` / `✓ Vorn: A (8,4), vor B (7,9)` · `✓ Gewählt: …` |
+| calc | `inputs: {name: value}`, `outputs: [{label, value}]` | `✓ Monthly rate: €1,234.56` / `✓ Monatliche Rate: 1.234,56 €` |
+| rank | `order: [id]`, `labels: [label]` | `✓ My order: 1. A, 2. B, 3. C` / `✓ Meine Reihenfolge: 1. A, 2. B, 3. C` |
+| recipe | `servings`, `missing: [{id, item, qty?, unit?}]`, `have: [id]` | `✓ Shopping list for 6 servings: …` / `✓ Einkaufsliste für 6 Portionen: …` |
 | flashcards | `known: [index]`, `again: [index]` (0-based), `rounds`, `practise?: [front]` (fronts of the again cards) | `✓ Flashcards: 8 of 10 known` / `✓ Karteikarten: 8 von 10 gewusst` |
 | choice | `selected: [optionId]`, `labels: [label]`, `other?: string` | `✓ Chose: A, B` / `✓ Gewählt: A, B` |
-| checklist | `done_ids: [itemId]`, `open_ids: [itemId]`, `done: [text]`, `open: [text]` | `✓ Checklist done: 3 of 5 checked. Still open: X, Y` / `✓ Checkliste fertig: 3 von 5 erledigt. Offen: X, Y` |
-| compare | `selected: columnId`, `label` | `✓ Picked: Pixel 10` / `✓ Gewählt: Pixel 10` |
-| form | `values: {name: value}`; an untouched toggle without a default is `null` and omitted from line 1; required toggles without a default must be answered | `✓ Form sent: Name: Anna, Date: 2026-11-12` / `✓ Formular gesendet: …` |
+| checklist | `done_ids: [itemId]`, `open_ids: [itemId]`, `done: [text]`, `open: [text]` | `✓ Checked off 3 of 5. Still open: X, Y` / `✓ 3 von 5 abgehakt. Noch offen: X, Y` |
+| compare | `selected: columnId`, `label` | `✓ Chose: Pixel 10` / `✓ Gewählt: Pixel 10` |
+| form | `values: {name: value}`; an untouched toggle without a default is `null` and omitted from line 1; required toggles without a default must be answered | `✓ Book a table — Name: Anna · Date: Thu 12 Nov 2026` (the title, when there is one) / `✓ Tisch reservieren – Name: Anna · Datum: Do., 12. Nov. 2026` |
 | confirm | `decision: "yes" \| "no" \| "change"`, `change?: string` | `✓ Yes, go ahead: <title>` · `✗ No, don't: <title>` · `✎ Change: <text>` / `✓ Ja, mach das: …` · `✗ Nein, lieber nicht: …` · `✎ Ändern: …` |
 | rating | `value`, `scale`, `comment?` | `✓ Rated 4 of 5` / `✓ Bewertung: 4 von 5` |
 | slider | `value`, `unit?` | `✓ Chose: 300 €` / `✓ Gewählt: 300 €` |
-| schedule | `selected: [{id, start, end?, label?}]` or `none: true` | `✓ Slot: Thu 12 Nov, 14:00–15:00` · `✗ None of these slots fit` / `✓ Termin: …` · `✗ Keiner der Termine passt` |
-| steps | `completed: true, steps: n` or `stuck: stepNumber, title, note?` (up to 300 code points) | `✓ Done with all 5 steps` · `⚠ Stuck at step 3: <title>` / `✓ Alle 5 Schritte erledigt` · `⚠ Hänge bei Schritt 3: <title>` |
+| schedule | `selected: [{id, start, end?, label?}]` or `none: true` | `✓ Works for me: Thu 12 Nov, 14:00–15:00` · `✗ None of these times work for me` / `✓ Passt mir: …` · `✗ Keiner der Termine passt mir` |
+| steps | `completed: true, steps: n` or `stuck: stepNumber, title, note?` (up to 300 code points) | `✓ Done with all 5 steps` · `⚠ Stuck at step 3: <title>` / `✓ Alle 5 Schritte erledigt` · `⚠ Komme bei Schritt 3 nicht weiter: <title>` |
 | quiz | `score`, `total`, `answers: [{q, chosen, correct}]` | `✓ Quiz: 4 of 5 correct` / `✓ Quiz: 4 von 5 richtig` |
 
 A message is capped at 4000 Unicode code points, including JSON escaping. Only the
@@ -104,22 +104,27 @@ most 300 code points, email 200, textarea 1000, Other 300, and Change and rating
 ## 4. Text version (CLI, TUI, messaging)
 
 Plain text, no Markdown, so it reads the same in a raw terminal and on every messaging platform.
-English chrome, German when
+Blank lines set the title and the closing "Reply …" hint apart; items with detail lines (steps,
+quiz questions, plan steps, review items) get a blank line between them. English chrome, German when
 `card.lang` starts with `de`. Examples:
 
 ```
 What are you in the mood for?
+
 1. 🏙️ City trip – Museums, cafés, lots of walking
 2. 🥾 Hiking – Fresh air, little programme
 3. ♨️ Spa – Thermal baths, sauna
+
 Reply with a number (1–3).
 ```
 
 ```
 Delete 14 old log files?
+
 Action: rm ~/logs/*.log.old
 Why: they use 2.3 GB
-Risk (medium): the files can't be restored
+Medium risk: the files can't be restored
+
 Reply yes, no, or what to change.
 ```
 

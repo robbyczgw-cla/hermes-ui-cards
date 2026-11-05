@@ -6,7 +6,7 @@ Object.assign(STRINGS.en, {
 Object.assign(STRINGS.de, {
   stepsMap: 'Schritte der Anleitung', stepsWhatHappened: 'Was ist passiert?', stepsOptional: 'Optional',
   stepsNotePlaceholder: 'Sag Hermes, wo du festhängst',
-  stepsSentDone: 'Gesendet: {label}', stepsSentStuck: 'Gesendet: hängt bei Schritt {n}'
+  stepsSentDone: 'Gesendet: {label}', stepsSentStuck: 'Gesendet: komme bei Schritt {n} nicht weiter'
 })
 
 // A calm guide: one connected track (the progress bar is its line), the current step as

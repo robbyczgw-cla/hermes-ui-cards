@@ -423,7 +423,7 @@ test('a lookup that never answers ends at its timeout with an explicit notice an
   assert.ok(buttonByText(view.container, 'Send') === undefined, 'the gate holds up to the request timeout')
   await timers.advance(9600)
   const notice = view.container.textContent
-  assert.match(notice, /Couldn't check whether this card was already answered elsewhere/)
+  assert.match(notice, /Couldn't check whether you already answered this elsewhere/)
   assert.ok(buttonByText(view.container, 'Check again'), 'the user can ask again')
   await click(view.container.querySelectorAll('[role="radio"]')[2])
   assert.ok(buttonByText(view.container, 'Send')?.disabled === false, 'offline, the card still works')

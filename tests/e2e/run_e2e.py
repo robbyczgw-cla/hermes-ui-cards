@@ -176,7 +176,7 @@ def main() -> None:
         if sent["sessionId"] != sid:
             fail(f"click went to session {sent['sessionId']}, expected {sid}")
         lines = sent["text"].split("\n")
-        expected = "✓ Checklist done: 2 of 4 checked. Still open: JR Pass voucher, Power adapter (type A)"
+        expected = "✓ Checked off 2 of 4. Still open: JR Pass voucher, Power adapter (type A)"
         if lines[0] != expected:
             fail(f"click: line 1 is {lines[0]!r}")
         ok(f"click: card sent {lines[0]!r}")

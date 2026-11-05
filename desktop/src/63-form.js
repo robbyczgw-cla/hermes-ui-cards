@@ -159,7 +159,8 @@ function FormField({ field, value, error, disabled, lang, onChange, baseId, stat
         value,
         onChange: e => onChange(e.target.value),
         children: [
-          jsx('option', { value: '', children: field.placeholder || t(lang, 'formChoose') }),
+          // After sending, an empty choice reads as what it is: not set (not a prompt to choose).
+          jsx('option', { value: '', children: disabled && !value ? t(lang, 'formNotSet') : field.placeholder || t(lang, 'formChoose') }),
           ...field.options.map(o => jsx('option', { value: o, children: o }, o))
         ]
       })

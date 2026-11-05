@@ -1,13 +1,13 @@
 // One answer per card: send it into the card's own chat, remember it, never send twice.
 
 Object.assign(STRINGS.en, {
-  checkingAnswer: 'Checking whether this card was already answered…',
-  checkFailed: "Couldn't check whether this card was already answered elsewhere. Answer here only if you haven't yet.",
+  checkingAnswer: 'Checking whether you already answered this…',
+  checkFailed: "Couldn't check whether you already answered this elsewhere. Only answer here if you haven't yet.",
   checkAgain: 'Check again'
 })
 Object.assign(STRINGS.de, {
-  checkingAnswer: 'Prüfe, ob diese Karte schon beantwortet wurde …',
-  checkFailed: 'Konnte nicht prüfen, ob diese Karte anderswo schon beantwortet wurde. Antworte hier nur, wenn du es noch nicht getan hast.',
+  checkingAnswer: 'Prüfe, ob du das schon beantwortet hast …',
+  checkFailed: 'Konnte nicht prüfen, ob du das anderswo schon beantwortet hast. Antworte hier nur, falls du es noch nicht getan hast.',
   checkAgain: 'Erneut prüfen'
 })
 

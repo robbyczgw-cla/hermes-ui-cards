@@ -137,7 +137,7 @@ test('schedule: day groups, unavailable slots disabled, arrows skip them, exact 
   assert.equal(radios[2].getAttribute('aria-checked'), 'true')
   await key(radios[2], 'ArrowUp')
   await click(buttonByText(m.container, 'Send'))
-  assertReply(result, '✓ Slot: Thu 12 Nov, 14:00–15:00 (Afternoon)', {
+  assertReply(result, '✓ Works for me: Thu 12 Nov, 14:00–15:00 (Afternoon)', {
     selected: [{ id: 's1', start: '2026-11-12T14:00', end: '2026-11-12T15:00', label: 'Afternoon' }]
   })
   assert.ok([...radios].every(r => r.disabled))
@@ -158,7 +158,7 @@ test('schedule: multiple slots use checkboxes and can be toggled', async t => {
   assert.equal(boxes[0].getAttribute('aria-checked'), 'false')
   await click(boxes[0])
   await click(buttonByText(container, 'Send'))
-  assertReply(result, '✓ Slots: Thu 12 Nov, 14:00–15:00 (Afternoon); Fri 13 Nov, 10:00', {
+  assertReply(result, '✓ These work for me: Thu 12 Nov, 14:00–15:00 (Afternoon); Fri 13 Nov, 10:00', {
     selected: [
       { id: 's1', start: '2026-11-12T14:00', end: '2026-11-12T15:00', label: 'Afternoon' },
       { id: 's3', start: '2026-11-13T10:00' }
@@ -172,12 +172,12 @@ test('schedule: none fits sends none:true and restores a locked empty selection'
   const m = await render(t, result, { registration })
   assert.ok([...m.container.querySelectorAll('[role="radio"]')].every(r => r.disabled))
   await click(buttonByText(m.container, 'None fits'))
-  assertReply(result, '✗ None of these slots fit', { none: true })
+  assertReply(result, '✗ None of these times work for me', { none: true })
   await m.unmount()
   const again = await render(t, result, { registration })
   assert.ok((again.container.querySelector('.huic-foot')) === (null))
   assert.ok([...again.container.querySelectorAll('[role="radio"]')].every(r => r.getAttribute('aria-checked') === 'false'))
-  assert.match(again.container.textContent, /Your answer: None of these slots fit/)
+  assert.match(again.container.textContent, /Your answer: None of these times work for me/)
 })
 
 test('schedule: day grouping uses the card timezone for offset timestamps', async t => {

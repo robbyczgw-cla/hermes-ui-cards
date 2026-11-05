@@ -62,19 +62,19 @@ ALL = {
 
 def test_protocol_choice_example_exactly():
     assert text(CHOICE) == (
-        "What are you in the mood for?\n"
+        "What are you in the mood for?\n\n"
         "1. 🏙️ City trip – Museums, cafés, lots of walking\n"
         "2. 🥾 Hiking – Fresh air, little programme\n"
-        "3. ♨️ Spa – Thermal baths, sauna\n"
+        "3. ♨️ Spa – Thermal baths, sauna\n\n"
         "Reply with a number (1–3).")
 
 
 def test_protocol_confirm_example_exactly():
     assert text(CONFIRM) == (
-        "Delete 14 old log files?\n"
+        "Delete 14 old log files?\n\n"
         "Action: rm ~/logs/*.log.old\n"
         "Why: they use 2.3 GB\n"
-        "Risk (medium): the files can't be restored\n"
+        "Medium risk: the files can't be restored\n\n"
         "Reply yes, no, or what to change.")
 
 
@@ -128,8 +128,8 @@ def test_every_type_default_card_never_empty(ctype):
 def test_german_umlauts_and_wording():
     out = text(german(ALL["steps"]))
     assert out.endswith('Antworte mit "fertig", wenn du durch bist, oder mit der Nummer des Schritts, bei dem du hängst.')
-    assert text(german(CONFIRM)).split("\n")[1:4] == [
-        "Aktion: rm ~/logs/*.log.old", "Warum: they use 2.3 GB", "Risiko (mittel): the files can't be restored"]
+    assert text(german(CONFIRM)).split("\n")[2:5] == [
+        "Aktion: rm ~/logs/*.log.old", "Warum: they use 2.3 GB", "Mittleres Risiko: the files can't be restored"]
     assert text(german(CHOICE)).endswith("Antworte mit einer Zahl (1–3).")
     assert "★ Empfehlung" in text(german(ALL["compare"]))
     assert "Zeitzone: Europe/Vienna" in text(german(ALL["schedule"]))
@@ -162,10 +162,10 @@ def test_choice_multiple_example_fits_two_options():
 
 def test_choice_allow_other():
     single = {**CHOICE, "allowOther": True}
-    assert text(single).endswith("Reply with a number (1–3). Or write your own.")
-    assert text(german(single)).endswith("Antworte mit einer Zahl (1–3). Oder schreib etwas Eigenes.")
+    assert text(single).endswith("Reply with a number (1–3). You can also write your own.")
+    assert text(german(single)).endswith("Antworte mit einer Zahl (1–3). Du kannst auch etwas Eigenes schreiben.")
     multi = {**CHOICE, "allowOther": True, "multiple": True}
-    assert text(multi).endswith("e.g. 1, 3. Or write your own.")
+    assert text(multi).endswith("e.g. 1, 3. You can also write your own.")
 
 
 def test_choice_collapses_newlines_and_keeps_long_text():
@@ -191,13 +191,14 @@ def test_checklist_marks_and_categories():
         "",
         "Beach",
         "☐ 4. Sunscreen",
+        "",
         "Reply with the numbers you have done, e.g. 1, 4.",
     ]
 
 
 def test_checklist_without_categories_is_flat():
     out = text({"type": "checklist", "items": [{"text": "A"}, {"text": "B", "checked": True}]})
-    assert out == "☐ 1. A\n☑ 2. B\nReply with the numbers you have done, e.g. 1, 2."
+    assert out == "☐ 1. A\n☑ 2. B\n\nReply with the numbers you have done, e.g. 1, 2."
 
 
 def test_compare_blocks():
@@ -217,19 +218,20 @@ def test_compare_blocks():
         "   Price: 749",
         "   5G: –",
         "   + Bright screen",
+        "",
         "Reply with the number of your pick (1–2).",
     ])
 
 
 def test_form_fields():
     out = text(ALL["form"]).split("\n")
-    assert out[0:2] == ["Booking", "Who is coming?"]
+    assert out[0:3] == ["Booking", "Who is coming?", ""]
     assert "1. Name (required) – As on your ID" in out
     assert "   Choose one: S, M, L · Default: M" in out
     assert "   Number from 0 to 200 kg" in out
     assert "   yes or no · Default: no" in out
-    assert "   Date (YYYY-MM-DD)" in out
-    assert "   Time (HH:MM)" in out
+    assert "   Format: YYYY-MM-DD" in out
+    assert "   Format: HH:MM" in out
     assert out[-1] == 'Reply with your answers, one per line, e.g. "1: …"'
 
 
@@ -238,13 +240,15 @@ def test_confirm_command_and_details_and_no_change():
                 "details": [{"label": "Files", "value": "14"}]})
     assert out.split("\n") == [
         "Delete 14 old log files?",
+        "",
         "Action: rm ~/logs/*.log.old",
         "Why: they use 2.3 GB",
-        "Risk (medium): the files can't be restored",
+        "Medium risk: the files can't be restored",
         "Command:",
         "  rm -rf a",
         "    b",
         "Files: 14",
+        "",
         "Reply yes or no.",
     ]
     assert text(german({**CONFIRM, "allowChange": False})).endswith("Antworte mit Ja oder Nein.")
@@ -252,10 +256,10 @@ def test_confirm_command_and_details_and_no_change():
 
 def test_rating_and_slider():
     assert text(ALL["rating"]) == (
-        "How was it?\nScale: 1 (bad) – 5 (great)\nReply with a number from 1 to 5, optionally followed by a comment.")
+        "How was it?\n\nScale: 1 (bad) – 5 (great)\n\nReply with a number from 1 to 5, optionally followed by a comment.")
     assert text(ALL["slider"]) == "\n".join([
-        "Budget?", "Range: 0 € (tight) – 1000 € (generous), step 50", "Default: 300 €",
-        "Reply with a number from 0 € to 1000 €."])
+        "Budget?", "", "Range: 0 € (tight) – 1000 € (generous), step 50", "Default: 300 €",
+        "", "Reply with a number from 0 € to 1000 €."])
     assert text({"type": "rating", "question": "Q?", "scale": 10}).endswith("Reply with a number from 1 to 10.")
 
 
@@ -263,15 +267,17 @@ def test_schedule_format_and_unavailable_slots():
     out = text(ALL["schedule"]).split("\n")
     assert out == [
         "Meeting",
+        "",
         "Time zone: Europe/Vienna",
         "1. Thu 12 Nov 2026, 14:00–15:00 – Afternoon",
         "✗ Fri 13 Nov 2026, 09:00 (not available)",
         "2. None fits",
+        "",
         "Reply with a number (1–2).",
     ]
     de = text(german(ALL["schedule"])).split("\n")
-    assert de[2] == "1. Do. 12. Nov. 2026, 14:00–15:00 – Afternoon"
-    assert de[3] == "✗ Fr. 13. Nov. 2026, 09:00 (nicht verfügbar)"
+    assert de[3] == "1. Do. 12. Nov. 2026, 14:00–15:00 – Afternoon"
+    assert de[4] == "✗ Fr. 13. Nov. 2026, 09:00 (nicht verfügbar)"
 
 
 def test_schedule_all_unavailable_and_multiday_and_offset():
@@ -288,11 +294,14 @@ def test_steps_numbering_and_indent():
     out = text(ALL["steps"]).split("\n")
     assert out == [
         "Setup",
+        "",
         "1. Install",
         "   Download it.",
         "   Run the installer.",
         "     pip install x",
+        "",
         "2. Start",
+        "",
         'Reply "done" when finished, or the number of the step where you got stuck.',
     ]
 
@@ -301,13 +310,16 @@ def test_quiz_hides_answers_and_explanations():
     out = text(ALL["quiz"])
     assert out == "\n".join([
         "Capitals",
+        "",
         "1. Capital of France?",
         "   A) Paris",
         "   B) Rome",
         "   C) Oslo",
+        "",
         "2. Capital of Italy?",
         "   A) Bern",
         "   B) Rome",
+        "",
         "Reply with your answers, e.g. 1A 2B.",
     ])
     assert "since forever" not in out and "✓" not in out and "correct" not in out.lower()
@@ -315,7 +327,7 @@ def test_quiz_hides_answers_and_explanations():
 
 
 def test_unknown_type_and_garbage_never_raise():
-    assert render_text({"type": "hologram", "title": "T", "question": "Q?"}) == "T\nQ?\nReply with your answer."
+    assert render_text({"type": "hologram", "title": "T", "question": "Q?"}) == "T\nQ?\n\nReply with your answer."
     assert render_text({"type": "hologram", "lang": "de"}) == "Schreib deine Antwort."
     for junk in (None, {}, [], "x", 5, {"type": "choice"}, {"type": "schedule", "slots": [{"start": "bad"}]},
                  {"type": "quiz", "questions": None}, {"type": "form", "fields": [{"kind": "number"}]}):

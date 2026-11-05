@@ -53,7 +53,8 @@ ${HUIC_RELATIVE}{.huic{--huic-on-accent:${huicOnColor('var(--huic-accent)')};--h
 .huic-body{padding:12px var(--huic-pad) var(--huic-pad);display:flex;flex-direction:column;gap:12px}
 .huic-foot{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:flex-end;padding:12px var(--huic-pad);border-top:1px solid var(--huic-line)}
 .huic-foot-group{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-left:auto;max-width:100%}
-.huic-hint{margin-right:auto;color:var(--ui-text-tertiary);font-size:12px;line-height:16px;font-variant-numeric:tabular-nums}
+.huic-hint{margin-right:auto;color:var(--ui-text-tertiary);font-size:12px;line-height:18px;font-variant-numeric:tabular-nums}
+.huic .huic-kbd{display:inline-block;min-width:18px;margin:0 1px;padding:0 4px;border:1px solid var(--huic-line-strong);border-bottom-width:2px;border-radius:4px;background:color-mix(in srgb,var(--ui-bg-quaternary) 55%,transparent);color:var(--ui-text-secondary);font:inherit;font-size:10.5px;font-weight:500;line-height:14px;text-align:center;vertical-align:1px;white-space:nowrap}
 .huic-opt{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;padding:10px 12px;border-radius:var(--huic-r-md);border:1px solid var(--huic-line);background:transparent;color:inherit;cursor:pointer;font:inherit;transition:background .15s,border-color .15s,transform .08s}
 .huic-opt:hover:not([disabled]){background:var(--ui-row-hover-background,var(--ui-control-hover-background));border-color:var(--huic-line-strong)}
 .huic-opt:active:not([disabled]){transform:scale(.995)}
@@ -128,7 +129,10 @@ textarea.huic-input{min-height:72px;resize:vertical;line-height:1.5}
   .huic-grid{grid-template-columns:1fr}
   .huic-hint{flex:1 1 9em;min-width:0}
   .huic .huic-copy-text{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  .huic .huic-keys,.huic .huic-keys-sep{display:none}
 }
+/* keyboard hints help only with a keyboard: gone on touch screens and in narrow views */
+@media (hover: none) and (pointer: coarse){.huic .huic-keys,.huic .huic-keys-sep{display:none}}
 /* one line-icon style for chrome (check, cross, pencil, question, picture) */
 .huic-ico{display:block;flex:none;width:1em;height:1em;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 /* code + key-values */
@@ -197,6 +201,9 @@ function Shell({ card, display, title, subtitle, children, footer, after, labelI
     'aria-labelledby': title ? labelId : undefined,
     'aria-label': title ? undefined : card.type,
     'data-card-type': card.type,
+    // The card's own language (when the model gave one) lets narrow columns hyphenate long words
+    // (German compounds) instead of breaking them anywhere.
+    lang: typeof card.lang === 'string' && /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(card.lang) ? card.lang : undefined,
     children: [
       jsx(Style, {}),
       title || subtitle
@@ -216,10 +223,31 @@ function Shell({ card, display, title, subtitle, children, footer, after, labelI
   })
 }
 
-function Footer({ hint, children }) {
+// Keyboard hints: "[Enter] to send" draws Enter as a key cap. CSS hides them where no keyboard
+// is likely (touch screens, narrow views); a hint for everyone goes in Footer's `hint` instead.
+function KeyHint({ text, as = 'span', className, id }) {
+  const parts = String(text).split(/\[([^\]]+)\]/)
+  return jsxs(as, {
+    className: cx('huic-keys', className), id,
+    children: parts.map((part, i) => (i % 2 ? jsx('kbd', { className: 'huic-kbd', children: part }, i) : part))
+  })
+}
+
+// hint: for everyone (counts, what's missing); keys: keyboard shortcuts, see KeyHint.
+function Footer({ hint, keys, children }) {
+  const keyHint = keys ? jsx(KeyHint, { text: keys }) : null
   return jsxs('div', {
     className: 'huic-foot',
-    children: [hint ? jsx('span', { className: 'huic-hint', children: hint }) : null, children]
+    children: [
+      hint || keyHint
+        ? jsxs('span', { className: 'huic-hint', children: [
+            hint || null,
+            hint && keyHint ? jsx('span', { className: 'huic-keys-sep', 'aria-hidden': true, children: ' · ' }) : null,
+            keyHint
+          ] })
+        : null,
+      children
+    ]
   })
 }
 

@@ -10,16 +10,16 @@ Object.assign(STRINGS.en, {
   decScoreOf: 'Score {s} of 10',
   decRankOf: 'Rank {n} of {total}',
   decNoWeights: 'All weights are 0. Raise at least one to rank.',
-  decHint: 'Move the sliders and the ranking updates. Tap an option to pick it.',
+  decHint: 'Change the weights to re-rank, or pick an option directly.',
   decSendWeights: 'Send weights',
   decChoose: 'Choose {x}',
   decPicked: 'Picked',
   decReset: 'Reset weights',
-  rDecision: 'Decision: {a} ({as}) ahead of {b} ({bs})',
-  rDecisionPicked: 'Picked: {x} ({s})',
-  rDecisionTie: 'Tie: {a} and {b} ({s})',
-  rDecisionTieMore: 'Tie: {a}, {b} and {n} more ({s})',
-  rDecisionNone: 'No weights set'
+  rDecision: 'Top pick: {a} ({as}), ahead of {b} ({bs})',
+  rDecisionPicked: 'Chose: {x} ({s})',
+  rDecisionTie: 'Tied at the top: {a} and {b} ({s})',
+  rDecisionTieMore: 'Tied at the top: {a}, {b} and {n} more ({s})',
+  rDecisionNone: 'No ranking: every weight is 0'
 })
 Object.assign(STRINGS.de, {
   decCriteria: 'Was dir wichtig ist',
@@ -31,16 +31,16 @@ Object.assign(STRINGS.de, {
   decScoreOf: 'Wert {s} von 10',
   decRankOf: 'Platz {n} von {total}',
   decNoWeights: 'Alle Gewichte sind 0. Erhöhe mindestens eines, um zu ordnen.',
-  decHint: 'Verschiebe die Regler, die Rangfolge passt sich an. Tippe eine Option an, um sie zu wählen.',
+  decHint: 'Ändere die Gewichte, um neu zu ordnen, oder wähle direkt eine Option.',
   decSendWeights: 'Gewichte senden',
   decChoose: '{x} wählen',
   decPicked: 'Gewählt',
   decReset: 'Gewichte zurücksetzen',
-  rDecision: 'Entscheidung: {a} ({as}) vor {b} ({bs})',
+  rDecision: 'Vorn: {a} ({as}), vor {b} ({bs})',
   rDecisionPicked: 'Gewählt: {x} ({s})',
-  rDecisionTie: 'Gleichauf: {a} und {b} ({s})',
-  rDecisionTieMore: 'Gleichauf: {a}, {b} und {n} weitere ({s})',
-  rDecisionNone: 'Keine Gewichte gesetzt'
+  rDecisionTie: 'Gleichauf vorn: {a} und {b} ({s})',
+  rDecisionTieMore: 'Gleichauf vorn: {a}, {b} und {n} weitere ({s})',
+  rDecisionNone: 'Keine Rangfolge: alle Gewichte sind 0'
 })
 
 const DECISION_CSS = `

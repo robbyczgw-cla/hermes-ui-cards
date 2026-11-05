@@ -521,19 +521,20 @@ const STRINGS = {
     copied: 'Copied',
     // reply line 1
     rChose: 'Chose: {x}',
-    rOther: 'Other: "{x}"',
-    rChecklist: 'Checklist done: {done} of {total} checked.',
-    rChecklistAll: 'Checklist done: all {total} checked.',
+    rOther: 'Other: “{x}”',
+    rChecklist: 'Checked off {done} of {total}.',
+    rChecklistAll: 'Checked off all {total}.',
     rStillOpen: 'Still open: {x}',
-    rPicked: 'Picked: {x}',
-    rForm: 'Form sent: {x}',
+    rPicked: 'Chose: {x}',
+    rForm: '{x}',
+    rFormTitled: '{title} — {x}',
     rYes: 'Yes, go ahead: {x}',
     rNo: "No, don't: {x}",
     rChange: 'Change: {x}',
     rRated: 'Rated {n} of {max}',
-    rSlot: 'Slot: {x}',
-    rSlots: 'Slots: {x}',
-    rNone: 'None of these slots fit',
+    rSlot: 'Works for me: {x}',
+    rSlots: 'These work for me: {x}',
+    rNone: 'None of these times work for me',
     rSteps: 'Done with all {n} steps',
     rStuck: 'Stuck at step {n}: {x}',
     rQuiz: 'Quiz: {score} of {total} correct'
@@ -548,7 +549,7 @@ const STRINGS = {
     change: 'Ändern…',
     sendChange: 'Änderung senden',
     cancel: 'Abbrechen',
-    other: 'Andere',
+    other: 'Etwas anderes',
     otherPlaceholder: 'Eigene Antwort',
     changePlaceholder: 'Was soll anders sein?',
     recommended: 'Empfehlung',
@@ -564,11 +565,11 @@ const STRINGS = {
     sent: 'Gesendet',
     answered: 'Deine Antwort',
     inactive: 'Dieser Chat ist nicht mehr aktiv. Öffne ihn, um zu antworten.',
-    sendFailed: 'Senden fehlgeschlagen. Öffne diesen Chat und prüfe, ob Hermes verbunden ist. Versuche es dann erneut.',
+    sendFailed: 'Senden hat nicht geklappt. Öffne diesen Chat, prüfe die Verbindung zu Hermes und versuche es erneut.',
     charactersLeft: 'Noch {n} Zeichen',
     shortenField: 'Bitte kürzen',
     oversize: 'Deine Antwort ist zu lang. Bitte kürze sie.',
-    retry: 'Nochmal versuchen',
+    retry: 'Erneut versuchen',
     riskLow: 'Geringes Risiko',
     riskMedium: 'Mittleres Risiko',
     riskHigh: 'Hohes Risiko',
@@ -588,7 +589,7 @@ const STRINGS = {
     back: 'Zurück',
     next: 'Weiter',
     finish: 'Fertig',
-    stuck: 'Hänge hier',
+    stuck: 'Komme nicht weiter',
     stepOf: 'Schritt {n} von {total}',
     check: 'Prüfen',
     correct: 'Richtig',
@@ -598,21 +599,22 @@ const STRINGS = {
     copy: 'Kopieren',
     copied: 'Kopiert',
     rChose: 'Gewählt: {x}',
-    rOther: 'Andere: „{x}“',
-    rChecklist: 'Checkliste fertig: {done} von {total} erledigt.',
-    rChecklistAll: 'Checkliste fertig: alle {total} erledigt.',
-    rStillOpen: 'Offen: {x}',
+    rOther: 'Etwas anderes: „{x}“',
+    rChecklist: '{done} von {total} abgehakt.',
+    rChecklistAll: 'Alle {total} abgehakt.',
+    rStillOpen: 'Noch offen: {x}',
     rPicked: 'Gewählt: {x}',
-    rForm: 'Formular gesendet: {x}',
+    rForm: '{x}',
+    rFormTitled: '{title} – {x}',
     rYes: 'Ja, mach das: {x}',
     rNo: 'Nein, lieber nicht: {x}',
     rChange: 'Ändern: {x}',
     rRated: 'Bewertung: {n} von {max}',
-    rSlot: 'Termin: {x}',
-    rSlots: 'Termine: {x}',
-    rNone: 'Keiner der Termine passt',
+    rSlot: 'Passt mir: {x}',
+    rSlots: 'Passen mir: {x}',
+    rNone: 'Keiner der Termine passt mir',
     rSteps: 'Alle {n} Schritte erledigt',
-    rStuck: 'Hänge bei Schritt {n}: {x}',
+    rStuck: 'Komme bei Schritt {n} nicht weiter: {x}',
     rQuiz: 'Quiz: {score} von {total} richtig'
   }
 }
@@ -714,6 +716,12 @@ function formatSlot(slot, card, lang, { withDay = true } = {}) {
 function formValueText(field, value, lang) {
   if (field.kind === 'toggle') return value ? t(lang, 'yesWord') : t(lang, 'noWord')
   if (value === '' || value === null || value === undefined) return '–'
+  // A date reads as one ("Fri 20 Nov 2026"); the JSON line keeps the ISO value.
+  const day = field.kind === 'date' && typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? slotDate(`${value}T00:00`) : null
+  if (day && !Number.isNaN(day.getTime())) {
+    const text = new Intl.DateTimeFormat(lang === 'de' ? 'de-DE' : 'en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(day)
+    return lang === 'de' ? text : text.replace(/^(\p{L}+),\s/u, '$1 ') // "Fri 20 Nov 2026", like the slots
+  }
   return field.unit ? `${value} ${field.unit}` : String(value)
 }
 
@@ -767,7 +775,9 @@ function buildReply(card, answer, lang) {
         if (value === '' || value === null || value === undefined) continue
         parts.push(`${clip(field.label, 30)}: ${clip(formValueText(field, value, L), 40)}`)
       }
-      summary = t(L, 'rForm', { x: parts.join(', ') || '–' })
+      const fields = parts.join(' · ') || '–'
+      const title = clip(card.title || '', 40).replace(/\s*[?？:：]+$/, '')
+      summary = title ? t(L, 'rFormTitled', { title, x: fields }) : t(L, 'rForm', { x: fields })
       break
     }
     case 'confirm': {
@@ -1495,7 +1505,8 @@ ${HUIC_RELATIVE}{.huic{--huic-on-accent:${huicOnColor('var(--huic-accent)')};--h
 .huic-body{padding:12px var(--huic-pad) var(--huic-pad);display:flex;flex-direction:column;gap:12px}
 .huic-foot{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:flex-end;padding:12px var(--huic-pad);border-top:1px solid var(--huic-line)}
 .huic-foot-group{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-left:auto;max-width:100%}
-.huic-hint{margin-right:auto;color:var(--ui-text-tertiary);font-size:12px;line-height:16px;font-variant-numeric:tabular-nums}
+.huic-hint{margin-right:auto;color:var(--ui-text-tertiary);font-size:12px;line-height:18px;font-variant-numeric:tabular-nums}
+.huic .huic-kbd{display:inline-block;min-width:18px;margin:0 1px;padding:0 4px;border:1px solid var(--huic-line-strong);border-bottom-width:2px;border-radius:4px;background:color-mix(in srgb,var(--ui-bg-quaternary) 55%,transparent);color:var(--ui-text-secondary);font:inherit;font-size:10.5px;font-weight:500;line-height:14px;text-align:center;vertical-align:1px;white-space:nowrap}
 .huic-opt{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;padding:10px 12px;border-radius:var(--huic-r-md);border:1px solid var(--huic-line);background:transparent;color:inherit;cursor:pointer;font:inherit;transition:background .15s,border-color .15s,transform .08s}
 .huic-opt:hover:not([disabled]){background:var(--ui-row-hover-background,var(--ui-control-hover-background));border-color:var(--huic-line-strong)}
 .huic-opt:active:not([disabled]){transform:scale(.995)}
@@ -1570,7 +1581,10 @@ textarea.huic-input{min-height:72px;resize:vertical;line-height:1.5}
   .huic-grid{grid-template-columns:1fr}
   .huic-hint{flex:1 1 9em;min-width:0}
   .huic .huic-copy-text{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  .huic .huic-keys,.huic .huic-keys-sep{display:none}
 }
+/* keyboard hints help only with a keyboard: gone on touch screens and in narrow views */
+@media (hover: none) and (pointer: coarse){.huic .huic-keys,.huic .huic-keys-sep{display:none}}
 /* one line-icon style for chrome (check, cross, pencil, question, picture) */
 .huic-ico{display:block;flex:none;width:1em;height:1em;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 /* code + key-values */
@@ -1639,6 +1653,9 @@ function Shell({ card, display, title, subtitle, children, footer, after, labelI
     'aria-labelledby': title ? labelId : undefined,
     'aria-label': title ? undefined : card.type,
     'data-card-type': card.type,
+    // The card's own language (when the model gave one) lets narrow columns hyphenate long words
+    // (German compounds) instead of breaking them anywhere.
+    lang: typeof card.lang === 'string' && /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(card.lang) ? card.lang : undefined,
     children: [
       jsx(Style, {}),
       title || subtitle
@@ -1658,10 +1675,31 @@ function Shell({ card, display, title, subtitle, children, footer, after, labelI
   })
 }
 
-function Footer({ hint, children }) {
+// Keyboard hints: "[Enter] to send" draws Enter as a key cap. CSS hides them where no keyboard
+// is likely (touch screens, narrow views); a hint for everyone goes in Footer's `hint` instead.
+function KeyHint({ text, as = 'span', className, id }) {
+  const parts = String(text).split(/\[([^\]]+)\]/)
+  return jsxs(as, {
+    className: cx('huic-keys', className), id,
+    children: parts.map((part, i) => (i % 2 ? jsx('kbd', { className: 'huic-kbd', children: part }, i) : part))
+  })
+}
+
+// hint: for everyone (counts, what's missing); keys: keyboard shortcuts, see KeyHint.
+function Footer({ hint, keys, children }) {
+  const keyHint = keys ? jsx(KeyHint, { text: keys }) : null
   return jsxs('div', {
     className: 'huic-foot',
-    children: [hint ? jsx('span', { className: 'huic-hint', children: hint }) : null, children]
+    children: [
+      hint || keyHint
+        ? jsxs('span', { className: 'huic-hint', children: [
+            hint || null,
+            hint && keyHint ? jsx('span', { className: 'huic-keys-sep', 'aria-hidden': true, children: ' · ' }) : null,
+            keyHint
+          ] })
+        : null,
+      children
+    ]
   })
 }
 
@@ -1825,13 +1863,13 @@ function CodeBlock({ code, lang, prompt }) {
 // One answer per card: send it into the card's own chat, remember it, never send twice.
 
 Object.assign(STRINGS.en, {
-  checkingAnswer: 'Checking whether this card was already answered…',
-  checkFailed: "Couldn't check whether this card was already answered elsewhere. Answer here only if you haven't yet.",
+  checkingAnswer: 'Checking whether you already answered this…',
+  checkFailed: "Couldn't check whether you already answered this elsewhere. Only answer here if you haven't yet.",
   checkAgain: 'Check again'
 })
 Object.assign(STRINGS.de, {
-  checkingAnswer: 'Prüfe, ob diese Karte schon beantwortet wurde …',
-  checkFailed: 'Konnte nicht prüfen, ob diese Karte anderswo schon beantwortet wurde. Antworte hier nur, wenn du es noch nicht getan hast.',
+  checkingAnswer: 'Prüfe, ob du das schon beantwortet hast …',
+  checkFailed: 'Konnte nicht prüfen, ob du das anderswo schon beantwortet hast. Antworte hier nur, falls du es noch nicht getan hast.',
   checkAgain: 'Erneut prüfen'
 })
 
@@ -1947,18 +1985,18 @@ function useCardAnswer(card, sessionId, lang) {
 // Options carry number badges: digits pick, Enter sends (same helpers serve schedule and quiz).
 
 Object.assign(STRINGS.en, {
-  keyChoose: '{keys} choose · Enter send',
-  keyToggle: '{keys} toggle · Enter send',
-  keyCheck: '{keys} choose · Enter check',
-  keyNext: 'Enter next',
-  keySend: 'Enter send'
+  keyChoose: '[{keys}] to choose · [Enter] to send',
+  keyToggle: '[{keys}] to select · [Enter] to send',
+  keyCheck: '[{keys}] to choose · [Enter] to check',
+  keyNext: '[Enter] to continue',
+  keySend: '[Enter] to send'
 })
 Object.assign(STRINGS.de, {
-  keyChoose: '{keys} wählen · Enter senden',
-  keyToggle: '{keys} umschalten · Enter senden',
-  keyCheck: '{keys} wählen · Enter prüfen',
-  keyNext: 'Enter weiter',
-  keySend: 'Enter senden'
+  keyChoose: '[{keys}] zum Wählen · [Enter] zum Senden',
+  keyToggle: '[{keys}] zum Auswählen · [Enter] zum Senden',
+  keyCheck: '[{keys}] zum Wählen · [Enter] zum Prüfen',
+  keyNext: '[Enter] zum Weitermachen',
+  keySend: '[Enter] zum Senden'
 })
 
 const KEYS_CSS = `
@@ -2246,7 +2284,8 @@ function ChoiceCard({ card, sessionId, display, lang }) {
     footer: !ans.showActions
       ? null
       : jsx(Footer, {
-          hint: joinHints(pickHint(card, lang), t(lang, card.multiple ? 'keyToggle' : 'keyChoose', { keys: keyRange(options.length) })),
+          hint: pickHint(card, lang),
+          keys: t(lang, card.multiple ? 'keyToggle' : 'keyChoose', { keys: keyRange(options.length) }),
           children: jsx(Btn, {
             variant: 'primary',
             disabled: !valid,
@@ -2491,7 +2530,7 @@ const COMPARE_CSS = `
 .huic[data-card-type="compare"] .huic-compare-row.is-head>*{border-top:0;padding-top:4px;padding-bottom:12px}
 .huic[data-card-type="compare"] .huic-compare-row.is-head+.huic-compare-row>*{border-top-color:var(--huic-line-strong)}
 .huic[data-card-type="compare"] .huic-compare-row.is-actions>*{padding-top:12px;padding-bottom:0}
-.huic[data-card-type="compare"] .huic-compare-label{min-width:84px;color:var(--ui-text-tertiary);font-size:12px;overflow-wrap:break-word;hyphens:auto}
+.huic[data-card-type="compare"] .huic-compare-label{min-width:84px;color:var(--ui-text-tertiary);font-size:12px;overflow-wrap:break-word;-webkit-hyphens:auto;hyphens:auto}
 .huic[data-card-type="compare"] .huic-compare-recommended{background:color-mix(in srgb,var(--huic-accent) 6%,transparent)}
 .huic[data-card-type="compare"] .is-head>.huic-compare-recommended{box-shadow:inset 0 2px 0 var(--huic-accent);border-top-left-radius:2px;border-top-right-radius:2px}
 .huic[data-card-type="compare"] .is-actions>.huic-compare-recommended{padding-bottom:12px;border-bottom-left-radius:var(--huic-r-md);border-bottom-right-radius:var(--huic-r-md)}
@@ -2824,7 +2863,8 @@ function FormField({ field, value, error, disabled, lang, onChange, baseId, stat
         value,
         onChange: e => onChange(e.target.value),
         children: [
-          jsx('option', { value: '', children: field.placeholder || t(lang, 'formChoose') }),
+          // After sending, an empty choice reads as what it is: not set (not a prompt to choose).
+          jsx('option', { value: '', children: disabled && !value ? t(lang, 'formNotSet') : field.placeholder || t(lang, 'formChoose') }),
           ...field.options.map(o => jsx('option', { value: o, children: o }, o))
         ]
       })
@@ -3033,7 +3073,7 @@ const RISK_BARS = { low: 1, medium: 2, high: 3 }
 Object.assign(STRINGS.en, {
   confirmApprovalHint: 'Hermes may still ask for its own approval before running it.',
   confirmCommand: 'Command',
-  confirmChangeHint: 'Ctrl/⌘+Enter to send',
+  confirmChangeHint: '[Ctrl]/[⌘]+[Enter] to send',
   confirmApproved: 'Approved', confirmDeclined: 'Declined', confirmChanged: 'Change requested',
   confirmChangeExample: 'For example: keep the last 90 days',
   confirmPending: 'Approved · sending in {s} s', confirmUndo: 'Undo'
@@ -3041,7 +3081,7 @@ Object.assign(STRINGS.en, {
 Object.assign(STRINGS.de, {
   confirmApprovalHint: 'Hermes fragt vor dem Ausführen möglicherweise noch nach einer eigenen Freigabe.',
   confirmCommand: 'Befehl',
-  confirmChangeHint: 'Mit Strg/⌘+Enter senden',
+  confirmChangeHint: '[Strg]/[⌘]+[Enter] zum Senden',
   confirmApproved: 'Freigegeben', confirmDeclined: 'Abgelehnt', confirmChanged: 'Änderung angefragt',
   confirmChangeExample: 'Zum Beispiel: die letzten 90 Tage behalten',
   confirmPending: 'Freigegeben · wird in {s} s gesendet', confirmUndo: 'Rückgängig'
@@ -3218,7 +3258,7 @@ function ConfirmCard({ card, sessionId, display, lang }) {
       }
     }),
     jsxs('div', { className: 'huic-confirm-edit-row', children: [
-      jsx('span', { id: changeId, className: 'huic-help', children: t(lang, 'confirmChangeHint') }),
+      jsx(KeyHint, { id: changeId, text: t(lang, 'confirmChangeHint'), className: 'huic-help' }),
       jsx(Btn, { variant: 'ghost', onClick: () => setChanging(false), children: t(lang, 'cancel') }),
       jsx(Btn, { variant: 'primary', disabled: !change.trim(), onClick: sendChange, children: t(lang, 'sendChange') })
     ] })
@@ -3272,13 +3312,13 @@ function ConfirmCard({ card, sessionId, display, lang }) {
 // rating: a keyboard-operable radio scale (contiguous stars or a segmented number row),
 // an optional comment. Digits rate, Enter sends.
 
-Object.assign(STRINGS.en, { keyRate: '{keys} rate · Enter send', rateEcho: '{n} of {max}' })
-Object.assign(STRINGS.de, { keyRate: '{keys} bewerten · Enter senden', rateEcho: '{n} von {max}' })
+Object.assign(STRINGS.en, { keyRate: '[{keys}] to rate · [Enter] to send', keyRate10: '[1–9] [0] to rate (0 is 10) · [Enter] to send', rateEcho: '{n} of {max}' })
+Object.assign(STRINGS.de, { keyRate: '[{keys}] zum Bewerten · [Enter] zum Senden', keyRate10: '[1–9] [0] zum Bewerten (0 ist 10) · [Enter] zum Senden', rateEcho: '{n} von {max}' })
 
 const RATING_CSS = `
-.huic[data-card-type="rating"] .huic-stars{display:flex;flex-wrap:wrap;gap:2px;width:fit-content;max-width:100%;margin-left:-3px}
-.huic[data-card-type="rating"] .huic-star{appearance:none;display:grid;place-items:center;width:34px;height:34px;padding:0;border:0;border-radius:var(--huic-r-md);background:none;color:var(--huic-accent);cursor:pointer;transition:transform .12s var(--huic-ease)}
-.huic[data-card-type="rating"] .huic-star svg{display:block;width:28px;height:28px;fill:color-mix(in srgb,var(--huic-accent) 7%,transparent);stroke:color-mix(in srgb,var(--huic-accent) 55%,var(--ui-text-tertiary));stroke-width:1.4;stroke-linejoin:round;transition:fill .12s,stroke .12s}
+.huic[data-card-type="rating"] .huic-stars{display:grid;grid-template-columns:repeat(var(--huic-n),minmax(0,34px));gap:2px;max-width:100%;margin-left:-3px}
+.huic[data-card-type="rating"] .huic-star{appearance:none;display:grid;place-items:center;width:100%;height:auto;aspect-ratio:1;padding:0;border:0;border-radius:var(--huic-r-md);background:none;color:var(--huic-accent);cursor:pointer;transition:transform .12s var(--huic-ease)}
+.huic[data-card-type="rating"] .huic-star svg{display:block;width:82%;height:82%;fill:color-mix(in srgb,var(--huic-accent) 7%,transparent);stroke:color-mix(in srgb,var(--huic-accent) 55%,var(--ui-text-tertiary));stroke-width:1.4;stroke-linejoin:round;transition:fill .12s,stroke .12s}
 .huic[data-card-type="rating"] .huic-star-on svg{fill:var(--huic-accent);stroke:color-mix(in srgb,var(--huic-accent) 70%,var(--ui-text-primary))}
 .huic[data-card-type="rating"] .huic-star-pre svg{fill:color-mix(in srgb,var(--huic-accent) 40%,transparent);stroke:var(--huic-accent)}
 .huic[data-card-type="rating"] .huic-star:hover:not([disabled]){transform:scale(1.1)}
@@ -3292,8 +3332,12 @@ const RATING_CSS = `
 .huic[data-card-type="rating"] .huic-segbtn:focus-visible{outline-offset:-2px}
 .huic[data-card-type="rating"] .huic-segbtn[aria-checked="true"]{background:var(--huic-accent);color:var(--huic-on-accent,var(--ui-chat-surface-background,var(--ui-base,Canvas)));font-weight:600}
 .huic[data-card-type="rating"] .huic-segbtn[disabled]{cursor:default}
-.huic[data-card-type="rating"] .huic-rate-meta{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 12px;min-height:1.45em}
-.huic[data-card-type="rating"] .huic-rate-echo{font-weight:600;font-variant-numeric:tabular-nums}
+.huic[data-card-type="rating"] .huic-rate-row{display:flex;flex-wrap:wrap;align-items:flex-start;gap:4px 14px}
+.huic[data-card-type="rating"] .huic-rate-scale{display:flex;flex-direction:column;gap:4px;min-width:0;max-width:100%}
+.huic[data-card-type="rating"] .huic-rate-scale.is-numbers{flex:1 1 100%}
+.huic[data-card-type="rating"] .huic-rate-ends{display:flex;justify-content:space-between;gap:12px;color:var(--ui-text-tertiary);font-size:12px;line-height:16px}
+.huic[data-card-type="rating"] .huic-stars+.huic-rate-ends{padding-right:3px}
+.huic[data-card-type="rating"] .huic-rate-echo{display:flex;align-items:center;min-height:34px;font-weight:600;font-variant-numeric:tabular-nums;animation:huic-fade .2s var(--huic-ease) both}
 @media (prefers-reduced-motion: reduce){.huic[data-card-type="rating"] .huic-star:hover:not([disabled]){transform:none}}
 `
 
@@ -3362,6 +3406,8 @@ function RatingCard({ card, sessionId, display, lang }) {
 
   const endLabel = shown === 1 ? card.lowLabel : shown === scale ? card.highLabel : ''
   const ends = [card.lowLabel ? `1 = ${card.lowLabel}` : '', card.highLabel ? `${scale} = ${card.highLabel}` : ''].filter(Boolean).join(' · ')
+  const endsId = useId()
+  const echo = shown ? t(lang, 'rateEcho', { n: shown, max: scale }) + (endLabel ? ` · ${endLabel}` : '') : ''
 
   return jsx(Shell, {
     card, display, labelId, title: card.question,
@@ -3370,20 +3416,31 @@ function RatingCard({ card, sessionId, display, lang }) {
       style: { display: 'flex', flexDirection: 'column', gap: 8 },
       children: [
         jsx('style', { children: RATING_CSS }),
-        jsx('div', {
-          role: 'radiogroup', 'aria-labelledby': labelId,
-          className: numbers ? 'huic-segs' : 'huic-stars',
-          onMouseLeave: () => setHover(null),
-          children: Array.from({ length: scale }, (_, i) => star(i))
-        }),
+        // The end labels sit under the first and last star; screen readers get "1 = …, 5 = …".
         jsxs('div', {
-          className: 'huic-rate-meta',
+          className: 'huic-rate-row',
           children: [
-            jsx('span', {
-              className: 'huic-rate-echo',
-              children: shown ? t(lang, 'rateEcho', { n: shown, max: scale }) + (endLabel ? ` · ${endLabel}` : '') : ''
+            jsxs('div', {
+              className: cx('huic-rate-scale', numbers && 'is-numbers'),
+              children: [
+                jsx('div', {
+                  role: 'radiogroup', 'aria-labelledby': labelId, 'aria-describedby': ends ? endsId : undefined,
+                  className: numbers ? 'huic-segs' : 'huic-stars',
+                  style: numbers ? undefined : { '--huic-n': scale },
+                  onMouseLeave: () => setHover(null),
+                  children: Array.from({ length: scale }, (_, i) => star(i))
+                }),
+                ends ? jsxs('div', {
+                  className: 'huic-rate-ends',
+                  children: [
+                    jsx('span', { className: 'huic-sr', id: endsId, children: ends }),
+                    jsx('span', { 'aria-hidden': true, children: card.lowLabel || '' }),
+                    jsx('span', { 'aria-hidden': true, style: { textAlign: 'right' }, children: card.highLabel || '' })
+                  ]
+                }) : null
+              ]
             }),
-            ends ? jsx('span', { className: 'huic-sub', style: { margin: 0 }, children: ends }) : null
+            jsx('span', { className: 'huic-rate-echo', children: echo }, echo ? 'on' : 'off')
           ]
         }),
         card.comment ? jsxs('label', {
@@ -3403,7 +3460,7 @@ function RatingCard({ card, sessionId, display, lang }) {
       ]
     }),
     footer: ans.showActions ? jsx(Footer, {
-      hint: t(lang, 'keyRate', { keys: scale === 10 ? '1–0' : keyRange(scale) }),
+      keys: scale === 10 ? t(lang, 'keyRate10') : t(lang, 'keyRate', { keys: keyRange(scale) }),
       children: jsx(Btn, { variant: 'primary', disabled: value === null,
         onClick: () => send(value), children: t(lang, 'send') })
     }) : null,
@@ -3412,8 +3469,8 @@ function RatingCard({ card, sessionId, display, lang }) {
 }
 
 // ── 71-slider.js ──
-Object.assign(STRINGS.en, { keySlider: 'Type a value or drag · Enter send' })
-Object.assign(STRINGS.de, { keySlider: 'Wert eintippen oder ziehen · Enter senden' })
+Object.assign(STRINGS.en, { sliderHint: 'Drag or type a value' })
+Object.assign(STRINGS.de, { sliderHint: 'Ziehen oder Wert eintippen' })
 
 // Snap relative to min, just like the native range input, without float noise.
 function sliderInitialValue(card) {
@@ -3530,7 +3587,8 @@ function SliderCard({ card, sessionId, display, lang }) {
       })
     ],
     footer: ans.showActions ? jsx(Footer, {
-      hint: t(lang, 'keySlider'),
+      hint: t(lang, 'sliderHint'),
+      keys: t(lang, 'keySend'),
       children: jsx(Btn, {
         variant: 'primary', onClick: () => send(commit().n), children: card.submitLabel || t(lang, 'send')
       })
@@ -3704,7 +3762,7 @@ function ScheduleCard({ card, sessionId, display, lang }) {
       ]
     }),
     footer: ans.showActions ? jsx(Footer, {
-      hint: available.length ? t(lang, card.multiple ? 'keyToggle' : 'keyChoose', { keys: keyRange(available.length) }) : undefined,
+      keys: available.length ? t(lang, card.multiple ? 'keyToggle' : 'keyChoose', { keys: keyRange(available.length) }) : undefined,
       children: jsxs('span', { className: 'huic-foot-group', children: [
         card.noneLabel ? jsx(Btn, { variant: 'ghost', onClick: () => ans.submit({ none: true }), children: card.noneLabel }) : null,
         jsx(Btn, { variant: 'primary', disabled: !selected.length, onClick: send, children: t(lang, 'send') })
@@ -3723,7 +3781,7 @@ Object.assign(STRINGS.en, {
 Object.assign(STRINGS.de, {
   stepsMap: 'Schritte der Anleitung', stepsWhatHappened: 'Was ist passiert?', stepsOptional: 'Optional',
   stepsNotePlaceholder: 'Sag Hermes, wo du festhängst',
-  stepsSentDone: 'Gesendet: {label}', stepsSentStuck: 'Gesendet: hängt bei Schritt {n}'
+  stepsSentDone: 'Gesendet: {label}', stepsSentStuck: 'Gesendet: komme bei Schritt {n} nicht weiter'
 })
 
 // A calm guide: one connected track (the progress bar is its line), the current step as
@@ -3888,13 +3946,17 @@ Object.assign(STRINGS.en, {
   questionOf: 'Question {n} of {total}',
   quizResult: 'Result',
   seeResult: 'See result',
-  correctAnswer: 'Correct answer: {x}'
+  correctAnswer: 'Correct answer: {x}',
+  quizScoreWord: 'correct',
+  quizAllRight: 'All correct'
 })
 Object.assign(STRINGS.de, {
   questionOf: 'Frage {n} von {total}',
   quizResult: 'Ergebnis',
   seeResult: 'Ergebnis ansehen',
-  correctAnswer: 'Richtig: {x}'
+  correctAnswer: 'Richtig: {x}',
+  quizScoreWord: 'richtig',
+  quizAllRight: 'Alle richtig'
 })
 
 const QUIZ_CSS = `
@@ -4009,7 +4071,11 @@ function QuizCard({ card, sessionId, display, lang }) {
         className: 'huic-score', role: 'status',
         children: [
           jsx('span', { className: 'huic-score-big', 'aria-hidden': true, children: `${score}/${total}` }),
-          jsx('h4', { id: questionId, ref: headingRef, tabIndex: -1, className: 'huic-title', children: t(lang, 'score', { score, total }) })
+          // The big number already says "1/2": the heading adds the word, screen readers get the sentence.
+          jsxs('h4', { id: questionId, ref: headingRef, tabIndex: -1, className: 'huic-title', children: [
+            jsx('span', { className: 'huic-sr', children: t(lang, 'score', { score, total }) }),
+            jsx('span', { 'aria-hidden': true, children: t(lang, score === total ? 'quizAllRight' : 'quizScoreWord') })
+          ] })
         ]
       }),
       jsx('ul', {
@@ -4066,7 +4132,7 @@ function QuizCard({ card, sessionId, display, lang }) {
       children: [jsx('style', { children: KEYS_CSS + QUIZ_CSS }), bar, ...body]
     }),
     footer: ans.showActions ? jsx(Footer, {
-      hint: t(lang, hintKey, { keys: keyRange(q ? q.options.length : 0) }),
+      keys: t(lang, hintKey, { keys: keyRange(q ? q.options.length : 0) }),
       children: jsxs('span', { className: 'huic-foot-group', children: [
         index > 0 ? jsx(Btn, { onClick: () => update({ index: index - 1 }), children: t(lang, 'back') }) : null,
         inResult
@@ -4196,7 +4262,7 @@ Object.assign(STRINGS.en, {
   planNoteFor: 'Note for step {n}: {x}',
   planNotePlaceholder: 'Tell Hermes something about this step',
   planNoteShown: 'Note',
-  planKeys: '{keys} moves the step you are on',
+  planKeys: '[Alt]+[↑]/[↓] moves a step up or down',
   planDrag: 'Drag to move',
   planHighRisk: 'includes a high-risk step',
   planNothing: 'Switch on at least one step',
@@ -4204,7 +4270,7 @@ Object.assign(STRINGS.en, {
   planRequired: 'Required, always runs',
   planPending: 'Running {n} of {total} steps in {s} s',
   planUndo: 'Undo',
-  rPlan: 'Run the plan: {n} of {total} steps',
+  rPlan: 'Go ahead with {n} of {total} steps', rPlanAll: 'Go ahead with the plan ({total} steps)', rPlanOne: 'Go ahead with the plan (1 step)',
   rPlanSkipped: 'skipped: {x}',
   rPlanReordered: 'reordered'
 })
@@ -4222,7 +4288,7 @@ Object.assign(STRINGS.de, {
   planNoteFor: 'Notiz zu Schritt {n}: {x}',
   planNotePlaceholder: 'Hinweis für Hermes zu diesem Schritt',
   planNoteShown: 'Notiz',
-  planKeys: '{keys} verschiebt den Schritt, auf dem du bist',
+  planKeys: '[Alt]+[↑]/[↓] schiebt einen Schritt nach oben oder unten',
   planDrag: 'Zum Verschieben ziehen',
   planHighRisk: 'mit riskantem Schritt',
   planNothing: 'Mindestens einen Schritt einschalten',
@@ -4230,7 +4296,7 @@ Object.assign(STRINGS.de, {
   planRequired: 'Pflichtschritt, läuft immer',
   planPending: '{n} von {total} Schritten starten in {s} s',
   planUndo: 'Rückgängig',
-  rPlan: 'Plan ausführen: {n} von {total} Schritten',
+  rPlan: 'Leg los mit {n} von {total} Schritten', rPlanAll: 'Leg los mit dem Plan ({total} Schritte)', rPlanOne: 'Leg los mit dem Plan (1 Schritt)',
   rPlanSkipped: 'übersprungen: {x}',
   rPlanReordered: 'neu geordnet'
 })
@@ -4306,7 +4372,6 @@ const PLAN_CSS = `
 .huic[data-card-type="plan"] .huic-plan-note{min-height:30px;padding:5px 8px;font-size:12.5px;background:color-mix(in srgb,var(--ui-bg-quaternary) 35%,transparent)}
 .huic[data-card-type="plan"] .huic-plan-note-text{margin:0;padding:2px 0 2px 9px;border-left:2px solid var(--huic-accent);color:var(--ui-text-secondary);font-size:12.5px;white-space:pre-wrap}
 .huic[data-card-type="plan"] .huic-plan-keys{margin:0 0 0 38px;color:var(--ui-text-tertiary);font-size:11.5px}
-.huic[data-card-type="plan"] kbd,.huic[data-card-type="review"] kbd{font:inherit;font-size:10.5px;padding:0 4px;border:1px solid var(--ui-stroke-secondary);border-bottom-width:2px;border-radius:4px;color:var(--ui-text-secondary)}
 .huic[data-card-type="plan"] .huic-plan-warn{color:var(--ui-red,var(--ui-text-secondary))}
 @container (max-width: 440px){
   .huic[data-card-type="plan"] .huic-plan-step{grid-template-columns:26px minmax(0,1fr)}
@@ -4386,11 +4451,6 @@ function planIcon(kind) {
     strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true, focusable: 'false',
     children: jsx('path', { d: PLAN_ICONS[kind] })
   })
-}
-
-function planKeysHint(lang) {
-  const text = t(lang, 'planKeys', { keys: '\u0000' }).split('\u0000')
-  return [text[0], jsx('kbd', { children: 'Alt' }, 'a'), '+', jsx('kbd', { children: '↑' }, 'u'), '/', jsx('kbd', { children: '↓' }, 'd'), text[1]]
 }
 
 // Ids and input names come from the model: keep them in prototype-free maps, so an id like
@@ -4702,7 +4762,7 @@ function PlanCard({ card, sessionId, display, lang }) {
     ] }),
     children: [
       jsx('ol', { className: 'huic-plan-list', 'aria-label': t(lang, 'planStepsLabel'), children: rows }, 'list'),
-      editable && total > 1 ? jsx('p', { className: 'huic-plan-keys', children: planKeysHint(lang) }, 'keys') : null,
+      editable && total > 1 ? jsx(KeyHint, { as: 'p', className: 'huic-plan-keys', text: t(lang, 'planKeys') }, 'keys') : null,
       jsx('div', { className: 'huic-sr', role: 'status', 'aria-live': 'polite', children: announce }, 'live')
     ],
     footer,
@@ -4720,7 +4780,7 @@ REPLY_BUILDERS.plan = (card, answer, lang, data) => {
   })
   const on = data.steps.filter(s => s.included).length
   const skipped = data.steps.filter(s => !s.included).map(s => s.title)
-  let summary = t(lang, 'rPlan', { n: on, total: data.steps.length })
+  let summary = t(lang, on < data.steps.length ? 'rPlan' : on === 1 ? 'rPlanOne' : 'rPlanAll', { n: on, total: data.steps.length })
   if (skipped.length) summary += ` · ${t(lang, 'rPlanSkipped', { x: joinList(skipped) })}`
   if (data.steps.some((s, i) => s.id !== card.steps[i]?.id)) summary += ` · ${t(lang, 'rPlanReordered')}`
   return { summary }
@@ -5170,7 +5230,7 @@ Object.assign(STRINGS.en, {
   calcNotPossible: 'Not possible with these values',
   calcFix: 'Fix the marked input to see the result',
   calcSent: 'Sent',
-  rCalc: 'Calculated: {x}'
+  rCalc: '{label}: {value}'
 })
 Object.assign(STRINGS.de, {
   calcSend: 'Senden',
@@ -5181,7 +5241,7 @@ Object.assign(STRINGS.de, {
   calcNotPossible: 'Mit diesen Werten nicht möglich',
   calcFix: 'Markierte Eingabe korrigieren, dann gibt es ein Ergebnis',
   calcSent: 'Gesendet',
-  rCalc: 'Berechnet: {x}'
+  rCalc: '{label}: {value}'
 })
 
 const CALC_CSS = `
@@ -5606,7 +5666,7 @@ REPLY_BUILDERS.calc = (card, answer, lang, data) => {
   const i = calcHeroIndexes(card)[0]
   const output = card.outputs[i]
   const value = answer.outputs[i]?.value
-  return { summary: t(lang, 'rCalc', { x: `${clip(output.label, 40)} ${calcShown(output, value, card, lang)}` }) }
+  return { summary: t(lang, 'rCalc', { label: clip(output.label, 40), value: calcShown(output, value, card, lang) }) }
 }
 
 // ── 84-decision.js ──
@@ -5622,16 +5682,16 @@ Object.assign(STRINGS.en, {
   decScoreOf: 'Score {s} of 10',
   decRankOf: 'Rank {n} of {total}',
   decNoWeights: 'All weights are 0. Raise at least one to rank.',
-  decHint: 'Move the sliders and the ranking updates. Tap an option to pick it.',
+  decHint: 'Change the weights to re-rank, or pick an option directly.',
   decSendWeights: 'Send weights',
   decChoose: 'Choose {x}',
   decPicked: 'Picked',
   decReset: 'Reset weights',
-  rDecision: 'Decision: {a} ({as}) ahead of {b} ({bs})',
-  rDecisionPicked: 'Picked: {x} ({s})',
-  rDecisionTie: 'Tie: {a} and {b} ({s})',
-  rDecisionTieMore: 'Tie: {a}, {b} and {n} more ({s})',
-  rDecisionNone: 'No weights set'
+  rDecision: 'Top pick: {a} ({as}), ahead of {b} ({bs})',
+  rDecisionPicked: 'Chose: {x} ({s})',
+  rDecisionTie: 'Tied at the top: {a} and {b} ({s})',
+  rDecisionTieMore: 'Tied at the top: {a}, {b} and {n} more ({s})',
+  rDecisionNone: 'No ranking: every weight is 0'
 })
 Object.assign(STRINGS.de, {
   decCriteria: 'Was dir wichtig ist',
@@ -5643,16 +5703,16 @@ Object.assign(STRINGS.de, {
   decScoreOf: 'Wert {s} von 10',
   decRankOf: 'Platz {n} von {total}',
   decNoWeights: 'Alle Gewichte sind 0. Erhöhe mindestens eines, um zu ordnen.',
-  decHint: 'Verschiebe die Regler, die Rangfolge passt sich an. Tippe eine Option an, um sie zu wählen.',
+  decHint: 'Ändere die Gewichte, um neu zu ordnen, oder wähle direkt eine Option.',
   decSendWeights: 'Gewichte senden',
   decChoose: '{x} wählen',
   decPicked: 'Gewählt',
   decReset: 'Gewichte zurücksetzen',
-  rDecision: 'Entscheidung: {a} ({as}) vor {b} ({bs})',
+  rDecision: 'Vorn: {a} ({as}), vor {b} ({bs})',
   rDecisionPicked: 'Gewählt: {x} ({s})',
-  rDecisionTie: 'Gleichauf: {a} und {b} ({s})',
-  rDecisionTieMore: 'Gleichauf: {a}, {b} und {n} weitere ({s})',
-  rDecisionNone: 'Keine Gewichte gesetzt'
+  rDecisionTie: 'Gleichauf vorn: {a} und {b} ({s})',
+  rDecisionTieMore: 'Gleichauf vorn: {a}, {b} und {n} weitere ({s})',
+  rDecisionNone: 'Keine Rangfolge: alle Gewichte sind 0'
 })
 
 const DECISION_CSS = `
@@ -5895,10 +5955,10 @@ Object.assign(STRINGS.en, {
   rankMoved: '{x} moved to position {n} of {total}.',
   rankGrabbed: 'Dragging {x}. Position {n} of {total}.',
   rankRank: 'Position {n} of {total}',
-  rankHint: 'Drag, or Alt+↑/↓ to move',
+  rankHint: 'Drag to reorder', rankKeys: '[Alt]+[↑]/[↓] to move',
   rankSend: 'Send order',
   rankReset: 'Reset order',
-  rRanked: 'Ranked: {x}'
+  rRanked: 'My order: {x}'
 })
 Object.assign(STRINGS.de, {
   rankList: 'Deine Reihenfolge',
@@ -5907,10 +5967,10 @@ Object.assign(STRINGS.de, {
   rankMoved: '{x} auf Platz {n} von {total}.',
   rankGrabbed: '{x} wird verschoben. Platz {n} von {total}.',
   rankRank: 'Platz {n} von {total}',
-  rankHint: 'Ziehen oder Alt+↑/↓ zum Verschieben',
+  rankHint: 'Zum Umordnen ziehen', rankKeys: '[Alt]+[↑]/[↓] zum Verschieben',
   rankSend: 'Reihenfolge senden',
   rankReset: 'Zurücksetzen',
-  rRanked: 'Reihenfolge: {x}'
+  rRanked: 'Meine Reihenfolge: {x}'
 })
 
 const RANK_CSS = `
@@ -6152,6 +6212,7 @@ function RankCard({ card, sessionId, display, lang }) {
     ],
     footer: ans.showActions ? jsx(Footer, {
       hint: t(lang, 'rankHint'),
+      keys: t(lang, 'rankKeys'),
       children: jsxs(Fragment, { children: [
         changed ? jsx(Btn, { variant: 'ghost', onClick: () => { const next = card.items.map(i => i.id); setOrder(next); ans.saveDraft({ order: next }); setAnnounce('') }, children: t(lang, 'rankReset') }) : null,
         jsx(Btn, { variant: 'primary', onClick: send, children: card.submitLabel || t(lang, 'rankSend') })
@@ -6166,8 +6227,9 @@ REPLY_BUILDERS.rank = (card, answer, lang, data) => {
   const order = rankCleanOrder(card, answer.order)
   data.order = order
   data.labels = order.map(id => byId.get(id).label)
-  const labels = data.labels.slice(0, 5).map(x => clip(x, 30))
-  return { mark: '✓', summary: t(lang, 'rRanked', { x: labels.join(' > ') + (data.labels.length > 5 ? ' > …' : '') }) }
+  const labels = data.labels.slice(0, 5).map((x, i) => `${i + 1}. ${clip(x, 30)}`)
+  const sep = labels.some(x => /,\s/.test(x)) ? '; ' : ', '
+  return { mark: '✓', summary: t(lang, 'rRanked', { x: labels.join(sep) + (data.labels.length > 5 ? `${sep}…` : '') }) }
 }
 CARD_COMPONENTS.rank = RankCard
 
@@ -6192,8 +6254,9 @@ Object.assign(STRINGS.en, {
   rcpHave: 'have',
   rcpShopping: 'Shopping list',
   rcpHaveShort: 'Have everything',
-  rShopping: 'Shopping list for {n}: {x}',
-  rHaveAll: 'Have everything for {n} servings'
+  rShopping: 'Shopping list for {servings}: {x}',
+  rShoppingMore: '+{n} more',
+  rHaveAll: 'Have everything for {servings}'
 })
 Object.assign(STRINGS.de, {
   rcpServings: 'Portionen',
@@ -6213,8 +6276,9 @@ Object.assign(STRINGS.de, {
   rcpHave: 'vorhanden',
   rcpShopping: 'Einkaufsliste',
   rcpHaveShort: 'Alles da',
-  rShopping: 'Einkaufsliste für {n}: {x}',
-  rHaveAll: 'Alles da für {n} Portionen'
+  rShopping: 'Einkaufsliste für {servings}: {x}',
+  rShoppingMore: '+{n} weitere',
+  rHaveAll: 'Alles da für {servings}'
 })
 
 const RECIPE_CSS = `
@@ -6422,11 +6486,13 @@ REPLY_BUILDERS.recipe = (card, answer, lang, data) => {
     return out
   })
   data.have = answer.have.filter(id => byId.has(id))
-  if (!data.missing.length) return { mark: '✓', summary: t(lang, 'rHaveAll', { n: data.servings }) }
-  const parts = data.missing.slice(0, 4).map(m => clip([rcpAmount(m.qty, m.unit, lang), m.item].filter(Boolean).join(' '), 40))
-  const more = data.missing.length > 4 ? ', …' : ''
-  const list = parts.join(parts.some(p => /,\s/.test(p)) ? '; ' : ', ')
-  return { mark: '✓', summary: t(lang, 'rShopping', { n: data.servings, x: list + more }) }
+  const servings = t(lang, data.servings === 1 ? 'rcpServingsOne' : 'rcpServingsN', { n: data.servings })
+  if (!data.missing.length) return { mark: '✓', summary: t(lang, 'rHaveAll', { servings }) }
+  const shown = data.missing.length > 6 ? 5 : 6
+  const parts = data.missing.slice(0, shown).map(m => clip([rcpAmount(m.qty, m.unit, lang), m.item].filter(Boolean).join(' '), 40))
+  const sep = parts.some(p => /,\s/.test(p)) ? '; ' : ', '
+  if (data.missing.length > shown) parts.push(t(lang, 'rShoppingMore', { n: data.missing.length - shown }))
+  return { mark: '✓', summary: t(lang, 'rShopping', { servings, x: parts.join(sep) }) }
 }
 CARD_COMPONENTS.recipe = RecipeCard
 
@@ -6447,7 +6513,7 @@ Object.assign(STRINGS.en, {
   flashKnownCount: '{n} known',
   flashAgainCount: '{n} to repeat',
   flashProgress: '{n} of {total} known',
-  flashKeys: 'Space flip · ← Again · → Knew it',
+  flashKeys: '[Space] to flip · [←] again · [→] knew it',
   flashResult: 'Result',
   flashAllKnown: 'You knew them all.',
   flashPractise: 'To practise',
@@ -6473,7 +6539,7 @@ Object.assign(STRINGS.de, {
   flashKnownCount: '{n} gewusst',
   flashAgainCount: '{n} zu wiederholen',
   flashProgress: '{n} von {total} gewusst',
-  flashKeys: 'Leertaste umdrehen · ← Nochmal · → Gewusst',
+  flashKeys: '[Leertaste] zum Umdrehen · [←] nochmal · [→] gewusst',
   flashResult: 'Ergebnis',
   flashAllKnown: 'Du hast alle gewusst.',
   flashPractise: 'Zum Üben',
@@ -6513,7 +6579,9 @@ const FLASH_CSS = `
 .huic[data-card-type="flashcards"] .huic-fc-actions .huic-btn{flex:1 1 0;min-width:120px;max-width:240px;padding:9px 14px}
 .huic[data-card-type="flashcards"] .huic-fc-keys{margin:6px 0 0;text-align:center;color:var(--ui-text-tertiary);font-size:11.5px}
 .huic[data-card-type="flashcards"] .huic-fc-score{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 10px;margin:2px 0 0}
-.huic[data-card-type="flashcards"] .huic-fc-big{font-size:34px;font-weight:700;line-height:1.1;color:var(--huic-accent);font-variant-numeric:tabular-nums}
+.huic[data-card-type="flashcards"] .huic-fc-big{font-size:30px;font-weight:700;line-height:1.1;color:var(--huic-accent-ink);font-variant-numeric:tabular-nums}
+.huic[data-card-type="flashcards"] .huic-fc-allknown{display:flex;align-items:center;gap:6px;margin:0}
+.huic[data-card-type="flashcards"] .huic-fc-allknown .huic-ico{color:var(--ui-green,var(--huic-accent));stroke-width:2}
 .huic[data-card-type="flashcards"] .huic-fc-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px}
 .huic[data-card-type="flashcards"] .huic-fc-list li{display:flex;gap:8px;align-items:baseline;margin:0;padding:6px 10px;border:1px solid var(--ui-stroke-tertiary);border-radius:9px}
 .huic[data-card-type="flashcards"] .huic-fc-list li>span:first-child{flex:none;color:var(--ui-text-tertiary);font-weight:700}
@@ -6696,13 +6764,13 @@ function FlashcardsCard({ card, sessionId, display, lang }) {
             jsx(Btn, { variant: 'primary', onClick: flip, children: t(lang, 'flashFlip') })
           ] })
     }),
-    jsx('p', { className: 'huic-fc-keys', children: t(lang, 'flashKeys') })
+    jsx(KeyHint, { as: 'p', className: 'huic-fc-keys', text: t(lang, 'flashKeys') })
   ]
 
   const practise = [...again].sort((a, b) => a - b)
   const result = done ? [
     jsxs('div', { className: 'huic-fc-score', ref: resultRef, tabIndex: -1, children: [
-      jsx('span', { className: 'huic-fc-big', children: `${known.length} / ${n}` }),
+      jsx('span', { className: 'huic-fc-big', children: `${known.length}/${n}` }),
       jsx('span', { className: 'huic-sub', children: `${t(lang, 'flashProgress', { n: known.length, total: n })}, ${t(lang, rounds > 1 ? 'flashRounds' : 'flashRound1', { n: rounds })}` })
     ] }),
     jsx('div', {
@@ -6719,7 +6787,7 @@ function FlashcardsCard({ card, sessionId, display, lang }) {
           ] }, i)) }),
           practise.length > 8 ? jsx('p', { className: 'huic-sub', children: t(lang, 'flashMore', { n: practise.length - 8 }) }) : null
         ] })
-      : jsx('p', { style: { margin: 0 }, role: 'status', children: `🎉 ${t(lang, 'flashAllKnown')}` })
+      : jsxs('p', { className: 'huic-fc-allknown', role: 'status', children: [jsx(Icon, { name: 'check' }), t(lang, 'flashAllKnown')] })
   ] : null
 
   return jsx(Shell, {

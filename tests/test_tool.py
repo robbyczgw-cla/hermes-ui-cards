@@ -46,7 +46,7 @@ def test_desktop_returns_media_card_and_writes_markdown_copy(isolated):
     text = path.read_text(encoding="utf-8")
     assert text.startswith("> This is an interactive HUI+ card.")  # says how to fix a missing Desktop half
     assert "Capabilities → Plugins → HUI+ Cards → Desktop" in text
-    assert "\n\nWhere to?\n1. Lisbon\n2. Berlin\n" in text
+    assert "\n\nWhere to?\n\n1. Lisbon\n2. Berlin\n" in text
     assert out["media"] in out["next"]
     assert "error" not in out  # Desktop treats a result with `error` as a failed call
 

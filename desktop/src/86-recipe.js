@@ -18,8 +18,9 @@ Object.assign(STRINGS.en, {
   rcpHave: 'have',
   rcpShopping: 'Shopping list',
   rcpHaveShort: 'Have everything',
-  rShopping: 'Shopping list for {n}: {x}',
-  rHaveAll: 'Have everything for {n} servings'
+  rShopping: 'Shopping list for {servings}: {x}',
+  rShoppingMore: '+{n} more',
+  rHaveAll: 'Have everything for {servings}'
 })
 Object.assign(STRINGS.de, {
   rcpServings: 'Portionen',
@@ -39,8 +40,9 @@ Object.assign(STRINGS.de, {
   rcpHave: 'vorhanden',
   rcpShopping: 'Einkaufsliste',
   rcpHaveShort: 'Alles da',
-  rShopping: 'Einkaufsliste für {n}: {x}',
-  rHaveAll: 'Alles da für {n} Portionen'
+  rShopping: 'Einkaufsliste für {servings}: {x}',
+  rShoppingMore: '+{n} weitere',
+  rHaveAll: 'Alles da für {servings}'
 })
 
 const RECIPE_CSS = `
@@ -248,10 +250,12 @@ REPLY_BUILDERS.recipe = (card, answer, lang, data) => {
     return out
   })
   data.have = answer.have.filter(id => byId.has(id))
-  if (!data.missing.length) return { mark: '✓', summary: t(lang, 'rHaveAll', { n: data.servings }) }
-  const parts = data.missing.slice(0, 4).map(m => clip([rcpAmount(m.qty, m.unit, lang), m.item].filter(Boolean).join(' '), 40))
-  const more = data.missing.length > 4 ? ', …' : ''
-  const list = parts.join(parts.some(p => /,\s/.test(p)) ? '; ' : ', ')
-  return { mark: '✓', summary: t(lang, 'rShopping', { n: data.servings, x: list + more }) }
+  const servings = t(lang, data.servings === 1 ? 'rcpServingsOne' : 'rcpServingsN', { n: data.servings })
+  if (!data.missing.length) return { mark: '✓', summary: t(lang, 'rHaveAll', { servings }) }
+  const shown = data.missing.length > 6 ? 5 : 6
+  const parts = data.missing.slice(0, shown).map(m => clip([rcpAmount(m.qty, m.unit, lang), m.item].filter(Boolean).join(' '), 40))
+  const sep = parts.some(p => /,\s/.test(p)) ? '; ' : ', '
+  if (data.missing.length > shown) parts.push(t(lang, 'rShoppingMore', { n: data.missing.length - shown }))
+  return { mark: '✓', summary: t(lang, 'rShopping', { servings, x: parts.join(sep) }) }
 }
 CARD_COMPONENTS.recipe = RecipeCard

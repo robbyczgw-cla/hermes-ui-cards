@@ -7,10 +7,10 @@ Object.assign(STRINGS.en, {
   rankMoved: '{x} moved to position {n} of {total}.',
   rankGrabbed: 'Dragging {x}. Position {n} of {total}.',
   rankRank: 'Position {n} of {total}',
-  rankHint: 'Drag, or Alt+↑/↓ to move',
+  rankHint: 'Drag to reorder', rankKeys: '[Alt]+[↑]/[↓] to move',
   rankSend: 'Send order',
   rankReset: 'Reset order',
-  rRanked: 'Ranked: {x}'
+  rRanked: 'My order: {x}'
 })
 Object.assign(STRINGS.de, {
   rankList: 'Deine Reihenfolge',
@@ -19,10 +19,10 @@ Object.assign(STRINGS.de, {
   rankMoved: '{x} auf Platz {n} von {total}.',
   rankGrabbed: '{x} wird verschoben. Platz {n} von {total}.',
   rankRank: 'Platz {n} von {total}',
-  rankHint: 'Ziehen oder Alt+↑/↓ zum Verschieben',
+  rankHint: 'Zum Umordnen ziehen', rankKeys: '[Alt]+[↑]/[↓] zum Verschieben',
   rankSend: 'Reihenfolge senden',
   rankReset: 'Zurücksetzen',
-  rRanked: 'Reihenfolge: {x}'
+  rRanked: 'Meine Reihenfolge: {x}'
 })
 
 const RANK_CSS = `
@@ -264,6 +264,7 @@ function RankCard({ card, sessionId, display, lang }) {
     ],
     footer: ans.showActions ? jsx(Footer, {
       hint: t(lang, 'rankHint'),
+      keys: t(lang, 'rankKeys'),
       children: jsxs(Fragment, { children: [
         changed ? jsx(Btn, { variant: 'ghost', onClick: () => { const next = card.items.map(i => i.id); setOrder(next); ans.saveDraft({ order: next }); setAnnounce('') }, children: t(lang, 'rankReset') }) : null,
         jsx(Btn, { variant: 'primary', onClick: send, children: card.submitLabel || t(lang, 'rankSend') })
@@ -278,7 +279,8 @@ REPLY_BUILDERS.rank = (card, answer, lang, data) => {
   const order = rankCleanOrder(card, answer.order)
   data.order = order
   data.labels = order.map(id => byId.get(id).label)
-  const labels = data.labels.slice(0, 5).map(x => clip(x, 30))
-  return { mark: '✓', summary: t(lang, 'rRanked', { x: labels.join(' > ') + (data.labels.length > 5 ? ' > …' : '') }) }
+  const labels = data.labels.slice(0, 5).map((x, i) => `${i + 1}. ${clip(x, 30)}`)
+  const sep = labels.some(x => /,\s/.test(x)) ? '; ' : ', '
+  return { mark: '✓', summary: t(lang, 'rRanked', { x: labels.join(sep) + (data.labels.length > 5 ? `${sep}…` : '') }) }
 }
 CARD_COMPONENTS.rank = RankCard

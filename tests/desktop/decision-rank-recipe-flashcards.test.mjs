@@ -73,7 +73,7 @@ test('decision: "Send weights" replies with weights and the live ranking, no pic
   await type(sliderFor(container, 'Build quality'), '2')
   await click(buttonByText(container, 'Send weights'))
   const reply = lastReply()
-  assert.equal(reply.line1, '✓ Decision: Alpha (8.0) ahead of Gamma (6.0)')
+  assert.equal(reply.line1, '✓ Top pick: Alpha (8.0), ahead of Gamma (6.0)')
   assert.deepEqual(reply.json.weights, { price: 10, quality: 2 })
   assert.deepEqual(reply.json.ranking, [
     { id: 'o1', label: 'Alpha', score: 8 }, { id: 'o3', label: 'Gamma', score: 6 }, { id: 'o2', label: 'Beta', score: 4 }
@@ -98,7 +98,7 @@ test('decision: picking an option replies with the pick; picking again clears it
   await click(gamma())
   await click(buttonByText(container, 'Choose Gamma'))
   const reply = lastReply()
-  assert.equal(reply.line1, '✓ Picked: Gamma (6.0)')
+  assert.equal(reply.line1, '✓ Chose: Gamma (6.0)')
   assert.equal(reply.json.picked, 'o3')
   assert.deepEqual(reply.json.weights, { price: 5, quality: 5 })
 })
@@ -110,7 +110,7 @@ test('decision: German texts and decimal comma', async t => {
   await type(sliderFor(container, 'Build quality'), '2')
   assert.equal(sliderFor(container, 'Price').getAttribute('aria-valuetext'), 'Gewicht 10 von 10')
   await click(buttonByText(container, 'Gewichte abschicken'))
-  assert.equal(lastReply().line1, '✓ Entscheidung: Alpha (8,0) vor Gamma (6,0)')
+  assert.equal(lastReply().line1, '✓ Vorn: Alpha (8,0), vor Gamma (6,0)')
 })
 
 test('decision: weights and pick are saved as a draft and restored; answered view is locked', async t => {
@@ -181,7 +181,7 @@ test('rank: sending replies with ids and labels in order', async t => {
   await click(moveBtn(container, 'Export to PDF', 'up'))
   await click(buttonByText(container, 'Send order'))
   const reply = lastReply()
-  assert.equal(reply.line1, '✓ Ranked: Export to PDF > Dark mode > Offline sync > Team sharing')
+  assert.equal(reply.line1, '✓ My order: 1. Export to PDF, 2. Dark mode, 3. Offline sync, 4. Team sharing')
   assert.deepEqual(reply.json.order, ['k3', 'k1', 'k2', 'k4'])
   assert.deepEqual(reply.json.labels, ['Export to PDF', 'Dark mode', 'Offline sync', 'Team sharing'])
   assert.ok(container.querySelector('.huic-answer'))
@@ -194,7 +194,7 @@ test('rank: long lists are shortened after five, German line 1, unchanged order 
   const { container } = await render(t, { type: 'rank', title: 'Reihenfolge', items, lang: 'de' })
   await click(buttonByText(container, 'Reihenfolge senden'))
   const reply = lastReply()
-  assert.equal(reply.line1, '✓ Reihenfolge: Item 1 > Item 2 > Item 3 > Item 4 > Item 5 > …')
+  assert.equal(reply.line1, '✓ Meine Reihenfolge: 1. Item 1, 2. Item 2, 3. Item 3, 4. Item 4, 5. Item 5, …')
   assert.equal(reply.json.order.length, 7)
 })
 
@@ -290,7 +290,7 @@ test('recipe: ticked items leave the shopping list; reply has servings, missing 
   assert.match(container.querySelector('.huic-foot').textContent, /3 of 5 still to buy/)
   await click(buttonByText(container, 'Shopping list'))
   const reply = lastReply()
-  assert.equal(reply.line1, '✓ Shopping list for 6: 4½ eggs, ¾ l milk, 375 ml tomato sauce')
+  assert.equal(reply.line1, '✓ Shopping list for 6 servings: 4½ eggs, ¾ l milk, 375 ml tomato sauce')
   assert.deepEqual(reply.json.missing, [
     { id: 'g2', item: 'eggs', qty: 4.5 }, { id: 'g3', item: 'milk', qty: 0.75, unit: 'l' }, { id: 'g4', item: 'tomato sauce', qty: 375, unit: 'ml' }
   ])
@@ -311,7 +311,7 @@ test('recipe: everything ticked says so; long lists are shortened; German; no qt
   resetHost()
   const many = await render(t, { ...recipe, lang: 'de', ingredients: [...recipe.ingredients, { item: 'basil' }, { item: 'oil', qty: 2, unit: 'EL' }] })
   await click(buttonByText(many.container, 'Einkaufsliste'))
-  assert.equal(lastReply().line1, '✓ Einkaufsliste für 4: 400 g flour, 3 eggs, ½ l milk, 250 ml tomato sauce, …')
+  assert.equal(lastReply().line1, '✓ Einkaufsliste für 4 Portionen: 400 g flour, 3 eggs, ½ l milk, 250 ml tomato sauce, salt, +2 weitere')
   assert.deepEqual(lastReply().json.missing.find(m => m.item === 'salt'), { id: 'g5', item: 'salt' })
 })
 
@@ -397,7 +397,7 @@ test('flashcards: Again cards return in the next round (max 3), then the result 
   await flipAnd(again)
   // result screen after round 3: one card is still open
   assert.ok(!container.querySelector('.huic-fc'))
-  assert.match(container.querySelector('.huic-fc-big').textContent, /3 \/ 4/)
+  assert.match(container.querySelector('.huic-fc-big').textContent, /3\/4/)
   assert.match(container.textContent, /To practise/)
   assert.match(container.querySelector('.huic-fc-list').textContent, /el libro/)
   assert.equal(container.querySelector('[role=progressbar]').getAttribute('aria-valuenow'), '3')
@@ -494,27 +494,27 @@ test('decision: ties and all-zero weights give an honest line 1 (en + de)', asyn
   const two = { ...decision, options: decision.options.slice(0, 2) }
   const tie = await render(t, two)
   await click(buttonByText(tie.container, 'Send weights'))
-  assert.equal(lastReply().line1, '✓ Tie: Alpha and Beta (6.0)')
+  assert.equal(lastReply().line1, '✓ Tied at the top: Alpha and Beta (6.0)')
   resetHost()
   const de = await render(t, { ...two, lang: 'de' })
   await click(buttonByText(de.container, 'Gewichte senden'))
-  assert.equal(lastReply().line1, '✓ Gleichauf: Alpha und Beta (6,0)')
+  assert.equal(lastReply().line1, '✓ Gleichauf vorn: Alpha und Beta (6,0)')
   resetHost()
   const zero = await render(t, { ...two, lang: 'de' })
   await type(sliderFor(zero.container, 'Price'), '0')
   await type(sliderFor(zero.container, 'Build quality'), '0')
   await click(buttonByText(zero.container, 'Gewichte senden'))
-  assert.equal(lastReply().line1, '✓ Keine Gewichte gesetzt')
+  assert.equal(lastReply().line1, '✓ Keine Rangfolge: alle Gewichte sind 0')
   resetHost()
   const none = await render(t, two)
   await type(sliderFor(none.container, 'Price'), '0')
   await type(sliderFor(none.container, 'Build quality'), '0')
   await click(buttonByText(none.container, 'Send weights'))
-  assert.equal(lastReply().line1, '✓ No weights set')
+  assert.equal(lastReply().line1, '✓ No ranking: every weight is 0')
   resetHost()
   const three = await render(t, decision) // all three options tie at 6.0 with equal weights
   await click(buttonByText(three.container, 'Send weights'))
-  assert.equal(lastReply().line1, '✓ Tie: Alpha, Beta and 1 more (6.0)')
+  assert.equal(lastReply().line1, '✓ Tied at the top: Alpha, Beta and 1 more (6.0)')
 })
 
 test('decision: text on accent fills uses the contrasting foreground token', async t => {

@@ -16,7 +16,7 @@ Object.assign(STRINGS.en, {
   planNoteFor: 'Note for step {n}: {x}',
   planNotePlaceholder: 'Tell Hermes something about this step',
   planNoteShown: 'Note',
-  planKeys: '{keys} moves the step you are on',
+  planKeys: '[Alt]+[↑]/[↓] moves a step up or down',
   planDrag: 'Drag to move',
   planHighRisk: 'includes a high-risk step',
   planNothing: 'Switch on at least one step',
@@ -24,7 +24,7 @@ Object.assign(STRINGS.en, {
   planRequired: 'Required, always runs',
   planPending: 'Running {n} of {total} steps in {s} s',
   planUndo: 'Undo',
-  rPlan: 'Run the plan: {n} of {total} steps',
+  rPlan: 'Go ahead with {n} of {total} steps', rPlanAll: 'Go ahead with the plan ({total} steps)', rPlanOne: 'Go ahead with the plan (1 step)',
   rPlanSkipped: 'skipped: {x}',
   rPlanReordered: 'reordered'
 })
@@ -42,7 +42,7 @@ Object.assign(STRINGS.de, {
   planNoteFor: 'Notiz zu Schritt {n}: {x}',
   planNotePlaceholder: 'Hinweis für Hermes zu diesem Schritt',
   planNoteShown: 'Notiz',
-  planKeys: '{keys} verschiebt den Schritt, auf dem du bist',
+  planKeys: '[Alt]+[↑]/[↓] schiebt einen Schritt nach oben oder unten',
   planDrag: 'Zum Verschieben ziehen',
   planHighRisk: 'mit riskantem Schritt',
   planNothing: 'Mindestens einen Schritt einschalten',
@@ -50,7 +50,7 @@ Object.assign(STRINGS.de, {
   planRequired: 'Pflichtschritt, läuft immer',
   planPending: '{n} von {total} Schritten starten in {s} s',
   planUndo: 'Rückgängig',
-  rPlan: 'Plan ausführen: {n} von {total} Schritten',
+  rPlan: 'Leg los mit {n} von {total} Schritten', rPlanAll: 'Leg los mit dem Plan ({total} Schritte)', rPlanOne: 'Leg los mit dem Plan (1 Schritt)',
   rPlanSkipped: 'übersprungen: {x}',
   rPlanReordered: 'neu geordnet'
 })
@@ -126,7 +126,6 @@ const PLAN_CSS = `
 .huic[data-card-type="plan"] .huic-plan-note{min-height:30px;padding:5px 8px;font-size:12.5px;background:color-mix(in srgb,var(--ui-bg-quaternary) 35%,transparent)}
 .huic[data-card-type="plan"] .huic-plan-note-text{margin:0;padding:2px 0 2px 9px;border-left:2px solid var(--huic-accent);color:var(--ui-text-secondary);font-size:12.5px;white-space:pre-wrap}
 .huic[data-card-type="plan"] .huic-plan-keys{margin:0 0 0 38px;color:var(--ui-text-tertiary);font-size:11.5px}
-.huic[data-card-type="plan"] kbd,.huic[data-card-type="review"] kbd{font:inherit;font-size:10.5px;padding:0 4px;border:1px solid var(--ui-stroke-secondary);border-bottom-width:2px;border-radius:4px;color:var(--ui-text-secondary)}
 .huic[data-card-type="plan"] .huic-plan-warn{color:var(--ui-red,var(--ui-text-secondary))}
 @container (max-width: 440px){
   .huic[data-card-type="plan"] .huic-plan-step{grid-template-columns:26px minmax(0,1fr)}
@@ -206,11 +205,6 @@ function planIcon(kind) {
     strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true, focusable: 'false',
     children: jsx('path', { d: PLAN_ICONS[kind] })
   })
-}
-
-function planKeysHint(lang) {
-  const text = t(lang, 'planKeys', { keys: '\u0000' }).split('\u0000')
-  return [text[0], jsx('kbd', { children: 'Alt' }, 'a'), '+', jsx('kbd', { children: '↑' }, 'u'), '/', jsx('kbd', { children: '↓' }, 'd'), text[1]]
 }
 
 // Ids and input names come from the model: keep them in prototype-free maps, so an id like
@@ -522,7 +516,7 @@ function PlanCard({ card, sessionId, display, lang }) {
     ] }),
     children: [
       jsx('ol', { className: 'huic-plan-list', 'aria-label': t(lang, 'planStepsLabel'), children: rows }, 'list'),
-      editable && total > 1 ? jsx('p', { className: 'huic-plan-keys', children: planKeysHint(lang) }, 'keys') : null,
+      editable && total > 1 ? jsx(KeyHint, { as: 'p', className: 'huic-plan-keys', text: t(lang, 'planKeys') }, 'keys') : null,
       jsx('div', { className: 'huic-sr', role: 'status', 'aria-live': 'polite', children: announce }, 'live')
     ],
     footer,
@@ -540,7 +534,7 @@ REPLY_BUILDERS.plan = (card, answer, lang, data) => {
   })
   const on = data.steps.filter(s => s.included).length
   const skipped = data.steps.filter(s => !s.included).map(s => s.title)
-  let summary = t(lang, 'rPlan', { n: on, total: data.steps.length })
+  let summary = t(lang, on < data.steps.length ? 'rPlan' : on === 1 ? 'rPlanOne' : 'rPlanAll', { n: on, total: data.steps.length })
   if (skipped.length) summary += ` · ${t(lang, 'rPlanSkipped', { x: joinList(skipped) })}`
   if (data.steps.some((s, i) => s.id !== card.steps[i]?.id)) summary += ` · ${t(lang, 'rPlanReordered')}`
   return { summary }

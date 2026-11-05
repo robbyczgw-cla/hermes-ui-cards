@@ -115,11 +115,13 @@ The text version of a confirm card:
 
 ```
 Delete old log files?
+
 Action: Delete 14 log files older than 30 days in ~/logs
 Why: They use 2.3 GB and nothing reads them
-Risk (medium): Deleted files can't be restored
+Medium risk: Deleted files can't be restored
 Command:
   find ~/logs -name '*.log' -mtime +30 -delete
+
 Reply yes, no, or what to change.
 ```
 

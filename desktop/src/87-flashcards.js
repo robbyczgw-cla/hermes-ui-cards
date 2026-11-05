@@ -14,7 +14,7 @@ Object.assign(STRINGS.en, {
   flashKnownCount: '{n} known',
   flashAgainCount: '{n} to repeat',
   flashProgress: '{n} of {total} known',
-  flashKeys: 'Space flip · ← Again · → Knew it',
+  flashKeys: '[Space] to flip · [←] again · [→] knew it',
   flashResult: 'Result',
   flashAllKnown: 'You knew them all.',
   flashPractise: 'To practise',
@@ -40,7 +40,7 @@ Object.assign(STRINGS.de, {
   flashKnownCount: '{n} gewusst',
   flashAgainCount: '{n} zu wiederholen',
   flashProgress: '{n} von {total} gewusst',
-  flashKeys: 'Leertaste umdrehen · ← Nochmal · → Gewusst',
+  flashKeys: '[Leertaste] zum Umdrehen · [←] nochmal · [→] gewusst',
   flashResult: 'Ergebnis',
   flashAllKnown: 'Du hast alle gewusst.',
   flashPractise: 'Zum Üben',
@@ -80,7 +80,9 @@ const FLASH_CSS = `
 .huic[data-card-type="flashcards"] .huic-fc-actions .huic-btn{flex:1 1 0;min-width:120px;max-width:240px;padding:9px 14px}
 .huic[data-card-type="flashcards"] .huic-fc-keys{margin:6px 0 0;text-align:center;color:var(--ui-text-tertiary);font-size:11.5px}
 .huic[data-card-type="flashcards"] .huic-fc-score{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 10px;margin:2px 0 0}
-.huic[data-card-type="flashcards"] .huic-fc-big{font-size:34px;font-weight:700;line-height:1.1;color:var(--huic-accent);font-variant-numeric:tabular-nums}
+.huic[data-card-type="flashcards"] .huic-fc-big{font-size:30px;font-weight:700;line-height:1.1;color:var(--huic-accent-ink);font-variant-numeric:tabular-nums}
+.huic[data-card-type="flashcards"] .huic-fc-allknown{display:flex;align-items:center;gap:6px;margin:0}
+.huic[data-card-type="flashcards"] .huic-fc-allknown .huic-ico{color:var(--ui-green,var(--huic-accent));stroke-width:2}
 .huic[data-card-type="flashcards"] .huic-fc-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px}
 .huic[data-card-type="flashcards"] .huic-fc-list li{display:flex;gap:8px;align-items:baseline;margin:0;padding:6px 10px;border:1px solid var(--ui-stroke-tertiary);border-radius:9px}
 .huic[data-card-type="flashcards"] .huic-fc-list li>span:first-child{flex:none;color:var(--ui-text-tertiary);font-weight:700}
@@ -263,13 +265,13 @@ function FlashcardsCard({ card, sessionId, display, lang }) {
             jsx(Btn, { variant: 'primary', onClick: flip, children: t(lang, 'flashFlip') })
           ] })
     }),
-    jsx('p', { className: 'huic-fc-keys', children: t(lang, 'flashKeys') })
+    jsx(KeyHint, { as: 'p', className: 'huic-fc-keys', text: t(lang, 'flashKeys') })
   ]
 
   const practise = [...again].sort((a, b) => a - b)
   const result = done ? [
     jsxs('div', { className: 'huic-fc-score', ref: resultRef, tabIndex: -1, children: [
-      jsx('span', { className: 'huic-fc-big', children: `${known.length} / ${n}` }),
+      jsx('span', { className: 'huic-fc-big', children: `${known.length}/${n}` }),
       jsx('span', { className: 'huic-sub', children: `${t(lang, 'flashProgress', { n: known.length, total: n })}, ${t(lang, rounds > 1 ? 'flashRounds' : 'flashRound1', { n: rounds })}` })
     ] }),
     jsx('div', {
@@ -286,7 +288,7 @@ function FlashcardsCard({ card, sessionId, display, lang }) {
           ] }, i)) }),
           practise.length > 8 ? jsx('p', { className: 'huic-sub', children: t(lang, 'flashMore', { n: practise.length - 8 }) }) : null
         ] })
-      : jsx('p', { style: { margin: 0 }, role: 'status', children: `🎉 ${t(lang, 'flashAllKnown')}` })
+      : jsxs('p', { className: 'huic-fc-allknown', role: 'status', children: [jsx(Icon, { name: 'check' }), t(lang, 'flashAllKnown')] })
   ] : null
 
   return jsx(Shell, {

@@ -70,6 +70,12 @@ function formatSlot(slot, card, lang, { withDay = true } = {}) {
 function formValueText(field, value, lang) {
   if (field.kind === 'toggle') return value ? t(lang, 'yesWord') : t(lang, 'noWord')
   if (value === '' || value === null || value === undefined) return '–'
+  // A date reads as one ("Fri 20 Nov 2026"); the JSON line keeps the ISO value.
+  const day = field.kind === 'date' && typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? slotDate(`${value}T00:00`) : null
+  if (day && !Number.isNaN(day.getTime())) {
+    const text = new Intl.DateTimeFormat(lang === 'de' ? 'de-DE' : 'en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(day)
+    return lang === 'de' ? text : text.replace(/^(\p{L}+),\s/u, '$1 ') // "Fri 20 Nov 2026", like the slots
+  }
   return field.unit ? `${value} ${field.unit}` : String(value)
 }
 
@@ -123,7 +129,9 @@ function buildReply(card, answer, lang) {
         if (value === '' || value === null || value === undefined) continue
         parts.push(`${clip(field.label, 30)}: ${clip(formValueText(field, value, L), 40)}`)
       }
-      summary = t(L, 'rForm', { x: parts.join(', ') || '–' })
+      const fields = parts.join(' · ') || '–'
+      const title = clip(card.title || '', 40).replace(/\s*[?？:：]+$/, '')
+      summary = title ? t(L, 'rFormTitled', { title, x: fields }) : t(L, 'rForm', { x: fields })
       break
     }
     case 'confirm': {

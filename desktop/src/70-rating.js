@@ -1,13 +1,13 @@
 // rating: a keyboard-operable radio scale (contiguous stars or a segmented number row),
 // an optional comment. Digits rate, Enter sends.
 
-Object.assign(STRINGS.en, { keyRate: '{keys} rate · Enter send', rateEcho: '{n} of {max}' })
-Object.assign(STRINGS.de, { keyRate: '{keys} bewerten · Enter senden', rateEcho: '{n} von {max}' })
+Object.assign(STRINGS.en, { keyRate: '[{keys}] to rate · [Enter] to send', keyRate10: '[1–9] [0] to rate (0 is 10) · [Enter] to send', rateEcho: '{n} of {max}' })
+Object.assign(STRINGS.de, { keyRate: '[{keys}] zum Bewerten · [Enter] zum Senden', keyRate10: '[1–9] [0] zum Bewerten (0 ist 10) · [Enter] zum Senden', rateEcho: '{n} von {max}' })
 
 const RATING_CSS = `
-.huic[data-card-type="rating"] .huic-stars{display:flex;flex-wrap:wrap;gap:2px;width:fit-content;max-width:100%;margin-left:-3px}
-.huic[data-card-type="rating"] .huic-star{appearance:none;display:grid;place-items:center;width:34px;height:34px;padding:0;border:0;border-radius:var(--huic-r-md);background:none;color:var(--huic-accent);cursor:pointer;transition:transform .12s var(--huic-ease)}
-.huic[data-card-type="rating"] .huic-star svg{display:block;width:28px;height:28px;fill:color-mix(in srgb,var(--huic-accent) 7%,transparent);stroke:color-mix(in srgb,var(--huic-accent) 55%,var(--ui-text-tertiary));stroke-width:1.4;stroke-linejoin:round;transition:fill .12s,stroke .12s}
+.huic[data-card-type="rating"] .huic-stars{display:grid;grid-template-columns:repeat(var(--huic-n),minmax(0,34px));gap:2px;max-width:100%;margin-left:-3px}
+.huic[data-card-type="rating"] .huic-star{appearance:none;display:grid;place-items:center;width:100%;height:auto;aspect-ratio:1;padding:0;border:0;border-radius:var(--huic-r-md);background:none;color:var(--huic-accent);cursor:pointer;transition:transform .12s var(--huic-ease)}
+.huic[data-card-type="rating"] .huic-star svg{display:block;width:82%;height:82%;fill:color-mix(in srgb,var(--huic-accent) 7%,transparent);stroke:color-mix(in srgb,var(--huic-accent) 55%,var(--ui-text-tertiary));stroke-width:1.4;stroke-linejoin:round;transition:fill .12s,stroke .12s}
 .huic[data-card-type="rating"] .huic-star-on svg{fill:var(--huic-accent);stroke:color-mix(in srgb,var(--huic-accent) 70%,var(--ui-text-primary))}
 .huic[data-card-type="rating"] .huic-star-pre svg{fill:color-mix(in srgb,var(--huic-accent) 40%,transparent);stroke:var(--huic-accent)}
 .huic[data-card-type="rating"] .huic-star:hover:not([disabled]){transform:scale(1.1)}
@@ -21,8 +21,12 @@ const RATING_CSS = `
 .huic[data-card-type="rating"] .huic-segbtn:focus-visible{outline-offset:-2px}
 .huic[data-card-type="rating"] .huic-segbtn[aria-checked="true"]{background:var(--huic-accent);color:var(--huic-on-accent,var(--ui-chat-surface-background,var(--ui-base,Canvas)));font-weight:600}
 .huic[data-card-type="rating"] .huic-segbtn[disabled]{cursor:default}
-.huic[data-card-type="rating"] .huic-rate-meta{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 12px;min-height:1.45em}
-.huic[data-card-type="rating"] .huic-rate-echo{font-weight:600;font-variant-numeric:tabular-nums}
+.huic[data-card-type="rating"] .huic-rate-row{display:flex;flex-wrap:wrap;align-items:flex-start;gap:4px 14px}
+.huic[data-card-type="rating"] .huic-rate-scale{display:flex;flex-direction:column;gap:4px;min-width:0;max-width:100%}
+.huic[data-card-type="rating"] .huic-rate-scale.is-numbers{flex:1 1 100%}
+.huic[data-card-type="rating"] .huic-rate-ends{display:flex;justify-content:space-between;gap:12px;color:var(--ui-text-tertiary);font-size:12px;line-height:16px}
+.huic[data-card-type="rating"] .huic-stars+.huic-rate-ends{padding-right:3px}
+.huic[data-card-type="rating"] .huic-rate-echo{display:flex;align-items:center;min-height:34px;font-weight:600;font-variant-numeric:tabular-nums;animation:huic-fade .2s var(--huic-ease) both}
 @media (prefers-reduced-motion: reduce){.huic[data-card-type="rating"] .huic-star:hover:not([disabled]){transform:none}}
 `
 
@@ -91,6 +95,8 @@ function RatingCard({ card, sessionId, display, lang }) {
 
   const endLabel = shown === 1 ? card.lowLabel : shown === scale ? card.highLabel : ''
   const ends = [card.lowLabel ? `1 = ${card.lowLabel}` : '', card.highLabel ? `${scale} = ${card.highLabel}` : ''].filter(Boolean).join(' · ')
+  const endsId = useId()
+  const echo = shown ? t(lang, 'rateEcho', { n: shown, max: scale }) + (endLabel ? ` · ${endLabel}` : '') : ''
 
   return jsx(Shell, {
     card, display, labelId, title: card.question,
@@ -99,20 +105,31 @@ function RatingCard({ card, sessionId, display, lang }) {
       style: { display: 'flex', flexDirection: 'column', gap: 8 },
       children: [
         jsx('style', { children: RATING_CSS }),
-        jsx('div', {
-          role: 'radiogroup', 'aria-labelledby': labelId,
-          className: numbers ? 'huic-segs' : 'huic-stars',
-          onMouseLeave: () => setHover(null),
-          children: Array.from({ length: scale }, (_, i) => star(i))
-        }),
+        // The end labels sit under the first and last star; screen readers get "1 = …, 5 = …".
         jsxs('div', {
-          className: 'huic-rate-meta',
+          className: 'huic-rate-row',
           children: [
-            jsx('span', {
-              className: 'huic-rate-echo',
-              children: shown ? t(lang, 'rateEcho', { n: shown, max: scale }) + (endLabel ? ` · ${endLabel}` : '') : ''
+            jsxs('div', {
+              className: cx('huic-rate-scale', numbers && 'is-numbers'),
+              children: [
+                jsx('div', {
+                  role: 'radiogroup', 'aria-labelledby': labelId, 'aria-describedby': ends ? endsId : undefined,
+                  className: numbers ? 'huic-segs' : 'huic-stars',
+                  style: numbers ? undefined : { '--huic-n': scale },
+                  onMouseLeave: () => setHover(null),
+                  children: Array.from({ length: scale }, (_, i) => star(i))
+                }),
+                ends ? jsxs('div', {
+                  className: 'huic-rate-ends',
+                  children: [
+                    jsx('span', { className: 'huic-sr', id: endsId, children: ends }),
+                    jsx('span', { 'aria-hidden': true, children: card.lowLabel || '' }),
+                    jsx('span', { 'aria-hidden': true, style: { textAlign: 'right' }, children: card.highLabel || '' })
+                  ]
+                }) : null
+              ]
             }),
-            ends ? jsx('span', { className: 'huic-sub', style: { margin: 0 }, children: ends }) : null
+            jsx('span', { className: 'huic-rate-echo', children: echo }, echo ? 'on' : 'off')
           ]
         }),
         card.comment ? jsxs('label', {
@@ -132,7 +149,7 @@ function RatingCard({ card, sessionId, display, lang }) {
       ]
     }),
     footer: ans.showActions ? jsx(Footer, {
-      hint: t(lang, 'keyRate', { keys: scale === 10 ? '1–0' : keyRange(scale) }),
+      keys: scale === 10 ? t(lang, 'keyRate10') : t(lang, 'keyRate', { keys: keyRange(scale) }),
       children: jsx(Btn, { variant: 'primary', disabled: value === null,
         onClick: () => send(value), children: t(lang, 'send') })
     }) : null,

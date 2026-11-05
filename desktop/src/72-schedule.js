@@ -162,7 +162,7 @@ function ScheduleCard({ card, sessionId, display, lang }) {
       ]
     }),
     footer: ans.showActions ? jsx(Footer, {
-      hint: available.length ? t(lang, card.multiple ? 'keyToggle' : 'keyChoose', { keys: keyRange(available.length) }) : undefined,
+      keys: available.length ? t(lang, card.multiple ? 'keyToggle' : 'keyChoose', { keys: keyRange(available.length) }) : undefined,
       children: jsxs('span', { className: 'huic-foot-group', children: [
         card.noneLabel ? jsx(Btn, { variant: 'ghost', onClick: () => ans.submit({ none: true }), children: card.noneLabel }) : null,
         jsx(Btn, { variant: 'primary', disabled: !selected.length, onClick: send, children: t(lang, 'send') })
