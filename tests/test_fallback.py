@@ -368,3 +368,17 @@ def test_calc_fallback_formats_defaults():
     assert not errors
     assert '€1,234.56' in render_text(card)
     assert '1.234,56\u00a0€' in render_text({**card, 'lang':'de'})
+
+
+def test_plan_off_explains_how_to_include():
+    card = {"type": "plan", "title": "Release", "steps": [{"title": "Deploy"}, {"title": "Clean", "optional": True, "off": True}]}
+    from hui_cards.fallback import render_text
+    assert 'off — reply "include 2" to run it' in render_text(card)
+    assert 'aus — antworte mit "Schritt 2 einschließen"' in render_text({**card, "lang": "de"})
+
+
+def test_form_optional_toggle_fallback_marks_unanswered():
+    from hui_cards.fallback import render_text
+    card = {"type": "form", "fields": [{"name": "notify", "label": "Notify", "kind": "toggle"}]}
+    assert "leave blank if unanswered" in render_text(card)
+    assert "leer lassen, falls unbeantwortet" in render_text({**card, "lang": "de"})

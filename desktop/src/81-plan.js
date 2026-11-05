@@ -238,7 +238,7 @@ function planState(card, source) {
   const srcOrder = planOwn(src, 'order'), srcOff = planOwn(src, 'off'), srcNotes = planOwn(src, 'notes')
   const order = Array.isArray(srcOrder) ? srcOrder.filter((id, i, all) => ids.includes(id) && all.indexOf(id) === i) : []
   for (const id of ids) if (!order.includes(id)) order.push(id)
-  const off = Array.isArray(srcOff) ? srcOff.filter(id => optional.has(id)) : []
+  const off = Array.isArray(srcOff) ? srcOff.filter(id => optional.has(id)) : card.steps.filter(s => s.optional && s.off).map(s => s.id)
   const notes = planDict()
   for (const id of ids) {
     const note = planOwn(srcNotes, id)

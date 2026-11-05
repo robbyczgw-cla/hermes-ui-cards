@@ -261,6 +261,10 @@ def _unique_ids(card, key, ctx):
 def _rule(name, card, ctx):
     if name in ("uniqueStepIds", "uniqueCriterionIds", "uniqueIngredientIds"):
         _unique_ids(card, {"uniqueStepIds": "steps", "uniqueCriterionIds": "criteria", "uniqueIngredientIds": "ingredients"}[name], ctx)
+    elif name == "planOffOptional":
+        for i, step in enumerate(card["steps"]):
+            if step.get("off") and not step.get("optional"):
+                ctx.errors.append(f"card.steps[{i}].off: only allowed when optional is true")
     elif name == "uniqueOptionIds":
         _unique_ids(card, "options", ctx)
     elif name == "uniqueItemIds":

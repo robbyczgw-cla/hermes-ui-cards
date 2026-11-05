@@ -55,7 +55,7 @@ the card (they are saved as a draft) and send nothing:
 
 | Type | Answer fields | Line 1 (English / German) |
 |---|---|---|
-| plan | `steps: [{id, title, included, note?}]` | `✓ Run the plan: 5 of 6 steps` / `✓ Plan ausführen: 5 von 6 Schritten` |
+| plan | `steps: [{id, title, included, note?}]`; optional steps with `off: true` start excluded | `✓ Run the plan: 5 of 6 steps` / `✓ Plan ausführen: 5 von 6 Schritten` |
 | review | `keep`, `drop`, `undecided`: ID arrays; `notes`, `titles?`: ID maps | `✓ Review done: keep 5, drop 3` / `✓ Durchgesehen: 5 behalten, 3 verwerfen` |
 | decision | `weights`, `ranking: [{id, label, score}]`, `picked?` | `✓ Decision: A (8.4) ahead of B (7.9)` / `✓ Entscheidung: …` |
 | calc | `inputs: {name: value}`, `outputs: [{label, value}]` | `✓ Calculated: Monthly rate 1,234.56 €` / `✓ Berechnet: …` |
@@ -65,7 +65,7 @@ the card (they are saved as a draft) and send nothing:
 | choice | `selected: [optionId]`, `labels: [label]`, `other?: string` | `✓ Chose: A, B` / `✓ Gewählt: A, B` |
 | checklist | `done_ids: [itemId]`, `open_ids: [itemId]`, `done: [text]`, `open: [text]` | `✓ Checklist done: 3 of 5 checked. Still open: X, Y` / `✓ Checkliste fertig: 3 von 5 erledigt. Offen: X, Y` |
 | compare | `selected: columnId`, `label` | `✓ Picked: Pixel 10` / `✓ Gewählt: Pixel 10` |
-| form | `values: {name: value}` | `✓ Form sent: Name: Anna, Date: 2026-11-12` / `✓ Formular gesendet: …` |
+| form | `values: {name: value}`; an untouched toggle without a default is `null` and omitted from line 1; required toggles must be touched | `✓ Form sent: Name: Anna, Date: 2026-11-12` / `✓ Formular gesendet: …` |
 | confirm | `decision: "yes" \| "no" \| "change"`, `change?: string` | `✓ Yes, go ahead: <title>` · `✗ No, don't: <title>` · `✎ Change: <text>` / `✓ Ja, mach das: …` · `✗ Nein, lieber nicht: …` · `✎ Ändern: …` |
 | rating | `value`, `scale`, `comment?` | `✓ Rated 4 of 5` / `✓ Bewertung: 4 von 5` |
 | slider | `value`, `unit?` | `✓ Chose: 300 €` / `✓ Gewählt: 300 €` |
@@ -134,7 +134,7 @@ not invented URLs. Desktop links source chips to those pages and counts unique
 URLs. Text surfaces show source domains and the date. On Desktop a pick waits for the
 configured undo window (Settings → *Undo time*: 0, 4 or 8 seconds, default 4) before the answer is
 sent; Undo or Escape inside the card cancels it, and nothing is sent if the card disappears first.
-The same window applies to Run on `plan` and Yes on a medium- or high-risk `confirm`. It undoes the
+The same window applies to Run on `plan`, Apply on `review`, and Yes on a medium- or high-risk `confirm`. It undoes the
 sending, not work Hermes has already done.
 
 ## 5. Answer memory and synchronization

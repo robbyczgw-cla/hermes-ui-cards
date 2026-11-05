@@ -4,7 +4,7 @@ import * as sdk from '@hermes/plugin-sdk'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Fragment, jsx, jsxs } from 'react/jsx-runtime'
 
-const SCHEMA = {"$comment":"Single source of truth for card shapes. Read by hui_cards/schema.py (validation in the tool) and by scripts/build.py, which embeds it in desktop/plugin.js and generates desktop/cards.d.ts. Subset of JSON Schema plus x-rules (cross-field checks implemented in both validators).","version":1,"limits":{"maxCardBytes":24000,"maxReplyChars":4000},"common":{"type":"object","properties":{"type":{"type":"string","description":"Card type."},"id":{"type":"string","pattern":"^[a-z0-9][a-z0-9_-]{0,39}$","description":"Short slug you choose, e.g. \"trip-style\". Optional."},"lang":{"type":"string","pattern":"^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$","description":"Language of the card text (\"en\", \"de\"). Sets the language of buttons and hints. Optional."}}},"definitions":{"image":{"type":"string","format":"https-url","maxLength":2000,"description":"https image URL that came from a tool or the user. Never invent one."},"icon":{"type":"string","maxLength":8,"format":"no-space","description":"One emoji."},"shortText":{"type":"string","minLength":1,"maxLength":80},"text":{"type":"string","minLength":1,"maxLength":300},"longText":{"type":"string","minLength":1,"maxLength":1200},"label":{"type":"string","minLength":1,"maxLength":40},"itemId":{"type":"string","pattern":"^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$"}},"cards":{"plan":{"phase":3,"summary":"Edit and run a plan.","type":"object","required":["title","steps"],"properties":{"title":{"$ref":"shortText"},"summary":{"$ref":"text"},"steps":{"type":"array","minItems":1,"maxItems":15,"items":{"type":"object","required":["title"],"properties":{"id":{"$ref":"itemId"},"title":{"$ref":"shortText"},"detail":{"$ref":"text"},"command":{"type":"string","minLength":1,"maxLength":1000},"risk":{"type":"string","enum":["low","medium","high"]},"optional":{"type":"boolean","default":false}}}},"runLabel":{"$ref":"label"}},"x-rules":["uniqueStepIds"]},"review":{"phase":3,"summary":"Review items together.","type":"object","required":["title","items"],"properties":{"title":{"$ref":"shortText"},"summary":{"$ref":"text"},"items":{"type":"array","minItems":1,"maxItems":30,"items":{"type":"object","required":["title"],"properties":{"id":{"$ref":"itemId"},"title":{"$ref":"shortText"},"detail":{"$ref":"text"},"preview":{"type":"string","minLength":1,"maxLength":1000},"tag":{"type":"string","minLength":1,"maxLength":24}}}},"defaultDecision":{"type":"string","enum":["keep","drop","none"],"default":"none"},"keepLabel":{"$ref":"label"},"dropLabel":{"$ref":"label"},"applyLabel":{"$ref":"label"}},"x-rules":["uniqueItemIds"]},"checklist":{"phase":1,"summary":"Items the user ticks off; the ticks are kept when the chat is reopened. \"Done\" reports checked and open items.","type":"object","required":["items"],"properties":{"title":{"$ref":"shortText"},"items":{"type":"array","minItems":1,"maxItems":50,"items":{"type":"object","required":["text"],"properties":{"id":{"$ref":"itemId"},"text":{"$ref":"text"},"note":{"$ref":"text"},"category":{"type":"string","minLength":1,"maxLength":40,"description":"Groups items under a heading."},"checked":{"type":"boolean","default":false}}}},"doneLabel":{"$ref":"label"}},"x-rules":["uniqueItemIds"]},"compare":{"phase":1,"summary":"2-4 candidates side by side with aligned attribute rows, one may be marked best; each column has a pick button.","type":"object","required":["columns"],"properties":{"title":{"$ref":"shortText"},"columns":{"type":"array","minItems":2,"maxItems":4,"items":{"type":"object","required":["title"],"properties":{"id":{"$ref":"itemId"},"title":{"$ref":"shortText"},"subtitle":{"$ref":"text"},"badge":{"type":"string","minLength":1,"maxLength":24},"image":{"$ref":"image"},"best":{"type":"boolean","default":false,"description":"Your recommendation (at most one column)."},"pros":{"type":"array","maxItems":5,"items":{"$ref":"text"}},"cons":{"type":"array","maxItems":5,"items":{"$ref":"text"}},"source":{"type":"object","required":["label","url"],"properties":{"label":{"$ref":"label"},"url":{"$ref":"image","description":"HTTPS source URL; never invent one."}}}}}},"rows":{"type":"array","maxItems":12,"description":"Attribute rows; values[i] belongs to columns[i].","items":{"type":"object","required":["label","values"],"properties":{"label":{"$ref":"shortText"},"values":{"type":"array","items":{"type":["string","number","boolean","null"],"maxLength":120}},"sources":{"type":"array","items":{"type":["string","null"],"format":"https-url","maxLength":2000}},"best":{"type":"integer","minimum":0}}}},"selectLabel":{"$ref":"label"},"asOf":{"type":"string","maxLength":40}},"x-rules":["uniqueColumnIds","rowsMatchColumns","singleBest","rowSourcesMatchValues","rowBestInColumns"]},"form":{"phase":1,"summary":"Fields the user fills in (text, number, date, select, toggle) with required fields and checks.","type":"object","required":["fields"],"properties":{"title":{"$ref":"shortText"},"description":{"$ref":"text"},"fields":{"type":"array","minItems":1,"maxItems":12,"items":{"type":"object","required":["name","label","kind"],"properties":{"name":{"type":"string","pattern":"^[A-Za-z][A-Za-z0-9_]{0,39}$"},"label":{"$ref":"shortText"},"kind":{"type":"string","enum":["text","textarea","number","date","time","email","select","toggle"]},"required":{"type":"boolean","default":false},"placeholder":{"type":"string","maxLength":80},"help":{"$ref":"text"},"default":{"type":["string","number","boolean"],"maxLength":1000},"min":{"type":"number","description":"number: smallest value."},"max":{"type":"number","description":"number: largest value."},"step":{"type":"number","minimum":0},"unit":{"type":"string","maxLength":12},"maxLength":{"type":"integer","minimum":1,"maximum":2000},"options":{"type":"array","minItems":2,"maxItems":20,"items":{"$ref":"shortText"},"description":"select: the choices."}}}},"submitLabel":{"$ref":"label"}},"x-rules":["uniqueFieldNames","fieldKindRules"]},"confirm":{"phase":1,"summary":"Ask before you act: one action with reason and risk; the user answers Yes, No or Change.","type":"object","required":["title","action"],"properties":{"title":{"$ref":"shortText"},"action":{"$ref":"text","description":"What exactly will happen."},"reason":{"$ref":"text"},"risk":{"type":"object","required":["level"],"properties":{"level":{"type":"string","enum":["low","medium","high"]},"text":{"$ref":"text"}}},"command":{"type":"string","minLength":1,"maxLength":2000,"description":"Command or code shown monospace."},"details":{"type":"array","maxItems":8,"items":{"type":"object","required":["label","value"],"properties":{"label":{"$ref":"shortText"},"value":{"$ref":"text"}}}},"confirmLabel":{"$ref":"label"},"cancelLabel":{"$ref":"label"},"allowChange":{"type":"boolean","default":true,"description":"Offer \"Change\" with a text field."}},"x-rules":[]},"steps":{"phase":2,"summary":"A guided walkthrough, one step at a time with Back/Next; the user reports done or where they got stuck.","type":"object","required":["steps"],"properties":{"title":{"$ref":"shortText"},"steps":{"type":"array","minItems":2,"maxItems":12,"items":{"type":"object","required":["title"],"properties":{"title":{"$ref":"shortText"},"body":{"$ref":"longText"},"command":{"type":"string","minLength":1,"maxLength":1000},"image":{"$ref":"image"}}}},"finishLabel":{"$ref":"label"}},"x-rules":[]},"decision":{"phase":3,"summary":"Compare weighted options.","type":"object","required":["title","criteria","options"],"properties":{"title":{"$ref":"shortText"},"criteria":{"type":"array","minItems":2,"maxItems":8,"items":{"type":"object","required":["id","label","weight"],"properties":{"id":{"$ref":"itemId"},"label":{"$ref":"shortText"},"weight":{"type":"integer","minimum":0,"maximum":10}}}},"options":{"type":"array","minItems":2,"maxItems":6,"items":{"type":"object","required":["label","scores"],"properties":{"id":{"$ref":"itemId"},"label":{"$ref":"shortText"},"scores":{"type":"object","additionalProperties":{"type":"integer","minimum":0,"maximum":10}},"note":{"$ref":"text"}}}},"note":{"$ref":"text"},"submitLabel":{"$ref":"label"}},"x-rules":["uniqueCriterionIds","uniqueOptionIds","scoresMatchCriteria"]},"calc":{"phase":3,"summary":"Calculate outputs from inputs.","type":"object","required":["title","inputs","outputs"],"properties":{"title":{"$ref":"shortText"},"inputs":{"type":"array","minItems":1,"maxItems":8,"items":{"type":"object","required":["name","label","default"],"properties":{"name":{"type":"string","pattern":"^[A-Za-z_][A-Za-z0-9_]{0,31}$"},"label":{"$ref":"shortText"},"kind":{"type":"string","enum":["number","slider","select","toggle"],"default":"number"},"min":{"type":"number"},"max":{"type":"number"},"step":{"type":"number"},"default":{"type":"number"},"unit":{"type":"string","minLength":1,"maxLength":12},"options":{"type":"array","minItems":2,"maxItems":12,"items":{"type":"object","required":["label","value"],"properties":{"label":{"$ref":"shortText"},"value":{"type":"number"}}}}}}},"outputs":{"type":"array","minItems":1,"maxItems":4,"items":{"type":"object","required":["label","expr"],"properties":{"label":{"$ref":"shortText"},"expr":{"type":"string","minLength":1,"maxLength":300},"format":{"type":"string","enum":["number","integer","percent","currency"],"default":"number"},"decimals":{"type":"integer","minimum":0,"maximum":6},"unit":{"type":"string","minLength":1,"maxLength":12},"emphasis":{"type":"boolean"}}}},"note":{"$ref":"text"},"currency":{"type":"string","pattern":"^[A-Z]{3}$","default":"EUR"},"sendLabel":{"$ref":"label"}},"x-rules":["uniqueInputNames","calcExpressions","calcInputs"]},"rank":{"phase":3,"summary":"Put items in order.","type":"object","required":["title","items"],"properties":{"title":{"$ref":"shortText"},"prompt":{"$ref":"text"},"items":{"type":"array","minItems":2,"maxItems":12,"items":{"type":"object","required":["label"],"properties":{"id":{"$ref":"itemId"},"label":{"$ref":"shortText"},"detail":{"$ref":"text"}}}},"submitLabel":{"$ref":"label"}},"x-rules":["uniqueItemIds"]},"choice":{"phase":1,"summary":"Pick several of 2-6 options, or options that need a picture or a short text each. For one plain question with simple options use the built-in clarify tool instead.","type":"object","required":["question","options"],"properties":{"question":{"$ref":"text"},"options":{"type":"array","minItems":2,"maxItems":6,"items":{"type":"object","required":["label"],"properties":{"id":{"$ref":"itemId"},"label":{"$ref":"shortText"},"description":{"$ref":"text"},"icon":{"$ref":"icon"},"image":{"$ref":"image"},"badge":{"type":"string","minLength":1,"maxLength":24}}}},"multiple":{"type":"boolean","default":false,"description":"Allow several picks."},"min":{"type":"integer","minimum":1,"maximum":6,"description":"Fewest picks (multiple only)."},"max":{"type":"integer","minimum":1,"maximum":6,"description":"Most picks (multiple only)."},"allowOther":{"type":"boolean","default":false,"description":"Add a free-text \"Other\" field."},"submitLabel":{"$ref":"label"}},"x-rules":["uniqueOptionIds","minMaxPicks"]},"schedule":{"phase":2,"summary":"Offer time slots to pick from (meetings, appointments).","type":"object","required":["slots"],"properties":{"title":{"$ref":"shortText"},"timezone":{"type":"string","maxLength":64,"description":"IANA zone, e.g. \"Europe/Vienna\"."},"slots":{"type":"array","minItems":1,"maxItems":20,"items":{"type":"object","required":["start"],"properties":{"id":{"$ref":"itemId"},"start":{"type":"string","format":"datetime","description":"ISO 8601, e.g. 2026-11-12T14:00"},"end":{"type":"string","format":"datetime"},"label":{"$ref":"shortText"},"note":{"$ref":"text"},"unavailable":{"type":"boolean","default":false}}}},"multiple":{"type":"boolean","default":false},"noneLabel":{"$ref":"label","description":"Button for \"none of these fit\"."}},"x-rules":["uniqueSlotIds","slotOrder"]},"recipe":{"phase":3,"summary":"Scale a recipe and make a shopping list.","type":"object","required":["title","servings","ingredients"],"properties":{"title":{"$ref":"shortText"},"servings":{"type":"integer","minimum":1,"maximum":50},"ingredients":{"type":"array","minItems":1,"maxItems":40,"items":{"type":"object","required":["item"],"properties":{"id":{"$ref":"itemId"},"item":{"$ref":"shortText"},"qty":{"type":"number","minimum":0},"unit":{"type":"string","minLength":1,"maxLength":12},"note":{"type":"string","minLength":1,"maxLength":80},"group":{"type":"string","minLength":1,"maxLength":40}}}},"steps":{"type":"array","minItems":0,"maxItems":20,"items":{"type":"object","required":["text"],"properties":{"text":{"$ref":"text"},"minutes":{"type":"integer","minimum":1,"maximum":600}}}},"sendLabel":{"$ref":"label"}},"x-rules":["uniqueIngredientIds"]},"flashcards":{"phase":3,"summary":"Practise with flashcards.","type":"object","required":["title","cards"],"properties":{"title":{"$ref":"shortText"},"cards":{"type":"array","minItems":1,"maxItems":40,"items":{"type":"object","required":["front","back"],"properties":{"front":{"$ref":"text"},"back":{"$ref":"text"},"hint":{"$ref":"text"}}}},"shuffle":{"type":"boolean","default":false}},"x-rules":[]},"rating":{"phase":2,"summary":"Ask for a rating on a scale (stars or numbers), optional comment.","type":"object","required":["question"],"properties":{"question":{"$ref":"text"},"scale":{"type":"integer","minimum":3,"maximum":10,"default":5},"style":{"type":"string","enum":["stars","numbers"],"default":"stars"},"lowLabel":{"type":"string","maxLength":30},"highLabel":{"type":"string","maxLength":30},"comment":{"type":"boolean","default":false,"description":"Add an optional comment field."}},"x-rules":[]},"slider":{"phase":2,"summary":"Ask for one number in a range (budget, duration, level).","type":"object","required":["question","min","max"],"properties":{"question":{"$ref":"text"},"min":{"type":"number"},"max":{"type":"number"},"step":{"type":"number","minimum":0},"default":{"type":"number"},"unit":{"type":"string","maxLength":12},"minLabel":{"type":"string","maxLength":30},"maxLabel":{"type":"string","maxLength":30},"submitLabel":{"$ref":"label"}},"x-rules":["sliderRange"]},"quiz":{"phase":2,"summary":"Multiple-choice questions with feedback per answer; the score is sent back.","type":"object","required":["questions"],"properties":{"title":{"$ref":"shortText"},"questions":{"type":"array","minItems":1,"maxItems":10,"items":{"type":"object","required":["question","options","answer"],"properties":{"question":{"$ref":"text"},"options":{"type":"array","minItems":2,"maxItems":6,"items":{"$ref":"shortText"}},"answer":{"type":"integer","minimum":0,"description":"0-based index of the correct option."},"explanation":{"$ref":"text"}}}}},"x-rules":["quizAnswers"]}}}
+const SCHEMA = {"$comment":"Single source of truth for card shapes. Read by hui_cards/schema.py (validation in the tool) and by scripts/build.py, which embeds it in desktop/plugin.js and generates desktop/cards.d.ts. Subset of JSON Schema plus x-rules (cross-field checks implemented in both validators).","version":1,"limits":{"maxCardBytes":24000,"maxReplyChars":4000},"common":{"type":"object","properties":{"type":{"type":"string","description":"Card type."},"id":{"type":"string","pattern":"^[a-z0-9][a-z0-9_-]{0,39}$","description":"Short slug you choose, e.g. \"trip-style\". Optional."},"lang":{"type":"string","pattern":"^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$","description":"Language of the card text (\"en\", \"de\"). Sets the language of buttons and hints. Optional."}}},"definitions":{"image":{"type":"string","format":"https-url","maxLength":2000,"description":"https image URL that came from a tool or the user. Never invent one."},"icon":{"type":"string","maxLength":8,"format":"no-space","description":"One emoji."},"shortText":{"type":"string","minLength":1,"maxLength":80},"text":{"type":"string","minLength":1,"maxLength":300},"longText":{"type":"string","minLength":1,"maxLength":1200},"label":{"type":"string","minLength":1,"maxLength":40},"itemId":{"type":"string","pattern":"^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$"}},"cards":{"plan":{"phase":3,"summary":"Edit and run a plan.","type":"object","required":["title","steps"],"properties":{"title":{"$ref":"shortText"},"summary":{"$ref":"text"},"steps":{"type":"array","minItems":1,"maxItems":15,"items":{"type":"object","required":["title"],"properties":{"id":{"$ref":"itemId"},"title":{"$ref":"shortText"},"detail":{"$ref":"text"},"command":{"type":"string","minLength":1,"maxLength":1000},"risk":{"type":"string","enum":["low","medium","high"]},"optional":{"type":"boolean","default":false},"off":{"type":"boolean","default":false}}}},"runLabel":{"$ref":"label"}},"x-rules":["uniqueStepIds","planOffOptional"]},"review":{"phase":3,"summary":"Review items together.","type":"object","required":["title","items"],"properties":{"title":{"$ref":"shortText"},"summary":{"$ref":"text"},"items":{"type":"array","minItems":1,"maxItems":30,"items":{"type":"object","required":["title"],"properties":{"id":{"$ref":"itemId"},"title":{"$ref":"shortText"},"detail":{"$ref":"text"},"preview":{"type":"string","minLength":1,"maxLength":1000},"tag":{"type":"string","minLength":1,"maxLength":24}}}},"defaultDecision":{"type":"string","enum":["keep","drop","none"],"default":"none"},"keepLabel":{"$ref":"label"},"dropLabel":{"$ref":"label"},"applyLabel":{"$ref":"label"}},"x-rules":["uniqueItemIds"]},"checklist":{"phase":1,"summary":"Items the user ticks off; the ticks are kept when the chat is reopened. \"Done\" reports checked and open items.","type":"object","required":["items"],"properties":{"title":{"$ref":"shortText"},"items":{"type":"array","minItems":1,"maxItems":50,"items":{"type":"object","required":["text"],"properties":{"id":{"$ref":"itemId"},"text":{"$ref":"text"},"note":{"$ref":"text"},"category":{"type":"string","minLength":1,"maxLength":40,"description":"Groups items under a heading."},"checked":{"type":"boolean","default":false}}}},"doneLabel":{"$ref":"label"}},"x-rules":["uniqueItemIds"]},"compare":{"phase":1,"summary":"2-4 candidates side by side with aligned attribute rows, one may be marked best; each column has a pick button.","type":"object","required":["columns"],"properties":{"title":{"$ref":"shortText"},"columns":{"type":"array","minItems":2,"maxItems":4,"items":{"type":"object","required":["title"],"properties":{"id":{"$ref":"itemId"},"title":{"$ref":"shortText"},"subtitle":{"$ref":"text"},"badge":{"type":"string","minLength":1,"maxLength":24},"image":{"$ref":"image"},"best":{"type":"boolean","default":false,"description":"Your recommendation (at most one column)."},"pros":{"type":"array","maxItems":5,"items":{"$ref":"text"}},"cons":{"type":"array","maxItems":5,"items":{"$ref":"text"}},"source":{"type":"object","required":["label","url"],"properties":{"label":{"$ref":"label"},"url":{"$ref":"image","description":"HTTPS source URL; never invent one."}}}}}},"rows":{"type":"array","maxItems":12,"description":"Attribute rows; values[i] belongs to columns[i].","items":{"type":"object","required":["label","values"],"properties":{"label":{"$ref":"shortText"},"values":{"type":"array","items":{"type":["string","number","boolean","null"],"maxLength":120}},"sources":{"type":"array","items":{"type":["string","null"],"format":"https-url","maxLength":2000}},"best":{"type":"integer","minimum":0}}}},"selectLabel":{"$ref":"label"},"asOf":{"type":"string","maxLength":40}},"x-rules":["uniqueColumnIds","rowsMatchColumns","singleBest","rowSourcesMatchValues","rowBestInColumns"]},"form":{"phase":1,"summary":"Fields the user fills in (text, number, date, select, toggle) with required fields and checks.","type":"object","required":["fields"],"properties":{"title":{"$ref":"shortText"},"description":{"$ref":"text"},"fields":{"type":"array","minItems":1,"maxItems":12,"items":{"type":"object","required":["name","label","kind"],"properties":{"name":{"type":"string","pattern":"^[A-Za-z][A-Za-z0-9_]{0,39}$"},"label":{"$ref":"shortText"},"kind":{"type":"string","enum":["text","textarea","number","date","time","email","select","toggle"]},"required":{"type":"boolean","default":false},"placeholder":{"type":"string","maxLength":80},"help":{"$ref":"text"},"default":{"type":["string","number","boolean"],"maxLength":1000},"min":{"type":"number","description":"number: smallest value."},"max":{"type":"number","description":"number: largest value."},"step":{"type":"number","minimum":0},"unit":{"type":"string","maxLength":12},"maxLength":{"type":"integer","minimum":1,"maximum":2000},"options":{"type":"array","minItems":2,"maxItems":20,"items":{"$ref":"shortText"},"description":"select: the choices."}}}},"submitLabel":{"$ref":"label"}},"x-rules":["uniqueFieldNames","fieldKindRules"]},"confirm":{"phase":1,"summary":"Ask before you act: one action with reason and risk; the user answers Yes, No or Change.","type":"object","required":["title","action"],"properties":{"title":{"$ref":"shortText"},"action":{"$ref":"text","description":"What exactly will happen."},"reason":{"$ref":"text"},"risk":{"type":"object","required":["level"],"properties":{"level":{"type":"string","enum":["low","medium","high"]},"text":{"$ref":"text"}}},"command":{"type":"string","minLength":1,"maxLength":2000,"description":"Command or code shown monospace."},"details":{"type":"array","maxItems":8,"items":{"type":"object","required":["label","value"],"properties":{"label":{"$ref":"shortText"},"value":{"$ref":"text"}}}},"confirmLabel":{"$ref":"label"},"cancelLabel":{"$ref":"label"},"allowChange":{"type":"boolean","default":true,"description":"Offer \"Change\" with a text field."}},"x-rules":[]},"steps":{"phase":2,"summary":"A guided walkthrough, one step at a time with Back/Next; the user reports done or where they got stuck.","type":"object","required":["steps"],"properties":{"title":{"$ref":"shortText"},"steps":{"type":"array","minItems":2,"maxItems":12,"items":{"type":"object","required":["title"],"properties":{"title":{"$ref":"shortText"},"body":{"$ref":"longText"},"command":{"type":"string","minLength":1,"maxLength":1000},"image":{"$ref":"image"}}}},"finishLabel":{"$ref":"label"}},"x-rules":[]},"decision":{"phase":3,"summary":"Compare weighted options.","type":"object","required":["title","criteria","options"],"properties":{"title":{"$ref":"shortText"},"criteria":{"type":"array","minItems":2,"maxItems":8,"items":{"type":"object","required":["id","label","weight"],"properties":{"id":{"$ref":"itemId"},"label":{"$ref":"shortText"},"weight":{"type":"integer","minimum":0,"maximum":10}}}},"options":{"type":"array","minItems":2,"maxItems":6,"items":{"type":"object","required":["label","scores"],"properties":{"id":{"$ref":"itemId"},"label":{"$ref":"shortText"},"scores":{"type":"object","additionalProperties":{"type":"integer","minimum":0,"maximum":10}},"note":{"$ref":"text"}}}},"note":{"$ref":"text"},"submitLabel":{"$ref":"label"}},"x-rules":["uniqueCriterionIds","uniqueOptionIds","scoresMatchCriteria"]},"calc":{"phase":3,"summary":"Calculate outputs from inputs.","type":"object","required":["title","inputs","outputs"],"properties":{"title":{"$ref":"shortText"},"inputs":{"type":"array","minItems":1,"maxItems":8,"items":{"type":"object","required":["name","label","default"],"properties":{"name":{"type":"string","pattern":"^[A-Za-z_][A-Za-z0-9_]{0,31}$"},"label":{"$ref":"shortText"},"kind":{"type":"string","enum":["number","slider","select","toggle"],"default":"number"},"min":{"type":"number"},"max":{"type":"number"},"step":{"type":"number"},"default":{"type":"number"},"unit":{"type":"string","minLength":1,"maxLength":12},"options":{"type":"array","minItems":2,"maxItems":12,"items":{"type":"object","required":["label","value"],"properties":{"label":{"$ref":"shortText"},"value":{"type":"number"}}}}}}},"outputs":{"type":"array","minItems":1,"maxItems":4,"items":{"type":"object","required":["label","expr"],"properties":{"label":{"$ref":"shortText"},"expr":{"type":"string","minLength":1,"maxLength":300},"format":{"type":"string","enum":["number","integer","percent","currency"],"default":"number"},"decimals":{"type":"integer","minimum":0,"maximum":6},"unit":{"type":"string","minLength":1,"maxLength":12},"emphasis":{"type":"boolean"}}}},"note":{"$ref":"text"},"currency":{"type":"string","pattern":"^[A-Z]{3}$","default":"EUR"},"sendLabel":{"$ref":"label"}},"x-rules":["uniqueInputNames","calcExpressions","calcInputs"]},"rank":{"phase":3,"summary":"Put items in order.","type":"object","required":["title","items"],"properties":{"title":{"$ref":"shortText"},"prompt":{"$ref":"text"},"items":{"type":"array","minItems":2,"maxItems":12,"items":{"type":"object","required":["label"],"properties":{"id":{"$ref":"itemId"},"label":{"$ref":"shortText"},"detail":{"$ref":"text"}}}},"submitLabel":{"$ref":"label"}},"x-rules":["uniqueItemIds"]},"choice":{"phase":1,"summary":"Pick several of 2-6 options, or options that need a picture or a short text each. For one plain question with simple options use the built-in clarify tool instead.","type":"object","required":["question","options"],"properties":{"question":{"$ref":"text"},"options":{"type":"array","minItems":2,"maxItems":6,"items":{"type":"object","required":["label"],"properties":{"id":{"$ref":"itemId"},"label":{"$ref":"shortText"},"description":{"$ref":"text"},"icon":{"$ref":"icon"},"image":{"$ref":"image"},"badge":{"type":"string","minLength":1,"maxLength":24}}}},"multiple":{"type":"boolean","default":false,"description":"Allow several picks."},"min":{"type":"integer","minimum":1,"maximum":6,"description":"Fewest picks (multiple only)."},"max":{"type":"integer","minimum":1,"maximum":6,"description":"Most picks (multiple only)."},"allowOther":{"type":"boolean","default":false,"description":"Add a free-text \"Other\" field."},"submitLabel":{"$ref":"label"}},"x-rules":["uniqueOptionIds","minMaxPicks"]},"schedule":{"phase":2,"summary":"Offer time slots to pick from (meetings, appointments).","type":"object","required":["slots"],"properties":{"title":{"$ref":"shortText"},"timezone":{"type":"string","maxLength":64,"description":"IANA zone, e.g. \"Europe/Vienna\"."},"slots":{"type":"array","minItems":1,"maxItems":20,"items":{"type":"object","required":["start"],"properties":{"id":{"$ref":"itemId"},"start":{"type":"string","format":"datetime","description":"ISO 8601, e.g. 2026-11-12T14:00"},"end":{"type":"string","format":"datetime"},"label":{"$ref":"shortText"},"note":{"$ref":"text"},"unavailable":{"type":"boolean","default":false}}}},"multiple":{"type":"boolean","default":false},"noneLabel":{"$ref":"label","description":"Button for \"none of these fit\"."}},"x-rules":["uniqueSlotIds","slotOrder"]},"recipe":{"phase":3,"summary":"Scale a recipe and make a shopping list.","type":"object","required":["title","servings","ingredients"],"properties":{"title":{"$ref":"shortText"},"servings":{"type":"integer","minimum":1,"maximum":50},"ingredients":{"type":"array","minItems":1,"maxItems":40,"items":{"type":"object","required":["item"],"properties":{"id":{"$ref":"itemId"},"item":{"$ref":"shortText"},"qty":{"type":"number","minimum":0},"unit":{"type":"string","minLength":1,"maxLength":12},"note":{"type":"string","minLength":1,"maxLength":80},"group":{"type":"string","minLength":1,"maxLength":40}}}},"steps":{"type":"array","minItems":0,"maxItems":20,"items":{"type":"object","required":["text"],"properties":{"text":{"$ref":"text"},"minutes":{"type":"integer","minimum":1,"maximum":600}}}},"sendLabel":{"$ref":"label"}},"x-rules":["uniqueIngredientIds"]},"flashcards":{"phase":3,"summary":"Practise with flashcards.","type":"object","required":["title","cards"],"properties":{"title":{"$ref":"shortText"},"cards":{"type":"array","minItems":1,"maxItems":40,"items":{"type":"object","required":["front","back"],"properties":{"front":{"$ref":"text"},"back":{"$ref":"text"},"hint":{"$ref":"text"}}}},"shuffle":{"type":"boolean","default":false}},"x-rules":[]},"rating":{"phase":2,"summary":"Ask for a rating on a scale (stars or numbers), optional comment.","type":"object","required":["question"],"properties":{"question":{"$ref":"text"},"scale":{"type":"integer","minimum":3,"maximum":10,"default":5},"style":{"type":"string","enum":["stars","numbers"],"default":"stars"},"lowLabel":{"type":"string","maxLength":30},"highLabel":{"type":"string","maxLength":30},"comment":{"type":"boolean","default":false,"description":"Add an optional comment field."}},"x-rules":[]},"slider":{"phase":2,"summary":"Ask for one number in a range (budget, duration, level).","type":"object","required":["question","min","max"],"properties":{"question":{"$ref":"text"},"min":{"type":"number"},"max":{"type":"number"},"step":{"type":"number","minimum":0},"default":{"type":"number"},"unit":{"type":"string","maxLength":12},"minLabel":{"type":"string","maxLength":30},"maxLabel":{"type":"string","maxLength":30},"submitLabel":{"$ref":"label"}},"x-rules":["sliderRange"]},"quiz":{"phase":2,"summary":"Multiple-choice questions with feedback per answer; the score is sent back.","type":"object","required":["questions"],"properties":{"title":{"$ref":"shortText"},"questions":{"type":"array","minItems":1,"maxItems":10,"items":{"type":"object","required":["question","options","answer"],"properties":{"question":{"$ref":"text"},"options":{"type":"array","minItems":2,"maxItems":6,"items":{"$ref":"shortText"}},"answer":{"type":"integer","minimum":0,"description":"0-based index of the correct option."},"explanation":{"$ref":"text"}}}}},"x-rules":["quizAnswers"]}}}
 
 // ── 10-validate.js ──
 // Port of hui_cards/schema.py. Keep traversal and message order in sync.
@@ -287,6 +287,8 @@ const vc_validateCard = (() => {
         else if (k === 'select' && !(f.options || []).includes(d)) ctx.errors.push(`${p}.default: must be one of the options`)
         else if (!['toggle', 'number', 'select'].includes(k) && typeof d !== 'string') ctx.errors.push(`${p}.default: must be text for kind ${k}`)
       }
+    } else if (name === 'planOffOptional') {
+      for (const [i, step] of card.steps.entries()) if (step.off && !step.optional) ctx.errors.push(`card.steps[${i}].off: only allowed when optional is true`)
     } else if (name === 'sliderRange') {
       const lo = card.min, hi = card.max
       if (lo == null || hi == null) return
@@ -2664,11 +2666,11 @@ function CompareCard({ card, sessionId, display, lang }) {
 
 Object.assign(STRINGS.en, {
   formChoose: 'Please choose', formRequiredFilled: '{done} of {total} required filled',
-  formDraftSaved: 'Draft saved', formDateFormat: 'Format: dd/mm/yyyy', formOptional: 'optional'
+  formNotSet: 'Not set', formDraftSaved: 'Draft saved', formDateFormat: 'Format: dd/mm/yyyy', formOptional: 'optional'
 })
 Object.assign(STRINGS.de, {
   formChoose: 'Bitte wählen', formRequiredFilled: '{done} von {total} Pflichtfeldern ausgefüllt',
-  formDraftSaved: 'Entwurf gespeichert', formDateFormat: 'Format: TT.MM.JJJJ', formOptional: 'optional'
+  formNotSet: 'Nicht festgelegt', formDraftSaved: 'Entwurf gespeichert', formDateFormat: 'Format: TT.MM.JJJJ', formOptional: 'optional'
 })
 
 // A guided intake, not a web form: numbered questions down a rail that tick off as they
@@ -2705,6 +2707,8 @@ const FORM_CSS = `
 .huic[data-card-type="form"] .huic-switch-label:has(:disabled){cursor:default;opacity:.75}
 .huic[data-card-type="form"] input.huic-switch{appearance:none;position:relative;flex:none;width:34px;height:20px;margin:0;border:1px solid var(--huic-line-strong);border-radius:999px;background:var(--ui-bg-tertiary,var(--ui-bg-quaternary));cursor:inherit;transition:background .18s,border-color .18s}
 .huic[data-card-type="form"] input.huic-switch::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--ui-text-tertiary);transition:transform .18s var(--huic-ease),background .18s}
+.huic[data-card-type="form"] input.huic-switch[aria-checked="mixed"]::after{transform:translateX(7px)}
+.huic[data-card-type="form"] .huic-form-unset{color:var(--ui-text-tertiary);font-size:11.5px;font-weight:400;margin-left:6px}
 .huic[data-card-type="form"] input.huic-switch:checked{background:var(--huic-accent);border-color:var(--huic-accent)}
 .huic[data-card-type="form"] input.huic-switch:checked::after{transform:translateX(14px);background:var(--huic-on-accent)}
 .huic[data-card-type="form"] .huic-form-feedback{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1;color:var(--ui-text-tertiary);font-size:12px}
@@ -2733,7 +2737,7 @@ const TEXT_MAX = { text: 300, email: 200, textarea: 1000 }
 function initialFormValues(card) {
   const out = {}
   for (const f of card.fields) {
-    if (f.kind === 'toggle') out[f.name] = f.default === true
+    if (f.kind === 'toggle') out[f.name] = f.default === undefined ? null : f.default
     else if (f.default !== undefined && f.default !== null) out[f.name] = String(f.default)
     else out[f.name] = ''
   }
@@ -2741,7 +2745,7 @@ function initialFormValues(card) {
 }
 
 function checkField(field, raw, lang) {
-  if (field.kind === 'toggle') return null
+  if (field.kind === 'toggle') return field.required && typeof raw !== 'boolean' ? t(lang, 'errRequired') : null
   const value = String(raw ?? '').trim()
   if (!value) return field.required ? t(lang, 'errRequired') : null
   if (field.kind === 'number') {
@@ -2761,7 +2765,7 @@ function formOutput(card, values) {
   const out = {}
   for (const f of card.fields) {
     const raw = values[f.name]
-    if (f.kind === 'toggle') out[f.name] = raw === true
+    if (f.kind === 'toggle') out[f.name] = typeof raw === 'boolean' ? raw : null
     else if (f.kind === 'number') {
       const s = String(raw ?? '').trim()
       out[f.name] = s ? Number(s.replace(',', '.')) : null
@@ -2797,11 +2801,12 @@ function FormField({ field, value, error, disabled, lang, onChange, baseId, stat
       htmlFor: id,
       style: { cursor: disabled ? 'default' : 'pointer' },
       children: [
-        jsx('span', { children: field.label }),
+        jsxs('span', { children: [field.label, value == null ? jsx('span', { className: 'huic-form-unset', children: t(lang, 'formNotSet') }) : null] }),
         jsx('input', {
           ...common,
           type: 'checkbox',
-          role: 'switch',
+          role: 'checkbox',
+          'aria-checked': value == null ? 'mixed' : value,
           checked: value === true,
           onChange: e => onChange(e.target.checked),
           className: 'huic-switch'
@@ -2880,7 +2885,7 @@ function FormField({ field, value, error, disabled, lang, onChange, baseId, stat
             ]
           }),
       field.kind === 'toggle'
-        ? (help.some(Boolean) ? jsx('div', { className: 'huic-form-control', children: help }) : null)
+        ? (help.some(Boolean) || error ? jsxs('div', { className: 'huic-form-control', children: [...help, error ? jsx('span', { className: 'huic-err', id: errId, children: error }) : null] }) : null)
         : jsxs('div', { className: 'huic-form-control', children: [control, error ? jsx('span', { className: 'huic-err', id: errId, children: error }) : null] })
     ]
   })
@@ -2893,7 +2898,7 @@ function FormCard({ card, sessionId, display, lang }) {
   const [localValues, setValues] = useState(() => {
     const base = initialFormValues(card)
     if (ans.answer && ans.answer.data && ans.answer.data.values) {
-      for (const [k, v] of Object.entries(ans.answer.data.values)) base[k] = typeof v === 'boolean' ? v : v === null ? '' : String(v)
+      for (const [k, v] of Object.entries(ans.answer.data.values)) base[k] = typeof v === 'boolean' ? v : v === null ? null : String(v)
     } else if (ans.draft && ans.draft.values) {
       Object.assign(base, ans.draft.values)
     }
@@ -2912,9 +2917,8 @@ function FormCard({ card, sessionId, display, lang }) {
   }
   const hasErrors = Object.keys(errors).length > 0
   const required = card.fields.filter(f => f.required)
-  // A switch always has a boolean value; false is a valid answer too.
-  const requiredFilled = required.filter(f => f.kind === 'toggle' || String(values[f.name] ?? '').trim() !== '').length
-  const filled = f => f.kind !== 'toggle' && String(values[f.name] ?? '').trim() !== ''
+  const filled = f => f.kind === 'toggle' ? typeof values[f.name] === 'boolean' : String(values[f.name] ?? '').trim() !== ''
+  const requiredFilled = required.filter(filled).length
   const shownError = f => oversizeFields.has(f.name) ? t(lang, 'shortenField') : tried ? errors[f.name] : null
   const fieldState = f => shownError(f) ? 'error' : filled(f) && !errors[f.name] ? 'done' : 'idle'
   const reply = buildReply(card, { values: formOutput(card, values) }, lang)
@@ -2970,7 +2974,7 @@ function FormCard({ card, sessionId, display, lang }) {
           FormField,
           {
             field,
-            value: values[field.name] ?? '',
+            value: field.kind === 'toggle' ? values[field.name] : values[field.name] ?? '',
             state: fieldState(field),
             optional: required.length > 0 && !field.required && field.kind !== 'toggle',
             error: shownError(field),
@@ -2993,7 +2997,7 @@ function FormCard({ card, sessionId, display, lang }) {
         hint: jsxs('span', {
           className: 'huic-form-feedback',
           children: [
-            required.length ? jsx('span', { className: 'huic-form-meter', 'aria-hidden': true, children: required.map(f => jsx('i', { className: f.kind === 'toggle' || filled(f) ? 'on' : undefined }, f.name)) }) : null,
+            required.length ? jsx('span', { className: 'huic-form-meter', 'aria-hidden': true, children: required.map(f => jsx('i', { className: filled(f) ? 'on' : undefined }, f.name)) }) : null,
             jsxs('span', { className: 'huic-form-status', children: [
               required.length ? jsx('span', { 'aria-live': 'polite', children: t(lang, 'formRequiredFilled', { done: requiredFilled, total: required.length }) }) : null,
               ans.draft?.values ? jsx('span', { role: 'status', children: t(lang, 'formDraftSaved') }) : null,
@@ -4410,7 +4414,7 @@ function planState(card, source) {
   const srcOrder = planOwn(src, 'order'), srcOff = planOwn(src, 'off'), srcNotes = planOwn(src, 'notes')
   const order = Array.isArray(srcOrder) ? srcOrder.filter((id, i, all) => ids.includes(id) && all.indexOf(id) === i) : []
   for (const id of ids) if (!order.includes(id)) order.push(id)
-  const off = Array.isArray(srcOff) ? srcOff.filter(id => optional.has(id)) : []
+  const off = Array.isArray(srcOff) ? srcOff.filter(id => optional.has(id)) : card.steps.filter(s => s.optional && s.off).map(s => s.id)
   const notes = planDict()
   for (const id of ids) {
     const note = planOwn(srcNotes, id)
@@ -4724,7 +4728,7 @@ REPLY_BUILDERS.plan = (card, answer, lang, data) => {
 Object.assign(STRINGS.en, {
   reviewKeep: 'Keep',
   reviewDrop: 'Drop',
-  reviewApply: 'Apply',
+  reviewApply: 'Apply', reviewPending: 'Applying in {s} s',
   reviewOpen: 'Open',
   reviewKeepAll: 'Keep all',
   reviewDropAll: 'Drop all',
@@ -4754,7 +4758,7 @@ Object.assign(STRINGS.en, {
 Object.assign(STRINGS.de, {
   reviewKeep: 'Behalten',
   reviewDrop: 'Verwerfen',
-  reviewApply: 'Übernehmen',
+  reviewApply: 'Übernehmen', reviewPending: 'Wird in {s} s übernommen',
   reviewOpen: 'Offen',
   reviewKeepAll: 'Alle behalten',
   reviewDropAll: 'Alle verwerfen',
@@ -4785,6 +4789,10 @@ Object.assign(STRINGS.de, {
 const REVIEW_NOTE_MAX = 200
 
 const REVIEW_CSS = `
+.huic[data-card-type="review"] .huic-rev-pending{flex:1;display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;background:color-mix(in srgb,var(--huic-accent) 8%,transparent)}
+.huic[data-card-type="review"] .huic-rev-pending span{flex:1}
+.huic[data-card-type="review"] .huic-btn-danger-outline{color:var(--ui-orange,var(--ui-yellow,var(--huic-accent)));box-shadow:inset 0 0 0 1px currentColor}
+
 .huic[data-card-type="review"]>.huic-pin-head{padding:var(--huic-pad) var(--huic-pad) 10px;background:inherit;border-radius:11px 11px 0 0;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--ui-stroke-tertiary)}
 .huic[data-card-type="review"].huic-pinned>.huic-pin-head{position:sticky;top:0;z-index:3;box-shadow:0 10px 14px -14px var(--ui-text-primary)}
 .huic[data-card-type="review"] .huic-rev-tally{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -4910,10 +4918,12 @@ function ReviewCard({ card, sessionId, display, lang }) {
   const [confirming, setConfirming] = useState(false)
   const focusNote = useRef(null)
   const rowRefs = useRef(new Map())
-  const applyRef = useRef(null)
+  const undo = planUseUndo(display, answer => ans.submit(answer))
+  const applyRef = undo.startRef
   const goRef = useRef(null)
   const backFocus = useRef(false)
-  const editable = ans.showActions
+  const editable = ans.showActions && !undo.pending
+  const destructive = card.items.some(i => /delete|löschen/i.test(i.tag || '')) || /^\s*(delete|remove|drop|löschen|entfernen)\b/i.test(card.applyLabel || '')
   // Custom labels are used everywhere: buttons, bulk actions, tally, announcements, stamps.
   const custom = Boolean(card.keepLabel || card.dropLabel)
   const keepLabel = card.keepLabel || t(lang, 'reviewKeep')
@@ -4973,7 +4983,7 @@ function ReviewCard({ card, sessionId, display, lang }) {
     const titleId = `${labelId}-${item.id}`
     const radio = (value, label, icon) => jsxs('button', {
       type: 'button', role: 'radio', className: `is-${value}`,
-      'aria-checked': decision === value,
+      'aria-checked': decision === value, 'aria-label': `${label} ${item.title}`,
       tabIndex: decision === value || (!decision && value === 'keep') ? 0 : -1,
       onClick: () => decide(item.id, value),
       onKeyDown: e => {
@@ -5056,7 +5066,7 @@ function ReviewCard({ card, sessionId, display, lang }) {
   const send = () => {
     const notes = Object.fromEntries(card.items.map(i => [i.id, (view.notes[i.id] || '').trim()]).filter(([, note]) => note))
     setConfirming(false)
-    ans.submit({
+    undo.start({
       keep: keep.map(i => i.id),
       drop: drop.map(i => i.id),
       undecided: card.items.filter(i => !view.decisions[i.id]).map(i => i.id),
@@ -5067,6 +5077,7 @@ function ReviewCard({ card, sessionId, display, lang }) {
   const apply = () => (open ? setConfirming(true) : send())
   const back = () => { backFocus.current = true; setConfirming(false) }
   const onKeyDown = e => {
+    undo.onKeyDown(e)
     if (asking && e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); back() }
   }
 
@@ -5096,7 +5107,8 @@ function ReviewCard({ card, sessionId, display, lang }) {
   ] })
 
   const askId = `${labelId}-ask`
-  const footer = !editable ? null
+  const footer = !ans.showActions ? null
+    : undo.pending ? jsx(Footer, { children: jsxs('div', { className: 'huic-rev-pending', role: 'status', 'aria-live': 'polite', children: [jsx('span', { children: t(lang, 'reviewPending', { s: Math.round(undo.pending.ms / 1000) }) }), jsx(Btn, { ref: undo.undoRef, variant: 'ghost', onClick: undo.cancel, children: t(lang, 'planUndo') })] }) })
     : asking
       ? jsxs('div', { className: 'huic-foot huic-rev-ask', role: 'group', 'aria-labelledby': askId, children: [
           jsx('span', { id: askId, className: 'huic-hint huic-rev-ask-text', children: t(lang, 'reviewAskOpen', { n: open }) }),
@@ -5105,7 +5117,7 @@ function ReviewCard({ card, sessionId, display, lang }) {
         ] })
       : jsx(Footer, {
           hint: open ? t(lang, 'reviewStillOpen', { n: open }) : t(lang, 'reviewAllDecided', { n: total }),
-          children: jsx(Btn, { ref: applyRef, variant: 'primary', onClick: apply, children: card.applyLabel || t(lang, 'reviewApply') })
+          children: jsx(Btn, { ref: applyRef, variant: destructive ? 'danger-outline' : 'primary', onClick: apply, children: card.applyLabel || t(lang, 'reviewApply') })
         })
 
   return jsx(PlanFrame, {

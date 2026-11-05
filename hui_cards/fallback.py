@@ -250,6 +250,8 @@ def _field_info(f: dict, L: _L) -> str:
             info = L("Number", "Zahl")
     elif kind == "toggle":
         info = L("yes or no", "ja oder nein")
+        if "default" not in f and not f.get("required"):
+            info += L(" (leave blank if unanswered)", " (leer lassen, falls unbeantwortet)")
     elif kind == "date":
         info = L("Date (YYYY-MM-DD)", "Datum (JJJJ-MM-TT)")
     elif kind == "time":
@@ -433,7 +435,7 @@ def _plan(card, L):
     lines = _head(card, 'title', 'summary')
     for i, step in enumerate(card['steps'], 1):
         tags = [L('optional', 'optional') if step.get('optional') else '', L[step['risk']] if step.get('risk') else '']
-        lines.append(f"{i}. {_one(step['title'])}" + (f" ({', '.join(x for x in tags if x)})" if any(tags) else ''))
+        lines.append(f"{i}. {_one(step['title'])}" + (f" ({', '.join(x for x in tags if x)})" if any(tags) else '') + (L(f' (off — reply \"include {i}\" to run it)', f' (aus — antworte mit \"Schritt {i} einschließen\", um ihn auszuführen)') if step.get('off') else ''))
         for key in ('detail', 'command'):
             if step.get(key): lines += _indent(_block(step[key]), '   ')
     return lines + [L('Reply "go", or list the step numbers to skip / a new order, e.g. "skip 3" or "2, 1, 3".', 'Antworte mit "Los", den zu überspringenden Schritten oder einer neuen Reihenfolge, z. B. "Schritt 3 überspringen" oder "2, 1, 3".')]

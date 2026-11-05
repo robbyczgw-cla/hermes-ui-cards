@@ -3,11 +3,11 @@
 
 Object.assign(STRINGS.en, {
   formChoose: 'Please choose', formRequiredFilled: '{done} of {total} required filled',
-  formDraftSaved: 'Draft saved', formDateFormat: 'Format: dd/mm/yyyy', formOptional: 'optional'
+  formNotSet: 'Not set', formDraftSaved: 'Draft saved', formDateFormat: 'Format: dd/mm/yyyy', formOptional: 'optional'
 })
 Object.assign(STRINGS.de, {
   formChoose: 'Bitte wählen', formRequiredFilled: '{done} von {total} Pflichtfeldern ausgefüllt',
-  formDraftSaved: 'Entwurf gespeichert', formDateFormat: 'Format: TT.MM.JJJJ', formOptional: 'optional'
+  formNotSet: 'Nicht festgelegt', formDraftSaved: 'Entwurf gespeichert', formDateFormat: 'Format: TT.MM.JJJJ', formOptional: 'optional'
 })
 
 // A guided intake, not a web form: numbered questions down a rail that tick off as they
@@ -44,6 +44,8 @@ const FORM_CSS = `
 .huic[data-card-type="form"] .huic-switch-label:has(:disabled){cursor:default;opacity:.75}
 .huic[data-card-type="form"] input.huic-switch{appearance:none;position:relative;flex:none;width:34px;height:20px;margin:0;border:1px solid var(--huic-line-strong);border-radius:999px;background:var(--ui-bg-tertiary,var(--ui-bg-quaternary));cursor:inherit;transition:background .18s,border-color .18s}
 .huic[data-card-type="form"] input.huic-switch::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--ui-text-tertiary);transition:transform .18s var(--huic-ease),background .18s}
+.huic[data-card-type="form"] input.huic-switch[aria-checked="mixed"]::after{transform:translateX(7px)}
+.huic[data-card-type="form"] .huic-form-unset{color:var(--ui-text-tertiary);font-size:11.5px;font-weight:400;margin-left:6px}
 .huic[data-card-type="form"] input.huic-switch:checked{background:var(--huic-accent);border-color:var(--huic-accent)}
 .huic[data-card-type="form"] input.huic-switch:checked::after{transform:translateX(14px);background:var(--huic-on-accent)}
 .huic[data-card-type="form"] .huic-form-feedback{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1;color:var(--ui-text-tertiary);font-size:12px}
@@ -72,7 +74,7 @@ const TEXT_MAX = { text: 300, email: 200, textarea: 1000 }
 function initialFormValues(card) {
   const out = {}
   for (const f of card.fields) {
-    if (f.kind === 'toggle') out[f.name] = f.default === true
+    if (f.kind === 'toggle') out[f.name] = f.default === undefined ? null : f.default
     else if (f.default !== undefined && f.default !== null) out[f.name] = String(f.default)
     else out[f.name] = ''
   }
@@ -80,7 +82,7 @@ function initialFormValues(card) {
 }
 
 function checkField(field, raw, lang) {
-  if (field.kind === 'toggle') return null
+  if (field.kind === 'toggle') return field.required && typeof raw !== 'boolean' ? t(lang, 'errRequired') : null
   const value = String(raw ?? '').trim()
   if (!value) return field.required ? t(lang, 'errRequired') : null
   if (field.kind === 'number') {
@@ -100,7 +102,7 @@ function formOutput(card, values) {
   const out = {}
   for (const f of card.fields) {
     const raw = values[f.name]
-    if (f.kind === 'toggle') out[f.name] = raw === true
+    if (f.kind === 'toggle') out[f.name] = typeof raw === 'boolean' ? raw : null
     else if (f.kind === 'number') {
       const s = String(raw ?? '').trim()
       out[f.name] = s ? Number(s.replace(',', '.')) : null
@@ -136,11 +138,12 @@ function FormField({ field, value, error, disabled, lang, onChange, baseId, stat
       htmlFor: id,
       style: { cursor: disabled ? 'default' : 'pointer' },
       children: [
-        jsx('span', { children: field.label }),
+        jsxs('span', { children: [field.label, value == null ? jsx('span', { className: 'huic-form-unset', children: t(lang, 'formNotSet') }) : null] }),
         jsx('input', {
           ...common,
           type: 'checkbox',
-          role: 'switch',
+          role: 'checkbox',
+          'aria-checked': value == null ? 'mixed' : value,
           checked: value === true,
           onChange: e => onChange(e.target.checked),
           className: 'huic-switch'
@@ -219,7 +222,7 @@ function FormField({ field, value, error, disabled, lang, onChange, baseId, stat
             ]
           }),
       field.kind === 'toggle'
-        ? (help.some(Boolean) ? jsx('div', { className: 'huic-form-control', children: help }) : null)
+        ? (help.some(Boolean) || error ? jsxs('div', { className: 'huic-form-control', children: [...help, error ? jsx('span', { className: 'huic-err', id: errId, children: error }) : null] }) : null)
         : jsxs('div', { className: 'huic-form-control', children: [control, error ? jsx('span', { className: 'huic-err', id: errId, children: error }) : null] })
     ]
   })
@@ -232,7 +235,7 @@ function FormCard({ card, sessionId, display, lang }) {
   const [localValues, setValues] = useState(() => {
     const base = initialFormValues(card)
     if (ans.answer && ans.answer.data && ans.answer.data.values) {
-      for (const [k, v] of Object.entries(ans.answer.data.values)) base[k] = typeof v === 'boolean' ? v : v === null ? '' : String(v)
+      for (const [k, v] of Object.entries(ans.answer.data.values)) base[k] = typeof v === 'boolean' ? v : v === null ? null : String(v)
     } else if (ans.draft && ans.draft.values) {
       Object.assign(base, ans.draft.values)
     }
@@ -251,9 +254,8 @@ function FormCard({ card, sessionId, display, lang }) {
   }
   const hasErrors = Object.keys(errors).length > 0
   const required = card.fields.filter(f => f.required)
-  // A switch always has a boolean value; false is a valid answer too.
-  const requiredFilled = required.filter(f => f.kind === 'toggle' || String(values[f.name] ?? '').trim() !== '').length
-  const filled = f => f.kind !== 'toggle' && String(values[f.name] ?? '').trim() !== ''
+  const filled = f => f.kind === 'toggle' ? typeof values[f.name] === 'boolean' : String(values[f.name] ?? '').trim() !== ''
+  const requiredFilled = required.filter(filled).length
   const shownError = f => oversizeFields.has(f.name) ? t(lang, 'shortenField') : tried ? errors[f.name] : null
   const fieldState = f => shownError(f) ? 'error' : filled(f) && !errors[f.name] ? 'done' : 'idle'
   const reply = buildReply(card, { values: formOutput(card, values) }, lang)
@@ -309,7 +311,7 @@ function FormCard({ card, sessionId, display, lang }) {
           FormField,
           {
             field,
-            value: values[field.name] ?? '',
+            value: field.kind === 'toggle' ? values[field.name] : values[field.name] ?? '',
             state: fieldState(field),
             optional: required.length > 0 && !field.required && field.kind !== 'toggle',
             error: shownError(field),
@@ -332,7 +334,7 @@ function FormCard({ card, sessionId, display, lang }) {
         hint: jsxs('span', {
           className: 'huic-form-feedback',
           children: [
-            required.length ? jsx('span', { className: 'huic-form-meter', 'aria-hidden': true, children: required.map(f => jsx('i', { className: f.kind === 'toggle' || filled(f) ? 'on' : undefined }, f.name)) }) : null,
+            required.length ? jsx('span', { className: 'huic-form-meter', 'aria-hidden': true, children: required.map(f => jsx('i', { className: filled(f) ? 'on' : undefined }, f.name)) }) : null,
             jsxs('span', { className: 'huic-form-status', children: [
               required.length ? jsx('span', { 'aria-live': 'polite', children: t(lang, 'formRequiredFilled', { done: requiredFilled, total: required.length }) }) : null,
               ans.draft?.values ? jsx('span', { role: 'status', children: t(lang, 'formDraftSaved') }) : null,

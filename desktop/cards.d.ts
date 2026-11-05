@@ -22,6 +22,7 @@ export interface PlanCard extends CardCommon {
     command?: string
     risk?: "low" | "medium" | "high"
     optional?: boolean
+    off?: boolean
   }>
   runLabel?: string
 }

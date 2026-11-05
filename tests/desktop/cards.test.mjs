@@ -214,7 +214,7 @@ test('form: required fields and checks block the send; valid input sends typed v
   assert.match(container.textContent, /At most 12/)
   await type(guests, '4')
   await type(container.querySelector('select'), 'Terrace')
-  await click(container.querySelector('input[role="switch"]'))
+  await click(container.querySelector('input[role="checkbox"]'))
   await click(submit)
   const reply = lastReply()
   assert.equal(reply.line1, '✓ Form sent: Name: Anna, Guests: 4, Area: Terrace, High chair: yes')

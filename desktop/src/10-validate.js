@@ -278,6 +278,8 @@ const vc_validateCard = (() => {
         else if (k === 'select' && !(f.options || []).includes(d)) ctx.errors.push(`${p}.default: must be one of the options`)
         else if (!['toggle', 'number', 'select'].includes(k) && typeof d !== 'string') ctx.errors.push(`${p}.default: must be text for kind ${k}`)
       }
+    } else if (name === 'planOffOptional') {
+      for (const [i, step] of card.steps.entries()) if (step.off && !step.optional) ctx.errors.push(`card.steps[${i}].off: only allowed when optional is true`)
     } else if (name === 'sliderRange') {
       const lo = card.min, hi = card.max
       if (lo == null || hi == null) return

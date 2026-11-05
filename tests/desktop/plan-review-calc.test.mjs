@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import { beforeEach, mock, test } from 'node:test'
-import { act, mount, toolResult, registerPlugin, makeStorage, click, type, buttonByText, lastReply, resetHost, testHost, mod } from './dom.mjs'
+import { act, mount, toolResult as rawToolResult, registerPlugin, makeStorage, click, type, buttonByText, lastReply, resetHost, testHost, mod } from './dom.mjs'
+
+const toolResult = (card, extra = {}) => rawToolResult(card, card.type === 'review' ? { display: { undo: 0 }, ...extra } : extra)
 
 beforeEach(resetHost)
 
@@ -638,4 +640,40 @@ test('calc: every native select has an accessible name', async () => {
   assert.equal(select.labels[0].textContent, 'Loan term')
   assert.equal(document.getElementById(select.getAttribute('aria-labelledby')).textContent, 'Loan term')
   await m.unmount()
+})
+
+test('plan: optional off starts excluded and can be included', async () => {
+  const m = await mount(toolResult({ type: 'plan', title: 'P', steps: [{ title: 'A' }, { title: 'B', optional: true, off: true }] }))
+  const sw = m.container.querySelector('[role="switch"]')
+  assert.equal(sw.checked, false)
+  await runPlan(m.container)
+  assert.equal(lastReply().json.steps[1].included, false)
+  await m.unmount()
+})
+
+test('review: destructive actions have risk styling, accessible names and undo', async () => {
+  const card = { type: 'review', title: 'Files', defaultDecision: 'keep', items: [{ title: 'Old file', tag: 'Delete' }] }
+  mock.timers.enable({ apis: ['setTimeout'] })
+  try {
+    const m = await mount(toolResult(card, { display: { undo: 4 } }))
+    const c = m.container
+    assert.equal(c.querySelector('[role="radiogroup"]').getAttribute('aria-label'), 'Decision for Old file')
+    assert.equal(c.querySelector('[role="radio"].is-keep').getAttribute('aria-label'), 'Keep Old file')
+    assert.ok(buttonByText(c, 'Apply').classList.contains('huic-btn-danger-outline'))
+    await click(buttonByText(c, 'Apply'))
+    assert.ok(document.activeElement === buttonByText(c, 'Undo'))
+    await press(document.activeElement, 'Escape')
+    assert.ok(document.activeElement === buttonByText(c, 'Apply'))
+    await click(buttonByText(c, 'Apply'))
+    await click(buttonByText(c, 'Undo'))
+    await click(buttonByText(c, 'Apply'))
+    await act(async () => mock.timers.tick(4000))
+    assert.equal(testHost.submissions.length, 1)
+    await m.unmount()
+    const second = await mount(toolResult(card, { display: { undo: 4 } }))
+    await click(buttonByText(second.container, 'Apply'))
+    await second.unmount()
+    await act(async () => mock.timers.tick(4000))
+    assert.equal(testHost.submissions.length, 1)
+  } finally { mock.timers.reset() }
 })

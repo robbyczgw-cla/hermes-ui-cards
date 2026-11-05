@@ -89,19 +89,19 @@ test('form progress stays live, validation runs on submit, draft and switch valu
   assert.match(m.container.textContent, /2 of 4 required filled/)
   assert.match(m.container.textContent, /Draft saved/)
   await click(m.container.querySelector('label.huic-switch-label'))
-  assert.equal(m.container.querySelector('[role="switch"]').checked, true)
+  assert.equal(m.container.querySelector('[role="checkbox"]').checked, true)
   await m.unmount()
   m = await mount(result, { registration })
   assert.match(m.container.textContent, /2 of 4 required filled/)
   assert.match(m.container.textContent, /Draft saved/)
-  assert.equal(m.container.querySelector('[role="switch"]').checked, true)
+  assert.equal(m.container.querySelector('[role="checkbox"]').checked, true)
   await type(m.container.querySelector('select'), 'High')
   await type(m.container.querySelector('input[type="date"]'), '2026-11-05')
   assert.match(m.container.textContent, /4 of 4 required filled/)
   await click(buttonByText(m.container, 'Submit'))
   assert.equal(lastReply().json.values.repro, true)
   assert.equal(lastReply().json.values.date, '2026-11-05')
-  assert.ok(m.container.querySelector('[role="switch"]').disabled)
+  assert.ok(m.container.querySelector('[role="checkbox"]').disabled)
   assert.ok((buttonByText(m.container, 'Submit')) === (undefined))
   await m.unmount()
 })
@@ -146,4 +146,25 @@ test('form: Submit stays quiet until every required field has a value, clicking 
   const optionalOnly = await mount(toolResult({ type: 'form', submitLabel: 'Book', fields: [{ name: 'note', label: 'Note', kind: 'text' }] }))
   assert.ok(buttonByText(optionalOnly.container, 'Book').classList.contains('huic-btn-primary'), 'nothing required: primary from the start')
   await optionalOnly.unmount()
+})
+
+test('form: untouched toggles are null, required toggles need an answer, defaults stay boolean', async () => {
+  const card = { type: 'form', fields: [
+    { name: 'optional', label: 'Optional', kind: 'toggle' },
+    { name: 'required', label: 'Required', kind: 'toggle', required: true },
+    { name: 'preset', label: 'Preset', kind: 'toggle', default: false }
+  ] }
+  const m = await mount(toolResult(card))
+  const boxes = m.container.querySelectorAll('[role="checkbox"]')
+  assert.equal(boxes[0].getAttribute('aria-checked'), 'mixed')
+  assert.equal(boxes[2].getAttribute('aria-checked'), 'false')
+  await click(buttonByText(m.container, 'Submit'))
+  assert.equal(testHost.submissions.length, 0)
+  assert.equal(boxes[1].getAttribute('aria-invalid'), 'true')
+  await click(boxes[1])
+  await click(boxes[1])
+  await click(buttonByText(m.container, 'Submit'))
+  assert.deepEqual(lastReply().json.values, { optional: null, required: false, preset: false })
+  assert.doesNotMatch(lastReply().line1, /Optional/)
+  await m.unmount()
 })

@@ -5,7 +5,7 @@
 Object.assign(STRINGS.en, {
   reviewKeep: 'Keep',
   reviewDrop: 'Drop',
-  reviewApply: 'Apply',
+  reviewApply: 'Apply', reviewPending: 'Applying in {s} s',
   reviewOpen: 'Open',
   reviewKeepAll: 'Keep all',
   reviewDropAll: 'Drop all',
@@ -35,7 +35,7 @@ Object.assign(STRINGS.en, {
 Object.assign(STRINGS.de, {
   reviewKeep: 'Behalten',
   reviewDrop: 'Verwerfen',
-  reviewApply: 'Übernehmen',
+  reviewApply: 'Übernehmen', reviewPending: 'Wird in {s} s übernommen',
   reviewOpen: 'Offen',
   reviewKeepAll: 'Alle behalten',
   reviewDropAll: 'Alle verwerfen',
@@ -66,6 +66,10 @@ Object.assign(STRINGS.de, {
 const REVIEW_NOTE_MAX = 200
 
 const REVIEW_CSS = `
+.huic[data-card-type="review"] .huic-rev-pending{flex:1;display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;background:color-mix(in srgb,var(--huic-accent) 8%,transparent)}
+.huic[data-card-type="review"] .huic-rev-pending span{flex:1}
+.huic[data-card-type="review"] .huic-btn-danger-outline{color:var(--ui-orange,var(--ui-yellow,var(--huic-accent)));box-shadow:inset 0 0 0 1px currentColor}
+
 .huic[data-card-type="review"]>.huic-pin-head{padding:var(--huic-pad) var(--huic-pad) 10px;background:inherit;border-radius:11px 11px 0 0;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--ui-stroke-tertiary)}
 .huic[data-card-type="review"].huic-pinned>.huic-pin-head{position:sticky;top:0;z-index:3;box-shadow:0 10px 14px -14px var(--ui-text-primary)}
 .huic[data-card-type="review"] .huic-rev-tally{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -191,10 +195,12 @@ function ReviewCard({ card, sessionId, display, lang }) {
   const [confirming, setConfirming] = useState(false)
   const focusNote = useRef(null)
   const rowRefs = useRef(new Map())
-  const applyRef = useRef(null)
+  const undo = planUseUndo(display, answer => ans.submit(answer))
+  const applyRef = undo.startRef
   const goRef = useRef(null)
   const backFocus = useRef(false)
-  const editable = ans.showActions
+  const editable = ans.showActions && !undo.pending
+  const destructive = card.items.some(i => /delete|löschen/i.test(i.tag || '')) || /^\s*(delete|remove|drop|löschen|entfernen)\b/i.test(card.applyLabel || '')
   // Custom labels are used everywhere: buttons, bulk actions, tally, announcements, stamps.
   const custom = Boolean(card.keepLabel || card.dropLabel)
   const keepLabel = card.keepLabel || t(lang, 'reviewKeep')
@@ -254,7 +260,7 @@ function ReviewCard({ card, sessionId, display, lang }) {
     const titleId = `${labelId}-${item.id}`
     const radio = (value, label, icon) => jsxs('button', {
       type: 'button', role: 'radio', className: `is-${value}`,
-      'aria-checked': decision === value,
+      'aria-checked': decision === value, 'aria-label': `${label} ${item.title}`,
       tabIndex: decision === value || (!decision && value === 'keep') ? 0 : -1,
       onClick: () => decide(item.id, value),
       onKeyDown: e => {
@@ -337,7 +343,7 @@ function ReviewCard({ card, sessionId, display, lang }) {
   const send = () => {
     const notes = Object.fromEntries(card.items.map(i => [i.id, (view.notes[i.id] || '').trim()]).filter(([, note]) => note))
     setConfirming(false)
-    ans.submit({
+    undo.start({
       keep: keep.map(i => i.id),
       drop: drop.map(i => i.id),
       undecided: card.items.filter(i => !view.decisions[i.id]).map(i => i.id),
@@ -348,6 +354,7 @@ function ReviewCard({ card, sessionId, display, lang }) {
   const apply = () => (open ? setConfirming(true) : send())
   const back = () => { backFocus.current = true; setConfirming(false) }
   const onKeyDown = e => {
+    undo.onKeyDown(e)
     if (asking && e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); back() }
   }
 
@@ -377,7 +384,8 @@ function ReviewCard({ card, sessionId, display, lang }) {
   ] })
 
   const askId = `${labelId}-ask`
-  const footer = !editable ? null
+  const footer = !ans.showActions ? null
+    : undo.pending ? jsx(Footer, { children: jsxs('div', { className: 'huic-rev-pending', role: 'status', 'aria-live': 'polite', children: [jsx('span', { children: t(lang, 'reviewPending', { s: Math.round(undo.pending.ms / 1000) }) }), jsx(Btn, { ref: undo.undoRef, variant: 'ghost', onClick: undo.cancel, children: t(lang, 'planUndo') })] }) })
     : asking
       ? jsxs('div', { className: 'huic-foot huic-rev-ask', role: 'group', 'aria-labelledby': askId, children: [
           jsx('span', { id: askId, className: 'huic-hint huic-rev-ask-text', children: t(lang, 'reviewAskOpen', { n: open }) }),
@@ -386,7 +394,7 @@ function ReviewCard({ card, sessionId, display, lang }) {
         ] })
       : jsx(Footer, {
           hint: open ? t(lang, 'reviewStillOpen', { n: open }) : t(lang, 'reviewAllDecided', { n: total }),
-          children: jsx(Btn, { ref: applyRef, variant: 'primary', onClick: apply, children: card.applyLabel || t(lang, 'reviewApply') })
+          children: jsx(Btn, { ref: applyRef, variant: destructive ? 'danger-outline' : 'primary', onClick: apply, children: card.applyLabel || t(lang, 'reviewApply') })
         })
 
   return jsx(PlanFrame, {
