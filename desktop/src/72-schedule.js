@@ -53,13 +53,15 @@ function scheduleDays(card, lang) {
 
 const SCHEDULE_CSS = `
 .huic[data-card-type="schedule"] .huic-day{display:flex;flex-direction:column;gap:6px}
-.huic[data-card-type="schedule"] .huic-day-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;margin:6px 0 0;font-size:13px}
-.huic[data-card-type="schedule"] .huic-day-rel{font-weight:600}
-.huic[data-card-type="schedule"] .huic-day-date{color:var(--ui-text-tertiary);font-size:12px}
+.huic[data-card-type="schedule"] .huic-day+.huic-day{margin-top:4px}
+.huic[data-card-type="schedule"] .huic-day-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;margin:4px 0 0;font-size:11px;line-height:16px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ui-text-tertiary)}
+.huic[data-card-type="schedule"] .huic-day-head::after{content:"";flex:1 1 24px;align-self:center;height:1px;background:var(--huic-line)}
+.huic[data-card-type="schedule"] .huic-day-rel{color:var(--ui-text-primary)}
+.huic[data-card-type="schedule"] .huic-day-date{font-weight:500}
 .huic[data-card-type="schedule"] .huic-chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:8px}
 .huic[data-card-type="schedule"] .huic-chip{display:flex;flex-direction:column;gap:2px;min-width:0;padding:8px 10px;text-align:left;font:inherit;color:inherit;cursor:pointer;border-radius:10px;border:1px solid var(--ui-stroke-tertiary);background:transparent;transition:background .12s,border-color .12s,box-shadow .12s}
 .huic[data-card-type="schedule"] .huic-chip:hover:not([disabled]){background:var(--ui-control-hover-background);border-color:var(--ui-stroke-secondary)}
-.huic[data-card-type="schedule"] .huic-chip[aria-checked="true"]{border-color:var(--huic-accent);background:color-mix(in srgb,var(--huic-accent) 12%,transparent);box-shadow:0 0 0 1px var(--huic-accent)}
+.huic[data-card-type="schedule"] .huic-chip[aria-checked="true"]{border-color:var(--huic-accent);background:color-mix(in srgb,var(--huic-accent) 10%,transparent);box-shadow:0 0 0 1px var(--huic-accent)}
 .huic[data-card-type="schedule"] .huic-chip[disabled]{cursor:default}
 .huic[data-card-type="schedule"] .huic-chip[disabled]:not([aria-checked="true"]){opacity:.45}
 .huic[data-card-type="schedule"] .huic-chip-time{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -161,7 +163,7 @@ function ScheduleCard({ card, sessionId, display, lang }) {
     }),
     footer: ans.showActions ? jsx(Footer, {
       hint: available.length ? t(lang, card.multiple ? 'keyToggle' : 'keyChoose', { keys: keyRange(available.length) }) : undefined,
-      children: jsxs(Fragment, { children: [
+      children: jsxs('span', { className: 'huic-foot-group', children: [
         card.noneLabel ? jsx(Btn, { variant: 'ghost', onClick: () => ans.submit({ none: true }), children: card.noneLabel }) : null,
         jsx(Btn, { variant: 'primary', disabled: !selected.length, onClick: send, children: t(lang, 'send') })
       ] })

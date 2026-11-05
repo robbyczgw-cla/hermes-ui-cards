@@ -4,108 +4,26 @@ from __future__ import annotations
 import copy
 
 DEMOS: dict[str, dict] = {
-    "choice": {
-        "type": "choice", "id": "demo-choice",
-        "question": "Where should the team offsite go?",
-        "options": [
-            {"label": "Lisbon", "description": "Sun, cheap flights, good food", "icon": "🌞"},
-            {"label": "Berlin", "description": "Easy for everyone by train", "icon": "🚆"},
-            {"label": "Online", "description": "No travel, half a day", "icon": "💻"},
-        ],
-        "allowOther": True,
-    },
-    "checklist": {
-        "type": "checklist", "id": "demo-checklist", "title": "Before the release",
-        "items": [
-            {"text": "Bump the version", "category": "Code"},
-            {"text": "Update the changelog", "category": "Code"},
-            {"text": "Run the full test suite", "category": "Code", "checked": True},
-            {"text": "Write the announcement", "category": "Comms"},
-            {"text": "Tell support about the changes", "category": "Comms"},
-        ],
-    },
-    "compare": {
-        "type": "compare", "id": "demo-compare", "title": "Which laptop?",
-        "columns": [
-            {"title": "Model A", "subtitle": "13-inch", "badge": "Lightest"},
-            {"title": "Model B", "subtitle": "14-inch", "best": True},
-            {"title": "Model C", "subtitle": "16-inch", "badge": "Most power"},
-        ],
-        "rows": [
-            {"label": "Weight", "values": ["1.1 kg", "1.4 kg", "2.1 kg"]},
-            {"label": "Battery", "values": ["14 h", "18 h", "11 h"]},
-            {"label": "Price", "values": ["€1,099", "€1,299", "€1,899"]},
-        ],
-    },
-    "form": {
-        "type": "form", "id": "demo-form", "title": "Book a table",
-        "fields": [
-            {"name": "name", "label": "Name", "kind": "text", "required": True},
-            {"name": "date", "label": "Date", "kind": "date", "required": True},
-            {"name": "guests", "label": "Guests", "kind": "number", "min": 1, "max": 12, "default": 2},
-            {"name": "area", "label": "Area", "kind": "select", "options": ["Inside", "Terrace", "Bar"]},
-            {"name": "kids", "label": "High chair needed", "kind": "toggle", "default": False},
-        ],
-        "submitLabel": "Book",
-    },
-    "confirm": {
-        "type": "confirm", "id": "demo-confirm", "title": "Delete old log files?",
-        "action": "Delete 14 log files older than 30 days in ~/logs",
-        "reason": "They use 2.3 GB and nothing reads them",
-        "risk": {"level": "medium", "text": "Deleted files can't be restored"},
-        "command": "find ~/logs -name '*.log' -mtime +30 -delete",
-    },
-    "rating": {
-        "type": "rating", "id": "demo-rating", "question": "How useful was this summary?",
-        "lowLabel": "Not at all", "highLabel": "Very", "comment": True,
-    },
-    "slider": {
-        "type": "slider", "id": "demo-slider", "question": "What's your budget per night?",
-        "min": 50, "max": 400, "step": 10, "default": 150, "unit": "€",
-    },
-    "schedule": {
-        "type": "schedule", "id": "demo-schedule", "title": "Pick a time for the call",
-        "timezone": "Europe/Vienna",
-        "slots": [
-            {"start": "2026-11-12T10:00", "end": "2026-11-12T10:30"},
-            {"start": "2026-11-12T14:00", "end": "2026-11-12T14:30"},
-            {"start": "2026-11-13T09:00", "end": "2026-11-13T09:30", "unavailable": True},
-            {"start": "2026-11-13T16:00", "end": "2026-11-13T16:30"},
-        ],
-        "noneLabel": "None of these",
-    },
-    "steps": {
-        "type": "steps", "id": "demo-steps", "title": "Set up SSH keys",
-        "steps": [
-            {"title": "Create a key", "body": "Press Enter to accept the default file.",
-             "command": "ssh-keygen -t ed25519"},
-            {"title": "Copy it to the server", "command": "ssh-copy-id you@server"},
-            {"title": "Test the login", "body": "You should get in without a password.",
-             "command": "ssh you@server"},
-        ],
-    },
-    "quiz": {
-        "type": "quiz", "id": "demo-quiz", "title": "Quick check: HTTP",
-        "questions": [
-            {"question": "Which status code means Not Found?", "options": ["200", "301", "404", "500"],
-             "answer": 2, "explanation": "4xx codes are client errors; 404 means the resource doesn't exist."},
-            {"question": "Which method should not change data on the server?",
-             "options": ["GET", "POST", "DELETE"], "answer": 0,
-             "explanation": "GET is meant to be safe: it only reads."},
-        ],
-    },
+    "choice": {"type": "choice", "id": "demo-choice", "question": "Where should the team offsite go?", "options": [{"label": "Lisbon", "description": "Sun, cheap flights, good food", "icon": "🌞"}, {"label": "Berlin", "description": "Easy for everyone by train", "icon": "🚆"}, {"label": "Online", "description": "No travel, half a day", "icon": "💻"}], "allowOther": True},
+    "checklist": {"type": "checklist", "id": "demo-checklist", "title": "Before the release", "items": [{"text": "Bump the version", "category": "Code"}, {"text": "Update the changelog", "category": "Code"}, {"text": "Run the full test suite", "category": "Code", "checked": True}, {"text": "Write the announcement", "category": "Comms"}, {"text": "Tell support about the changes", "category": "Comms"}]},
+    "compare": {"type": "compare", "id": "demo-compare", "title": "Home internet: which plan?", "columns": [{"title": "Fibre 100", "subtitle": "Enough for two people", "badge": "Cheapest"}, {"title": "Fibre 300", "subtitle": "Streaming and video calls at once", "best": True}, {"title": "Fibre 1000", "subtitle": "Big uploads, home office", "badge": "Fastest"}], "rows": [{"label": "Download", "values": ["100 Mbit/s", "300 Mbit/s", "1000 Mbit/s"], "best": 2}, {"label": "Upload", "values": ["20 Mbit/s", "60 Mbit/s", "200 Mbit/s"], "best": 2}, {"label": "Price per month", "values": ["€29", "€39", "€59"], "best": 0}, {"label": "Contract", "values": ["12 months", "12 months", "24 months"]}, {"label": "Router included", "values": [False, True, True]}]},
+    "form": {"type": "form", "id": "demo-form", "title": "Book a table", "fields": [{"name": "name", "label": "Name", "kind": "text", "required": True}, {"name": "date", "label": "Date", "kind": "date", "required": True}, {"name": "guests", "label": "Guests", "kind": "number", "min": 1, "max": 12, "default": 2}, {"name": "area", "label": "Area", "kind": "select", "options": ["Inside", "Terrace", "Bar"]}, {"name": "kids", "label": "High chair needed", "kind": "toggle", "default": False}], "submitLabel": "Book"},
+    "confirm": {"type": "confirm", "id": "demo-confirm", "title": "Delete old log files?", "action": "Delete 14 log files older than 30 days in ~/logs", "reason": "They use 2.3 GB and nothing reads them", "risk": {"level": "medium", "text": "Deleted files can't be restored"}, "command": "find ~/logs -name '*.log' -mtime +30 -delete"},
+    "rating": {"type": "rating", "id": "demo-rating", "question": "How useful was this summary?", "lowLabel": "Not at all", "highLabel": "Very", "comment": True},
+    "slider": {"type": "slider", "id": "demo-slider", "question": "What's your budget per night?", "min": 50, "max": 400, "step": 10, "default": 150, "unit": "€"},
+    "schedule": {"type": "schedule", "id": "demo-schedule", "title": "Pick a time for the call", "timezone": "Europe/Vienna", "slots": [{"start": "2026-11-12T10:00", "end": "2026-11-12T10:30"}, {"start": "2026-11-12T14:00", "end": "2026-11-12T14:30"}, {"start": "2026-11-13T09:00", "end": "2026-11-13T09:30", "unavailable": True}, {"start": "2026-11-13T16:00", "end": "2026-11-13T16:30"}], "noneLabel": "None of these"},
+    "steps": {"type": "steps", "id": "demo-steps", "title": "Set up SSH keys", "steps": [{"title": "Create a key", "body": "Press Enter to accept the default file.", "command": "ssh-keygen -t ed25519"}, {"title": "Copy it to the server", "command": "ssh-copy-id you@server"}, {"title": "Test the login", "body": "You should get in without a password.", "command": "ssh you@server"}]},
+    "quiz": {"type": "quiz", "id": "demo-quiz", "title": "Quick check: HTTP", "questions": [{"question": "Which status code means Not Found?", "options": ["200", "301", "404", "500"], "answer": 2, "explanation": "4xx codes are client errors; 404 means the resource doesn't exist."}, {"question": "Which method should not change data on the server?", "options": ["GET", "POST", "DELETE"], "answer": 0, "explanation": "GET is meant to be safe: it only reads."}]},
+    "plan": {"type": "plan", "id": "demo-plan", "title": "Move the blog to the new server", "summary": "6 steps, about 20 minutes of downtime. Switch off what you don't want, reorder, or leave a note before I start.", "steps": [{"title": "Announce the maintenance window", "detail": "Banner on the site and a post in the newsletter.", "risk": "low", "optional": True}, {"title": "Back up the database", "command": "pg_dump -Fc blog > /backups/blog-$(date +%F).dump", "risk": "low"}, {"title": "Copy uploads to the new server", "command": "rsync -a /srv/blog/uploads/ new:/srv/blog/uploads/", "risk": "low"}, {"title": "Switch DNS to the new server", "detail": "Takes up to an hour to reach everyone.", "risk": "medium"}, {"title": "Run the smoke test", "command": "./scripts/smoke.sh https://blog.example.org", "risk": "low"}, {"title": "Shut down the old server", "detail": "Only after a day without problems.", "risk": "high", "optional": True}], "runLabel": "Start the move"},
+    "review": {"type": "review", "id": "demo-review", "title": "5 suggested replies", "summary": "Drafts for this morning's inbox. Keep the ones to send, drop the rest, comment if I should rewrite one.", "items": [{"title": "Re: Team offsite dates", "detail": "To: Anna", "preview": "Hi Anna, the 14th works for me. Should I book the room?", "tag": "work"}, {"title": "Re: Invoice #4471", "detail": "To: Billing", "preview": "Hello, the payment went out yesterday. Please let me know if it hasn't arrived by Friday.", "tag": "finance"}, {"title": "Re: Newsletter unsubscribe", "detail": "To: no-reply", "preview": "Please remove me from this list.", "tag": "noise"}, {"title": "Re: Can you review my PR?", "detail": "To: Jonas", "preview": "Looked at it: two small things in the migration, otherwise good to go.", "tag": "work"}, {"title": "Re: Dinner on Saturday", "detail": "To: Mia", "preview": "Yes! 19:30 at the usual place?", "tag": "friends"}], "keepLabel": "Send", "dropLabel": "Skip", "applyLabel": "Send kept replies"},
+    "calc": {"type": "calc", "id": "demo-calc", "title": "Loan calculator", "inputs": [{"name": "amount", "label": "Loan amount", "kind": "number", "default": 250000, "min": 1000, "max": 2000000, "step": 1000, "unit": "€"}, {"name": "rate", "label": "Interest rate", "kind": "slider", "default": 3.8, "min": 0, "max": 10, "step": 0.1, "unit": "%"}, {"name": "years", "label": "Term", "kind": "select", "default": 25, "options": [{"label": "15 years", "value": 15}, {"label": "20 years", "value": 20}, {"label": "25 years", "value": 25}, {"label": "30 years", "value": 30}]}], "outputs": [{"label": "Monthly payment", "expr": "if(rate == 0, amount / (years * 12), amount * (rate / 1200) / (1 - (1 + rate / 1200) ^ -(years * 12)))", "format": "currency", "decimals": 2, "emphasis": True}, {"label": "Total interest", "expr": "if(rate == 0, 0, amount * (rate / 1200) / (1 - (1 + rate / 1200) ^ -(years * 12)) * years * 12 - amount)", "format": "currency", "decimals": 0}], "note": "Fixed rate, monthly payments, no fees included.", "sendLabel": "Use these numbers"},
+    "decision": {"type": "decision", "id": "demo-decision", "title": "Where should we move?", "criteria": [{"id": "rent", "label": "Rent", "weight": 8}, {"id": "commute", "label": "Commute", "weight": 6}, {"id": "schools", "label": "Schools", "weight": 5}, {"id": "green", "label": "Parks nearby", "weight": 4}], "options": [{"label": "City centre", "scores": {"rent": 3, "commute": 9, "schools": 6, "green": 4}}, {"label": "Riverside", "scores": {"rent": 6, "commute": 7, "schools": 7, "green": 8}}, {"label": "Suburb", "scores": {"rent": 9, "commute": 4, "schools": 8, "green": 9}}]},
+    "rank": {"type": "rank", "id": "demo-rank", "title": "What matters most in the next release?", "prompt": "Drag or use Alt+↑/↓. I'll plan the sprint from the top down.", "items": [{"label": "Faster search", "detail": "Results in under a second"}, {"label": "Dark mode"}, {"label": "Offline mode", "detail": "Read saved articles without a connection"}, {"label": "Export to PDF"}, {"label": "Fewer notifications"}]},
+    "recipe": {"type": "recipe", "id": "demo-recipe", "title": "Pancakes", "servings": 4, "ingredients": [{"item": "Flour", "qty": 250, "unit": "g", "group": "Batter"}, {"item": "Milk", "qty": 500, "unit": "ml", "group": "Batter"}, {"item": "Eggs", "qty": 3, "group": "Batter"}, {"item": "Salt", "qty": 0.5, "unit": "tsp", "group": "Batter"}, {"item": "Butter", "qty": 30, "unit": "g", "group": "For the pan"}, {"item": "Maple syrup", "note": "to serve", "group": "Topping"}, {"item": "Berries", "qty": 200, "unit": "g", "group": "Topping"}], "steps": [{"text": "Whisk flour, milk, eggs and salt into a smooth batter.", "minutes": 5}, {"text": "Let the batter rest.", "minutes": 15}, {"text": "Fry thin pancakes in a little butter, about a minute per side.", "minutes": 20}], "sendLabel": "Make a shopping list"},
+    "flashcards": {"type": "flashcards", "id": "demo-flashcards", "title": "Spanish: at the restaurant", "cards": [{"front": "la cuenta", "back": "the bill"}, {"front": "¿Qué me recomienda?", "back": "What do you recommend?"}, {"front": "sin gluten", "back": "gluten-free"}, {"front": "una mesa para dos", "back": "a table for two"}, {"front": "agua con gas", "back": "sparkling water", "hint": "gas = bubbles"}, {"front": "Está delicioso.", "back": "It's delicious."}]},
 }
 
 
-DEMOS.update({
-    'plan': {'type':'plan','title':'Release plan','steps':[{'title':'Run tests'},{'title':'Publish notes','optional':True}]},
-    'review': {'type':'review','title':'Review changes','items':[{'title':'Update guide'},{'title':'Remove draft'}]},
-    'decision': {'type':'decision','title':'Choose a laptop','criteria':[{'id':'cost','label':'Cost','weight':5},{'id':'speed','label':'Speed','weight':4}],'options':[{'label':'A','scores':{'cost':8,'speed':6}},{'label':'B','scores':{'cost':6,'speed':8}}]},
-    'calc': {'type':'calc','title':'Monthly cost','inputs':[{'name':'price','label':'Price','default':1200},{'name':'months','label':'Months','default':12}],'outputs':[{'label':'Monthly','expr':'price / months','format':'currency'}]},
-    'rank': {'type':'rank','title':'Set priorities','items':[{'label':'Speed'},{'label':'Quality'}]},
-    'recipe': {'type':'recipe','title':'Pancakes','servings':2,'ingredients':[{'item':'flour','qty':200,'unit':'g'},{'item':'egg','qty':1}],'steps':[{'text':'Mix and cook.'}]},
-    'flashcards': {'type':'flashcards','title':'Vocabulary','cards':[{'front':'Haus','back':'house'},{'front':'Baum','back':'tree'}]},
-})
 
 
 def demo_card(card_type: str) -> dict | None:

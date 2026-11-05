@@ -1,8 +1,11 @@
-import test, { beforeEach } from 'node:test'
+import test, { beforeEach, mock } from 'node:test'
 import assert from 'node:assert/strict'
 import { act, mount, toolResult, click, type, key, buttonByText, resetHost, lastReply, registerPlugin, makeStorage, testHost } from './dom.mjs'
 
 beforeEach(resetHost)
+// node:test's MockTimers prints an ExperimentalWarning; keep test output warning-free.
+const emitWarning = process.emitWarning
+process.emitWarning = (warning, ...rest) => (String(warning).includes('MockTimers') ? undefined : emitWarning.call(process, warning, ...rest))
 const confirm = { type: 'confirm', title: 'Delete archived logs?', action: 'Remove the archived logs after checking the backup.' }
 const steps = { type: 'steps', title: 'Set up Hermes', steps: Array.from({ length: 6 }, (_, i) => ({ title: `Setup ${i + 1}`, body: `Instructions ${i + 1}`, command: `echo step-${i + 1}` })) }
 async function render(t, card, options) {
@@ -50,10 +53,8 @@ test('confirm: long details stack and an absolute path copies in full', async t 
   assert.ok(rows[0].classList.contains('huic-kv-stacked'))
   assert.ok(!rows[1].classList.contains('huic-kv-stacked'))
   assert.ok(rows[2].classList.contains('huic-kv-stacked'))
-  const shown = rows[0].querySelector('[title]')
-  assert.equal(shown.title, path)
-  assert.match(shown.textContent, /^\/srv\/hermes\/.*….*logs\.jsonl$/)
-  assert.ok(shown.textContent.length < path.length)
+  const shown = rows[0].querySelector('.huic-kv-path')
+  assert.equal(shown.textContent, path, 'a destructive target is shown in full, never middle-truncated')
   await click(rows[0].querySelector('button'))
   assert.equal(copied, path)
 })
@@ -85,13 +86,14 @@ test('confirm: Change focuses the editor, Escape restores focus, modifier Enter 
   assert.equal(area.value, 'Keep the last 90 days')
   await act(async () => { area.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true })) })
   assert.equal(lastReply().json.change, 'Keep the last 90 days')
-  assert.match(container.querySelector('.huic-confirm-receipt').textContent, /✎Change requested/)
+  assert.equal(container.querySelector('.huic-confirm-receipt').textContent, 'Change requested')
+  assert.ok(container.querySelector('.huic-confirm-receipt svg.huic-ico'), 'line icon, no glyph')
   assert.ok(container.querySelector('.huic-answer[role="status"]'))
   assert.equal(testHost.submissions.length, 1)
 })
 
 test('confirm: prominent decisions survive a remount and keep the hook receipt', async t => {
-  for (const [button, receipt] of [['Yes, go ahead', '✓Approved'], ['No', '✗Declined']]) {
+  for (const [button, receipt] of [['Yes, go ahead', 'Approved'], ['No', 'Declined']]) {
     const result = toolResult(confirm)
     const registration = registerPlugin(makeStorage())
     const first = await mount(result, { registration })
@@ -176,4 +178,72 @@ test('steps: completion leaves all content and navigation readable, inactive car
   const inactive = await render(t, steps, { sessionId: null })
   assert.ok([...inactive.container.querySelectorAll('.huic-steps-map button')].every(dot => dot.disabled))
   assert.equal(inactive.container.querySelector('.huic-foot'), null)
+})
+
+test('confirm: medium and high risk Yes waits 4 s with Undo inside the card; low risk sends at once', async t => {
+  mock.timers.enable({ apis: ['setTimeout'] })
+  t.after(() => mock.timers.reset())
+  for (const level of ['medium', 'high']) {
+    resetHost()
+    const { container, unmount } = await mount(toolResult({ ...confirm, risk: { level } }))
+    const yes = () => buttonByText(container, 'Yes, go ahead')
+    await click(yes())
+    assert.equal(testHost.submissions.length, 0, `${level}: nothing sent yet`)
+    assert.match(container.querySelector('.huic-confirm-pending').textContent, /Approved · sending in 4 s/)
+    assert.equal(document.activeElement, buttonByText(container, 'Undo'), 'focus moves to Undo')
+    await click(buttonByText(container, 'Undo'))
+    assert.equal(document.activeElement, yes(), 'focus returns to Yes')
+    await act(async () => mock.timers.tick(5000))
+    assert.equal(testHost.submissions.length, 0, 'undone: never sent')
+    await click(yes())
+    await key(window, 'Escape')
+    assert.ok(buttonByText(container, 'Undo'), 'Escape outside the card leaves it pending')
+    await key(document.activeElement, 'Escape')
+    assert.equal(buttonByText(container, 'Undo'), undefined, 'Escape inside the card takes it back')
+    await click(yes())
+    await act(async () => mock.timers.tick(4000))
+    assert.equal(testHost.submissions.length, 1)
+    assert.equal(lastReply().json.decision, 'yes')
+    assert.equal(container.querySelector('.huic-confirm-receipt').textContent, 'Approved')
+    await unmount()
+    const again = await mount(toolResult({ ...confirm, title: `Again ${level}`, risk: { level } }))
+    await click(buttonByText(again.container, 'Yes, go ahead'))
+    await again.unmount()
+    await act(async () => mock.timers.tick(5000))
+    assert.equal(testHost.submissions.length, 1, 'nothing is sent after unmount')
+  }
+  resetHost()
+  const low = await render(t, { ...confirm, title: 'Low', risk: { level: 'low' } })
+  await click(buttonByText(low.container, 'Yes, go ahead'))
+  assert.equal(testHost.submissions.length, 1, 'low risk sends immediately')
+  const none = await render(t, { ...confirm, title: 'None' })
+  await click(buttonByText(none.container, 'Yes, go ahead'))
+  assert.equal(testHost.submissions.length, 2, 'no risk level sends immediately')
+})
+
+test('confirm: Change opens a labelled box in place of the buttons', async t => {
+  const { container } = await render(t, { ...confirm, risk: { level: 'high' } })
+  await click(buttonByText(container, 'Change…'))
+  const area = container.querySelector('.huic-confirm-edit textarea')
+  assert.ok(area)
+  assert.equal(container.querySelector(`label[for="${area.id}"]`).textContent, 'What should be different?')
+  assert.equal(buttonByText(container, 'Yes, go ahead'), undefined, 'the decision buttons step aside while editing')
+  assert.ok(buttonByText(container, 'Send change').disabled)
+})
+
+test('steps: the answered footer keeps what was sent as the receipt (Done, or Stuck with the note)', async t => {
+  const done = await render(t, { ...steps, finishLabel: 'All set' })
+  for (let i = 0; i < 5; i++) await click(buttonByText(done.container, 'Next'))
+  await click(buttonByText(done.container, 'All set'))
+  assert.equal(done.container.querySelector('.huic-foot .huic-steps-sent').textContent, 'Sent: All set')
+  assert.ok(buttonByText(done.container, 'Back'), 'browsing back still works')
+
+  const stuck = await render(t, { ...steps, title: 'Stuck card' })
+  await click(buttonByText(stuck.container, 'Next'))
+  await click(buttonByText(stuck.container, 'Stuck here'))
+  await type(stuck.container.querySelector('.huic-steps-report input'), 'Permission denied')
+  await click(buttonByText(stuck.container, 'Send'))
+  const receipt = stuck.container.querySelector('.huic-foot .huic-steps-sent.is-stuck')
+  assert.match(receipt.textContent, /^Sent: stuck at step 2/)
+  assert.equal(receipt.querySelector('q').textContent, 'Permission denied')
 })

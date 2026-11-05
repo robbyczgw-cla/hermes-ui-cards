@@ -343,7 +343,7 @@ function calcParse(expr, names) {
   let pos = 0
   const funcs = {min:[1,99],max:[1,99],round:[1,2],floor:[1,1],ceil:[1,1],sqrt:[1,1],abs:[1,1],pow:[2,2],log:[1,1],exp:[1,1],if:[3,3]}
   const fail = (message, at = pos) => { throw {message, at: [...expr.slice(0, at)].length} }
-  const skip = () => { while (pos < expr.length && /\s/u.test(expr[pos])) pos++ }
+  const skip = () => { while (pos < expr.length && /[ \t\n\r]/.test(expr[pos])) pos++ }
   function parse(level=0, depth=0) {
     if (depth > 32) fail('maximum depth exceeded')
     skip()
@@ -379,23 +379,60 @@ function calcParse(expr, names) {
     }
     fail('expected expression')
   }
-  try { if ([...expr].length > 300) fail('expression too long',300); const result=parse(); skip(); if (pos !== expr.length) fail('unexpected character'); return result } catch (e) { return e }
+  try { if ([...expr].length > 300) throw {message:'expression too long', at:300}; const result=parse(); skip(); if (pos !== expr.length) fail('unexpected character'); return result } catch (e) { return e }
 }
 function calcEval(ast, values) {
   function ev(n) {
     const [type, op] = n
-    if (type==='number') return op
-    if (type==='name') return values[op]
-    if (type==='unary') return -ev(op)
-    if (type==='binary') {
+    let value
+    if (type==='number') value=op
+    else if (type==='name') value=Object.prototype.hasOwnProperty.call(values,op) ? values[op] : null
+    else if (type==='unary') value=-ev(op)
+    else if (type==='binary') {
       const a=ev(n[2]), b=ev(n[3])
-      if (!Number.isFinite(a) || !Number.isFinite(b) || (op === '/' && b === 0)) throw new Error('invalid result')
-      switch(op) { case '+':return a+b; case '-':return a-b; case '*':return a*b; case '/':return a/b; case '^':return Math.pow(a,b); case '<':return +(a<b); case '<=':return +(a<=b); case '>':return +(a>b); case '>=':return +(a>=b); case '==':return +(a===b); case '!=':return +(a!==b) }
+      switch(op) { case '+':value=a+b; break; case '-':value=a-b; break; case '*':value=a*b; break; case '/':value=a/b; break; case '^':value=Math.pow(a,b); break; case '<':value=+(a<b); break; case '<=':value=+(a<=b); break; case '>':value=+(a>b); break; case '>=':value=+(a>=b); break; case '==':value=+(a===b); break; case '!=':value=+(a!==b); break }
+    } else if (op==='if') value=ev(n[2][ev(n[2][0]) ? 1 : 2])
+    else {
+      const a=n[2].map(ev)
+      if (op==='round') {
+        const digits=a.length>1?a[1]:0
+        if (digits<0) throw new Error('negative digits')
+        const f=10**Math.min(digits,12)
+        value=Math.floor(a[0]*f+0.5)/f
+      } else value=Math[op](...a)
     }
-    if (op==='if') { const condition=ev(n[2][0]); if (!Number.isFinite(condition)) throw new Error('invalid result'); return ev(n[2][condition ? 1 : 2]) }
-    const a=n[2].map(ev)
-    if (op==='round') { const f=10**(a.length>1?a[1]:0); return Math.floor(a[0]*f+0.5)/f }
-    return Math[op](...a)
+    if (!Number.isFinite(value)) throw new Error('invalid result')
+    return value
   }
-  try { const v=ev(ast); return Number.isFinite(v) ? v : null } catch { return null }
+  try { return ev(ast) } catch { return null }
+}
+
+// Decimal half-away-from-zero on the shortest decimal representation of the value.
+function calcFormat(value, output, card, lang) {
+  if (!Number.isFinite(value)) return '–'
+  const fmt=output.format || 'number', decimals=output.decimals ?? (fmt==='integer' ? 0 : 2)
+  if (fmt==='percent') value*=100
+  if (!Number.isFinite(value)) return '–'
+  const negative=value<0, parts=Math.abs(value).toString().toLowerCase().split('e')
+  const exponent=Number(parts[1] || 0), digits=parts[0].replace('.', ''), dot=(parts[0].indexOf('.')<0 ? parts[0].length : parts[0].indexOf('.'))+exponent
+  const shift=dot+decimals
+  let whole
+  if (shift<=0) whole='0'
+  else whole=(digits+'0'.repeat(Math.max(0,shift-digits.length))).slice(0,shift)
+  const next=shift<0 ? '0' : (digits[shift] || '0')
+  if (next>='5') whole=(BigInt(whole)+1n).toString()
+  whole=whole.padStart(decimals+1,'0')
+  let integer=decimals ? whole.slice(0,-decimals) : whole
+  const fraction=decimals ? whole.slice(-decimals) : ''
+  const de=String(lang || '').toLowerCase().startsWith('de')
+  integer=integer.replace(/\B(?=(\d{3})+(?!\d))/g,de ? '.' : ',')
+  let shown=(negative ? '-' : '')+integer+(decimals ? (de ? ',' : '.')+fraction : '')
+  if (fmt==='currency') {
+    const code=card.currency || 'EUR', symbol=(de ? {EUR:'€',USD:'$',GBP:'£',CAD:'CA$',JPY:'¥',AUD:'AU$'} : {EUR:'€',USD:'US$',GBP:'£',CAD:'CA$',JPY:'JP¥',AUD:'A$'})[code] || code
+    if (de) shown+='\u00a0'+symbol
+    else shown=(negative ? '-' : '')+symbol+(symbol===code ? '\u00a0' : '')+(negative ? shown.slice(1) : shown)
+  }
+  if (fmt==='percent') shown+=' %'
+  if (output.unit) shown+=' '+output.unit
+  return shown
 }

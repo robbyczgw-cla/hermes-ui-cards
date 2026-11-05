@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { beforeEach, test } from 'node:test'
+import { beforeEach, mock, test } from 'node:test'
 import { act, mount, toolResult, registerPlugin, makeStorage, click, type, buttonByText, lastReply, resetHost, testHost, mod } from './dom.mjs'
 
 beforeEach(resetHost)
@@ -17,6 +17,14 @@ async function press(el, keyName, extra = {}) {
 const wait = ms => act(() => new Promise(resolve => setTimeout(resolve, ms)))
 const titles = c => [...c.querySelectorAll('.huic-plan-title')].map(e => e.textContent)
 const live = c => c.querySelector('[aria-live="polite"]').textContent
+// Run waits out the undo window before it sends.
+async function runPlan(c, label = 'Run plan') {
+  mock.timers.enable({ apis: ['setTimeout'] })
+  try {
+    await click(buttonByText(c, label))
+    await act(async () => mock.timers.tick(4000))
+  } finally { mock.timers.reset() }
+}
 
 // ── plan ──
 
@@ -38,6 +46,10 @@ test('plan: Alt+arrows reorder with focus kept and announced, optional steps swi
   const switches = c.querySelectorAll('input[role="switch"]')
   assert.equal(switches.length, 2)
   assert.equal(switches[0].getAttribute('aria-label'), 'Run step: Stop workers')
+  assert.ok(switches[0].closest('.huic-plan-titlerow'), 'the switch sits on the title row')
+  const locks = c.querySelectorAll('.huic-plan-lock')
+  assert.equal(locks.length, 2)
+  assert.equal(locks[0].getAttribute('aria-label'), 'Required, always runs')
 
   const down = c.querySelector('[data-step="p4"] [data-plan-focus="down"]')
   assert.equal(down.disabled, true, 'last step cannot move down')
@@ -65,7 +77,8 @@ test('plan: Alt+arrows reorder with focus kept and announced, optional steps swi
   await type(note, '  only after 22:00  ')
   // A high-risk step is included: the run button says so with its colour and the hint.
   assert.match(c.querySelector('.huic-foot').textContent, /includes a high-risk step/)
-  await click(buttonByText(c, 'Run plan'))
+  assert.ok(buttonByText(c, 'Run plan').classList.contains('huic-btn-danger'))
+  await runPlan(c)
   const r = lastReply()
   assert.equal(r.line1, '✓ Run the plan: 3 of 4 steps · skipped: Stop workers · reordered')
   assert.deepEqual(r.json.steps, [
@@ -76,8 +89,12 @@ test('plan: Alt+arrows reorder with focus kept and announced, optional steps swi
   ])
   // Locked: no controls, final order and the note stay visible.
   assert.equal(c.querySelectorAll('.huic-plan-ctrl').length, 0)
+  assert.equal(c.querySelectorAll('input[role="switch"], .huic-plan-lock').length, 0)
   assert.equal(buttonByText(c, 'Run plan'), undefined)
   assert.deepEqual(titles(c), ['Back up', 'Smoke test', 'Stop workers', 'Run migration'])
+  assert.ok(c.querySelector('.huic').classList.contains('is-answered'))
+  assert.ok(c.querySelector('[data-step="p2"]').classList.contains('is-off'))
+  assert.equal(c.querySelectorAll('.huic-plan-step:not(.is-off) .huic-plan-node svg').length, 3, 'steps that ran are ticked')
   assert.match(c.textContent, /only after 22:00/)
   assert.match(c.querySelector('.huic-answer').textContent, /Run the plan: 3 of 4 steps/)
   await m.unmount()
@@ -119,7 +136,7 @@ test('plan: order, switches and notes survive reopening; German line 1', async (
   assert.equal(c.querySelector('[data-step="p4"] input[role="switch"]').checked, false)
   assert.equal(c.querySelector('[data-step="p1"] input[data-plan-focus="note"]').value, 'vorher Platz prüfen')
   assert.match(c.querySelector('.huic-foot').textContent, /3 von 4 Schritten werden ausgeführt · neu geordnet/)
-  await click(buttonByText(c, 'Plan ausführen'))
+  await runPlan(c, 'Plan ausführen')
   assert.equal(lastReply().line1, '✓ Plan ausführen: 3 von 4 Schritten · übersprungen: Smoke test · neu geordnet')
   await m.unmount()
 })
@@ -130,12 +147,12 @@ test('plan: unchanged plan has a plain line 1; all optional steps off disables R
   assert.equal(buttonByText(m.container, 'Go').disabled, true)
   assert.match(m.container.querySelector('.huic-foot').textContent, /Switch on at least one step/)
   await click(m.container.querySelector('input[role="switch"]'))
-  await click(buttonByText(m.container, 'Go'))
+  await runPlan(m.container, 'Go')
   assert.equal(lastReply().line1, '✓ Run the plan: 1 of 2 steps · skipped: B')
   await m.unmount()
   m = await mount(toolResult({ type: 'plan', title: 'One', steps: [{ title: 'Only step' }] }))
   assert.equal(m.container.querySelectorAll('[data-plan-focus="up"]').length, 0, 'no move buttons for a single step')
-  await click(buttonByText(m.container, 'Run plan'))
+  await runPlan(m.container)
   assert.equal(lastReply().line1, '✓ Run the plan: 1 of 1 steps')
   await m.unmount()
 })
@@ -165,7 +182,7 @@ test('review: bulk, individual decisions, comment, Apply reply with titles', asy
   const m = await mount(toolResult(review))
   const c = m.container
   assert.equal(decisionOf(c, 'r1'), 'none')
-  assert.match(c.querySelector('.huic-foot').textContent, /3 still open, sent as undecided/)
+  assert.match(c.querySelector('.huic-foot').textContent, /3 still open/)
   await click(buttonByText(c, 'Keep all'))
   assert.deepEqual(['r1', 'r2', 'r3'].map(id => decisionOf(c, id)), ['keep', 'keep', 'keep'])
   assert.equal(live(c), 'All 3 set to Keep.')
@@ -175,15 +192,15 @@ test('review: bulk, individual decisions, comment, Apply reply with titles', asy
   assert.equal(drop2.getAttribute('aria-checked'), 'true')
   assert.equal(drop2.tabIndex, 0)
   assert.equal(c.querySelector('[data-item="r2"] [role="radio"].is-keep').tabIndex, -1, 'one tab stop per row')
-  assert.match(c.querySelector('.huic-rev-counts').textContent, /2 Keep.*1 Drop.*0 Open/)
+  assert.match(c.querySelector('.huic-rev-counts').textContent, /Keep 2.*Drop 1.*Open 0/)
 
   // Long previews are clamped behind a disclosure; short ones are not.
   assert.equal(c.querySelector('[data-item="r1"] .huic-rev-link'), null)
   const more = c.querySelector('[data-item="r3"] .huic-rev-link')
-  assert.ok(c.querySelector('[data-item="r3"] pre').classList.contains('is-clamped'))
+  assert.ok(c.querySelector('[data-item="r3"] .huic-rev-preview').classList.contains('is-clamped'))
   await click(more)
   assert.equal(more.getAttribute('aria-expanded'), 'true')
-  assert.ok(!c.querySelector('[data-item="r3"] pre').classList.contains('is-clamped'))
+  assert.ok(!c.querySelector('[data-item="r3"] .huic-rev-preview').classList.contains('is-clamped'))
 
   await click(c.querySelector('[data-item="r2"] .huic-rev-icon'))
   const note = c.querySelector('[data-item="r2"] .huic-rev-note')
@@ -220,6 +237,10 @@ test('review: arrow keys switch, keep-the-rest, reset, undecided count and Germa
   assert.equal(buttonByText(c, 'Zurücksetzen'), undefined)
   await click(c.querySelector('[data-item="r3"] [role="radio"].is-drop'))
   await click(buttonByText(c, 'Übernehmen'))
+  assert.equal(testHost.submissions.length, 0, 'undecided items: ask first')
+  assert.match(c.querySelector('.huic-foot').textContent, /2 noch offen – trotzdem senden\?/)
+  assert.equal(document.activeElement, buttonByText(c, 'Trotzdem senden'))
+  await click(buttonByText(c, 'Trotzdem senden'))
   const r = lastReply()
   assert.equal(r.line1, '✓ Durchgesehen: 0 behalten, 1 verwerfen, 2 offen')
   assert.deepEqual(r.json.undecided, ['r1', 'r2'])
@@ -241,9 +262,13 @@ test('review: defaultDecision, custom labels and draft restore', async () => {
   assert.equal(c.querySelector('[data-item="r1"] .huic-rev-note').value, 'shorter please')
   assert.equal(c.querySelector('[data-item="r2"] [role="radio"].is-drop').textContent, 'Skip')
   assert.ok(buttonByText(c, 'Send all') && buttonByText(c, 'Skip all'), 'bulk actions use the custom labels')
+  assert.match(c.querySelector('.huic-rev-counts').textContent, /Send 2.*Skip 1.*Open 0/)
+  await click(c.querySelector('[data-item="r3"] [role="radio"].is-drop'))
   await click(buttonByText(c, 'Send replies'))
-  assert.equal(lastReply().line1, '✓ Review done: keep 2, drop 1')
+  assert.equal(lastReply().line1, '✓ Review done: keep 1, drop 2')
   assert.deepEqual(lastReply().json.notes, { r1: 'shorter please' })
+  // The receipt keeps the card's own words: "Send" / "Skip", never "Kept" / "Dropped".
+  assert.deepEqual([...c.querySelectorAll('.huic-rev-stamp')].map(e => e.textContent), ['Send', 'Skip', 'Skip'])
   await m.unmount()
 })
 
@@ -289,17 +314,19 @@ const rowText = c => [...c.querySelectorAll('.huic-calc-row')].map(r => r.textCo
 test('calc: outputs recompute on every change; division by zero shows "–"; Send sends inputs and outputs', async () => {
   const m = await mount(toolResult(loan))
   const c = m.container
-  assert.equal(heroText(c), '1,389.58 €')
-  assert.deepEqual(rowText(c), ['Total interest166,874 €'])
+  assert.equal(heroText(c), '€1,389.58')
+  assert.deepEqual(rowText(c), ['Total interest€166,874'])
   const amount = c.querySelector('input[aria-label="Loan amount (€)"]')
   await type(amount, '300,000')
-  assert.equal(heroText(c), '1,667.50 €')
+  assert.equal(heroText(c), '€1,667.50')
   // Rate 0 → (1 - 1^-300) = 0 → division by zero: a dash, never NaN.
   const rateBox = c.querySelector('input[aria-label="Interest rate (%)"]')
   await type(rateBox, '0')
   assert.equal(heroText(c), '–')
   assert.doesNotMatch(c.textContent, /NaN|Infinity/)
   assert.match(c.textContent, /Not possible with these values/)
+  assert.equal(buttonByText(c, 'Send').disabled, true, 'no Send while the headline is "–"')
+  assert.match(c.querySelector('.huic-foot').textContent, /Not possible with these values/)
   const range = c.querySelector('input[type="range"]')
   assert.equal(range.value, '0')
   await type(range, '5')
@@ -307,10 +334,11 @@ test('calc: outputs recompute on every change; division by zero shows "–"; Sen
   // Five options: a native select.
   const select = c.querySelector('select')
   await type(select, '0')
-  assert.equal(heroText(c), '3,181.97 €')
+  assert.equal(heroText(c), '€3,181.97')
+  assert.equal(buttonByText(c, 'Send').disabled, false)
   await click(buttonByText(c, 'Send'))
   const r = lastReply()
-  assert.equal(r.line1, '✓ Calculated: Monthly payment 3,181.97 €')
+  assert.equal(r.line1, '✓ Calculated: Monthly payment €3,181.97')
   assert.deepEqual(r.json.inputs, { amount: 300000, rate: 5, years: 10 })
   assert.deepEqual(r.json.outputs, [{ label: 'Monthly payment', value: 3181.97 }, { label: 'Total interest', value: 81836 }])
   // Locked: inputs disabled, values kept.
@@ -339,7 +367,7 @@ test('calc: invalid and out-of-range input marks the field and blocks Send; scre
   await act(async () => { amount.focus(); amount.blur() })
   assert.equal(amount.value, '200,001', 'grouped again after editing')
   await wait(700)
-  assert.match(live(c), /^Monthly payment: 1,111\.6\d €; Total interest: /)
+  assert.match(live(c), /^Monthly payment: €1,111\.6\d; Total interest: /)
   await m.unmount()
 })
 
@@ -364,7 +392,7 @@ test('calc: segmented select, toggle, percent and German formats; draft restore'
   let m = await mount(result, { registration })
   let c = m.container
   assert.equal(heroText(c), '51,26 €')
-  assert.deepEqual(rowText(c), ['Trinkgeld10 %', 'Trinkgeld gesamt18,64 €'])
+  assert.deepEqual(rowText(c), ['Trinkgeld10 %', 'Trinkgeld gesamt18,64\u00a0€'])
   const radios = c.querySelectorAll('[role="radiogroup"] [role="radio"]')
   assert.equal(radios.length, 3)
   assert.equal(radios[1].getAttribute('aria-checked'), 'true')
@@ -412,7 +440,7 @@ test('calc: number and integer formats, units, other currencies and the first ou
   const m = await mount(toolResult(card))
   const c = m.container
   assert.equal(heroText(c), '7.4 l')
-  assert.deepEqual(rowText(c), ['Tins3', 'Cost119.70 CHF', 'Bad–'])
+  assert.deepEqual(rowText(c), ['Tins3', 'CostCHF\u00a0119.70', 'Bad–'])
   await click(buttonByText(c, 'Send'))
   assert.equal(lastReply().line1, '✓ Calculated: Paint needed 7.4 l')
   assert.equal(lastReply().json.outputs[3].value, null)
@@ -422,7 +450,192 @@ test('calc: number and integer formats, units, other currencies and the first ou
 test('calc: inactive chat shows the values but no Send button', async () => {
   const m = await mount(toolResult(loan), { sessionId: null })
   assert.equal(buttonByText(m.container, 'Send'), undefined)
-  assert.equal(heroText(m.container), '1,389.58 €')
+  assert.equal(heroText(m.container), '€1,389.58')
   assert.equal(testHost.submissions.length, 0)
+  await m.unmount()
+})
+
+// ── round 4: undo, confirm, names from the model, exact numbers ──
+
+test('plan: Run waits 4 s with Undo; Escape and Undo cancel, focus returns to Run, unmount sends nothing', async () => {
+  const card = { type: 'plan', title: 'Clean up', steps: [{ title: 'List files' }, { title: 'Delete them', risk: 'high', optional: true }] }
+  mock.timers.enable({ apis: ['setTimeout'] })
+  try {
+    const m = await mount(toolResult(card))
+    const c = m.container
+    assert.ok(buttonByText(c, 'Run plan').classList.contains('huic-btn-danger'), 'an included high-risk step: danger')
+    await click(c.querySelector('input[role="switch"]'))
+    assert.ok(buttonByText(c, 'Run plan').classList.contains('huic-btn-primary'), 'high-risk step off: primary again')
+    await click(c.querySelector('input[role="switch"]'))
+
+    await click(buttonByText(c, 'Run plan'))
+    assert.equal(testHost.submissions.length, 0)
+    assert.match(c.querySelector('.huic-plan-pending').textContent, /Running 2 of 2 steps in 4 s/)
+    assert.equal(document.activeElement, buttonByText(c, 'Undo'), 'focus moves to Undo')
+    assert.ok(c.querySelector('input[role="switch"]').disabled, 'the plan is locked while it waits')
+    await click(buttonByText(c, 'Undo'))
+    assert.equal(document.activeElement, buttonByText(c, 'Run plan'), 'focus returns to Run')
+    await act(async () => mock.timers.tick(5000))
+    assert.equal(testHost.submissions.length, 0)
+    assert.equal(c.querySelector('input[role="switch"]').disabled, false)
+
+    await click(buttonByText(c, 'Run plan'))
+    await press(document.activeElement, 'Escape')
+    assert.equal(buttonByText(c, 'Undo'), undefined, 'Escape inside the card cancels')
+    assert.equal(document.activeElement, buttonByText(c, 'Run plan'))
+    await act(async () => mock.timers.tick(5000))
+    assert.equal(testHost.submissions.length, 0)
+
+    await click(buttonByText(c, 'Run plan'))
+    await act(async () => mock.timers.tick(4000))
+    assert.equal(testHost.submissions.length, 1)
+    assert.equal(lastReply().line1, '✓ Run the plan: 2 of 2 steps')
+    await m.unmount()
+
+    const second = await mount(toolResult(card))
+    await click(buttonByText(second.container, 'Run plan'))
+    await second.unmount()
+    await act(async () => mock.timers.tick(5000))
+    assert.equal(testHost.submissions.length, 1, 'nothing is sent after unmount')
+  } finally { mock.timers.reset() }
+})
+
+test('plan and review: ids like constructor and toString are ordinary ids', async () => {
+  let m = await mount(toolResult({ type: 'plan', title: 'P', steps: [{ id: 'constructor', title: 'One' }, { id: 'toString', title: 'Two', optional: true }] }))
+  let c = m.container
+  assert.equal(c.querySelectorAll('.huic-plan-note').length, 0, 'no note opens by itself')
+  await click(c.querySelector('[data-step="toString"] [data-plan-focus="notebtn"]'))
+  await type(c.querySelector('[data-step="toString"] input[data-plan-focus="note"]'), 'careful')
+  await runPlan(c)
+  assert.deepEqual(lastReply().json.steps, [
+    { id: 'constructor', title: 'One', included: true },
+    { id: 'toString', title: 'Two', included: true, note: 'careful' }
+  ])
+  await m.unmount()
+
+  m = await mount(toolResult({ type: 'review', title: 'R', items: [{ id: 'constructor', title: 'A' }, { id: 'toString', title: 'B' }, { id: 'hasOwnProperty', title: 'C' }] }))
+  c = m.container
+  assert.deepEqual([...c.querySelectorAll('.huic-rev-item')].map(e => e.dataset.decision), ['none', 'none', 'none'])
+  assert.equal(c.querySelectorAll('.huic-rev-note').length, 0)
+  await click(c.querySelector('[data-item="toString"] [role="radio"].is-drop'))
+  await click(c.querySelector('[data-item="constructor"] .huic-rev-icon'))
+  await type(c.querySelector('[data-item="constructor"] .huic-rev-note'), 'why')
+  await click(buttonByText(c, 'Keep the other 2'))
+  await click(buttonByText(c, 'Apply'))
+  const r = lastReply()
+  assert.deepEqual(r.json.keep, ['constructor', 'hasOwnProperty'])
+  assert.deepEqual(r.json.drop, ['toString'])
+  assert.deepEqual(r.json.notes, { constructor: 'why' })
+  await m.unmount()
+})
+
+test('review: open items ask first (Back, Escape, deciding the rest), custom labels everywhere, prose vs code previews', async () => {
+  const card = {
+    type: 'review', title: 'Drafts', keepLabel: 'Send', dropLabel: 'Skip',
+    items: [
+      { title: 'To Anna', preview: 'Hi Anna, see you at 5 / 6 pm.' },
+      { title: 'Script', preview: '$ rm -rf ./build' },
+      { title: 'Config', preview: 'Edit ~/.config/app.toml and restart.' },
+      { title: 'Fenced', preview: 'Run:\n```\nnpm test\n```' },
+      { title: 'No preview' }
+    ]
+  }
+  const m = await mount(toolResult(card))
+  const c = m.container
+  const kind = id => c.querySelector(`[data-item="${id}"] .huic-rev-preview`)
+  assert.equal(kind('r1').tagName, 'P')
+  assert.ok(kind('r1').classList.contains('is-prose'))
+  for (const id of ['r2', 'r3', 'r4']) assert.ok(kind(id).classList.contains('is-code'), id)
+
+  await click(c.querySelector('[data-item="r2"] [role="radio"].is-drop'))
+  assert.ok(buttonByText(c, 'Send the other 4'), 'rest action uses the custom label')
+  assert.match(c.querySelector('.huic-rev-counts').textContent, /Send 0.*Skip 1.*Open 4/)
+  const apply = buttonByText(c, 'Apply')
+  await click(apply)
+  assert.equal(testHost.submissions.length, 0)
+  assert.match(c.querySelector('.huic-foot').textContent, /4 still open — send anyway\?/)
+  assert.equal(c.querySelector('.huic-rev-ask').getAttribute('role'), 'group')
+  await click(buttonByText(c, 'Back'))
+  assert.equal(document.activeElement, buttonByText(c, 'Apply'), 'Back returns to Apply')
+  await click(buttonByText(c, 'Apply'))
+  await press(document.activeElement, 'Escape')
+  assert.equal(buttonByText(c, 'Send anyway'), undefined, 'Escape inside the card goes back')
+  await click(buttonByText(c, 'Apply'))
+  // Deciding everything while asked: the question goes away, Apply sends at once.
+  await click(buttonByText(c, 'Send the other 4'))
+  assert.equal(buttonByText(c, 'Send anyway'), undefined)
+  assert.equal(live(c), '4 more set to Send.')
+  await click(buttonByText(c, 'Apply'))
+  assert.equal(lastReply().line1, '✓ Review done: keep 4, drop 1')
+  assert.deepEqual([...c.querySelectorAll('.huic-rev-stamp')].map(e => e.textContent), ['Send', 'Skip', 'Send', 'Send', 'Send'])
+  assert.ok(c.querySelector('.huic-answer'))
+  await m.unmount()
+})
+
+test('calc: inputs named __proto__ and constructor work', async () => {
+  const m = await mount(toolResult({
+    type: 'calc', title: 'Names',
+    inputs: [{ name: '__proto__', label: 'Proto', default: 2 }, { name: 'constructor', label: 'Ctor', kind: 'slider', default: 3, min: 0, max: 10 }],
+    outputs: [{ label: 'Sum', expr: '__proto__ + constructor' }]
+  }))
+  const c = m.container
+  const proto = c.querySelector('input[inputmode="decimal"]')
+  assert.equal(proto.value, '2')
+  assert.equal(heroText(c), '5.00')
+  await type(proto, '4.5')
+  assert.equal(heroText(c), '7.50')
+  await click(buttonByText(c, 'Send'))
+  const r = lastReply()
+  assert.ok(Object.prototype.hasOwnProperty.call(r.json.inputs, '__proto__'))
+  assert.equal(r.json.inputs.__proto__, 4.5)
+  assert.equal(r.json.inputs.constructor, 3)
+  await m.unmount()
+})
+
+test('calc: display grouping never changes the value; Send waits while the headline is "–"', async () => {
+  const card = {
+    type: 'calc', title: 'Precision',
+    inputs: [{ name: 'big', label: 'Big', default: 1234567890123.45 }, { name: 'tiny', label: 'Tiny', default: 0.00000000001 }],
+    outputs: [
+      { label: 'Big again', expr: 'big', emphasis: true },
+      { label: 'Tiny scaled', expr: 'tiny * 10^12', decimals: 0 },
+      { label: 'Huge percent', expr: '10^308', format: 'percent' }
+    ]
+  }
+  const m = await mount(toolResult(card))
+  const c = m.container
+  const [big, tiny] = c.querySelectorAll('input[inputmode="decimal"]')
+  assert.equal(big.value, '1,234,567,890,123.45')
+  assert.equal(tiny.value, '0.00000000001')
+  await act(async () => { tiny.focus(); tiny.blur(); big.focus(); big.blur() })
+  assert.equal(tiny.value, '0.00000000001', 'blur keeps the exact text')
+  assert.equal(heroText(c), '1,234,567,890,123.45')
+  // Finite, but too large once shown as percent: "–" in the row, null in the answer.
+  assert.deepEqual(rowText(c), ['Tiny scaled10', 'Huge percent–'])
+  await click(buttonByText(c, 'Send'))
+  const r = lastReply()
+  assert.deepEqual(r.json.inputs, { big: 1234567890123.45, tiny: 0.00000000001 })
+  assert.deepEqual(r.json.outputs.map(o => o.value), [1234567890123.45, 10, null])
+  await m.unmount()
+
+  const n = await mount(toolResult({ ...card, outputs: [{ label: 'Ratio', expr: 'big / (tiny - tiny)' }] }))
+  assert.equal(heroText(n.container), '–')
+  assert.equal(buttonByText(n.container, 'Send').disabled, true)
+  assert.match(n.container.querySelector('.huic-foot').textContent, /Not possible with these values/)
+  await n.unmount()
+})
+
+test('calc: every native select has an accessible name', async () => {
+  const card = {
+    type: 'calc', title: 'Term',
+    inputs: [{ name: 'years', label: 'Loan term', kind: 'select', default: 20, options: [{ label: '10 years (short and pricey)', value: 10 }, { label: '20 years', value: 20 }] }],
+    outputs: [{ label: 'Years', expr: 'years', format: 'integer' }]
+  }
+  const m = await mount(toolResult(card))
+  const select = m.container.querySelector('select')
+  assert.ok(select, 'a long option label uses a native select')
+  assert.equal(select.labels.length, 1)
+  assert.equal(select.labels[0].textContent, 'Loan term')
+  assert.equal(document.getElementById(select.getAttribute('aria-labelledby')).textContent, 'Loan term')
   await m.unmount()
 })

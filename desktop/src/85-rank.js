@@ -35,20 +35,21 @@ const RANK_CSS = `
 .huic[data-card-type="rank"] .huic-rank-drag .huic-rank-grip{cursor:grabbing}
 .huic[data-card-type="rank"] .huic-rank-grip svg{width:12px;height:16px}
 .huic[data-card-type="rank"] .huic-rank-pos{flex:none;display:inline-grid;place-items:center;min-width:24px;height:24px;border-radius:50%;background:var(--ui-bg-quaternary);color:var(--ui-text-secondary);font-size:12px;font-weight:700;font-variant-numeric:tabular-nums}
-.huic[data-card-type="rank"] .huic-rank-item[data-pos="1"] .huic-rank-pos{background:var(--huic-accent);color:var(--ui-chat-surface-background,var(--ui-base,Canvas))}
+.huic[data-card-type="rank"] .huic-rank-item[data-pos="1"] .huic-rank-pos{background:var(--huic-accent);color:var(--huic-on-accent)}
 .huic[data-card-type="rank"] .huic-rank-text{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
 .huic[data-card-type="rank"] .huic-rank-label{font-weight:500}
 .huic[data-card-type="rank"] .huic-rank-detail{color:var(--ui-text-tertiary);font-size:12px}
-.huic[data-card-type="rank"] .huic-rank-moves{flex:none;display:flex;flex-direction:column;gap:2px}
+.huic[data-card-type="rank"] .huic-rank-moves{flex:none;display:flex;flex-direction:column;gap:2px;opacity:0;transition:opacity .12s}
+.huic[data-card-type="rank"] .huic-rank-item:hover .huic-rank-moves,.huic[data-card-type="rank"] .huic-rank-item:focus-within .huic-rank-moves,.huic[data-card-type="rank"] .huic-rank-drag .huic-rank-moves{opacity:1}
+@media (hover:none){.huic[data-card-type="rank"] .huic-rank-moves{opacity:1}}
 .huic[data-card-type="rank"] .huic-rank-move{display:grid;place-items:center;width:28px;height:22px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--ui-text-secondary);cursor:pointer}
 .huic[data-card-type="rank"] .huic-rank-move:hover:not([aria-disabled="true"]){background:var(--ui-control-hover-background);color:var(--ui-text-primary)}
 .huic[data-card-type="rank"] .huic-rank-move[aria-disabled="true"]{opacity:.3;cursor:default}
 .huic[data-card-type="rank"] .huic-rank-move svg{width:12px;height:12px}
 .huic[data-card-type="rank"] .huic-rank-locked .huic-rank-item{padding-left:10px}
 @container (max-width: 440px){
-  .huic[data-card-type="rank"] .huic-rank-moves{flex-direction:row;gap:4px}
-  .huic[data-card-type="rank"] .huic-rank-move{width:34px;height:34px;border:1px solid var(--ui-stroke-tertiary)}
   .huic[data-card-type="rank"] .huic-rank-item{gap:8px}
+  .huic[data-card-type="rank"] .huic-rank-move{width:32px;height:24px}
 }
 @media (prefers-reduced-motion: reduce){.huic[data-card-type="rank"] .huic-rank-item{transition:none !important}}
 `
@@ -149,12 +150,32 @@ function RankCard({ card, sessionId, display, lang }) {
     const natural = el.getBoundingClientRect().top
     el.style.transform = `translateY(${d.y - d.grab - natural}px)`
   }
+  // The drag listens on the window, not on the grip: React moves the row's DOM node while it is dragged, which
+  // releases pointer capture, and a release outside the grip must still end the drag.
+  const live = useRef(null)
+  const stopListening = useRef(null)
   const dragStart = (e, id) => {
-    if (!interactive || (e.button !== undefined && e.button !== 0)) return
+    if (!interactive || drag.current || (e.button !== undefined && e.button !== 0)) return
     const el = rowRefs.current.get(id)
     if (!el) return
-    try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* not capturable: drag still follows move events */ }
+    try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* not capturable: window listeners still follow the pointer */ }
     drag.current = { id, grab: e.clientY - el.getBoundingClientRect().top, y: e.clientY }
+    const mine = ev => ev.pointerId === undefined || e.pointerId === undefined || ev.pointerId === e.pointerId
+    const onMove = ev => {
+      if (!mine(ev)) return
+      if (ev.pointerType === 'mouse' && ev.buttons === 0) live.current.end() // released where no event reached us
+      else live.current.move(ev)
+    }
+    const onEnd = ev => { if (mine(ev)) live.current.end() }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onEnd)
+    window.addEventListener('pointercancel', onEnd)
+    stopListening.current = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onEnd)
+      window.removeEventListener('pointercancel', onEnd)
+      stopListening.current = null
+    }
     setDragId(id)
     setAnnounce(t(lang, 'rankGrabbed', { x: byId.get(id).label, n: order.indexOf(id) + 1, total: order.length }))
     e.preventDefault()
@@ -175,6 +196,7 @@ function RankCard({ card, sessionId, display, lang }) {
   }
   const dragEnd = () => {
     const d = drag.current
+    if (stopListening.current) stopListening.current()
     if (!d) return
     drag.current = null
     const el = rowRefs.current.get(d.id)
@@ -182,6 +204,11 @@ function RankCard({ card, sessionId, display, lang }) {
     setDragId(null)
     setAnnounce(t(lang, 'rankMoved', { x: byId.get(d.id).label, n: order.indexOf(d.id) + 1, total: order.length }))
   }
+  live.current = { move: dragMove, end: dragEnd }
+  // Leaving mid-drag (answered elsewhere, card removed): no listener stays behind.
+  useEffect(() => () => { if (stopListening.current) stopListening.current(); drag.current = null }, [])
+  // A card that becomes locked while a drag is running ends it too.
+  useEffect(() => { if (!interactive && drag.current) dragEnd() }, [interactive])
 
   const changed = shown.some((id, i) => id !== card.items[i].id)
   const send = () => ans.submit({ order, labels: order.map(id => byId.get(id).label) })
@@ -203,7 +230,7 @@ function RankCard({ card, sessionId, display, lang }) {
             children: [
               interactive ? jsx('div', {
                 className: 'huic-rank-grip', 'aria-hidden': true,
-                onPointerDown: e => dragStart(e, id), onPointerMove: dragMove, onPointerUp: dragEnd, onPointerCancel: dragEnd,
+                onPointerDown: e => dragStart(e, id),
                 children: jsx('svg', {
                   viewBox: '0 0 12 16', fill: 'currentColor',
                   children: [3, 8, 13].flatMap(y => [3, 9].map(x => jsx('circle', { cx: x, cy: y, r: 1.3 }, `${x}-${y}`)))

@@ -19,7 +19,10 @@ Object.assign(STRINGS.en, {
   reviewCommentPlaceholder: 'Why? (optional, for Hermes)',
   reviewMore: 'Show all',
   reviewLess: 'Show less',
-  reviewStillOpen: '{n} still open, sent as undecided',
+  reviewStillOpen: '{n} still open',
+  reviewAskOpen: '{n} still open — send anyway? They go to Hermes as undecided.',
+  reviewSendAnyway: 'Send anyway',
+  reviewBack: 'Back',
   reviewAllDecided: 'All {n} decided',
   reviewBulkDone: 'All {n} set to {x}.',
   reviewRestDone: '{n} more set to {x}.',
@@ -46,7 +49,10 @@ Object.assign(STRINGS.de, {
   reviewCommentPlaceholder: 'Warum? (optional, für Hermes)',
   reviewMore: 'Alles zeigen',
   reviewLess: 'Weniger zeigen',
-  reviewStillOpen: '{n} noch offen, gehen als offen raus',
+  reviewStillOpen: '{n} noch offen',
+  reviewAskOpen: '{n} noch offen – trotzdem senden? Sie gehen als offen an Hermes.',
+  reviewSendAnyway: 'Trotzdem senden',
+  reviewBack: 'Zurück',
   reviewAllDecided: 'Alle {n} entschieden',
   reviewBulkDone: 'Alle {n} auf {x} gesetzt.',
   reviewRestDone: 'Weitere {n} auf {x} gesetzt.',
@@ -69,6 +75,8 @@ const REVIEW_CSS = `
 .huic[data-card-type="review"] .huic-rev-bar>.is-drop{background:var(--ui-red,var(--ui-text-secondary))}
 .huic[data-card-type="review"] .huic-rev-counts{display:flex;gap:10px;font-size:12px;color:var(--ui-text-secondary);font-variant-numeric:tabular-nums;white-space:nowrap}
 .huic[data-card-type="review"] .huic-rev-counts b{font-weight:600;color:var(--ui-text-primary)}
+.huic[data-card-type="review"] .huic-rev-counts>span{display:inline-flex;align-items:center;gap:4px}
+.huic[data-card-type="review"] .huic-rev-counts i{margin-right:1px}
 .huic[data-card-type="review"] .huic-rev-counts i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;vertical-align:1px;font-style:normal}
 .huic[data-card-type="review"] .huic-rev-counts .is-keep i{background:var(--ui-green,var(--huic-accent))}
 .huic[data-card-type="review"] .huic-rev-counts .is-drop i{background:var(--ui-red,var(--ui-text-secondary))}
@@ -90,7 +98,9 @@ const REVIEW_CSS = `
 .huic[data-card-type="review"] .huic-rev-titlerow{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px}
 .huic[data-card-type="review"] .huic-rev-title{font-weight:600}
 .huic[data-card-type="review"] .huic-rev-detail{margin:0;color:var(--ui-text-secondary);font-size:12.5px;white-space:pre-wrap}
-.huic[data-card-type="review"] .huic-rev-preview{margin:2px 0 0;font-family:var(--font-mono,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:11.5px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;padding:6px 9px;border-radius:7px;background:var(--ui-inline-code-background,var(--ui-bg-quaternary));color:var(--ui-inline-code-foreground,var(--ui-text-secondary))}
+.huic[data-card-type="review"] .huic-rev-preview{margin:2px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.huic[data-card-type="review"] .huic-rev-preview.is-prose{padding:1px 0 1px 10px;border-left:2px solid var(--ui-stroke-tertiary);color:var(--ui-text-secondary);font-size:13px;line-height:1.5}
+.huic[data-card-type="review"] .huic-rev-preview.is-code{font-family:var(--font-mono,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:11.5px;line-height:1.5;padding:6px 9px;border-radius:7px;background:var(--ui-inline-code-background,var(--ui-bg-quaternary));color:var(--ui-inline-code-foreground,var(--ui-text-secondary))}
 .huic[data-card-type="review"] .huic-rev-preview.is-clamped{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
 .huic[data-card-type="review"] .huic-rev-link{align-self:flex-start;padding:0;border:0;background:transparent;color:var(--huic-accent);font:inherit;font-size:12px;cursor:pointer}
 .huic[data-card-type="review"] .huic-rev-link:hover{text-decoration:underline}
@@ -100,8 +110,13 @@ const REVIEW_CSS = `
 .huic[data-card-type="review"] .huic-rev-seg{display:inline-flex;padding:2px;gap:2px;border-radius:8px;background:var(--ui-bg-quaternary)}
 .huic[data-card-type="review"] .huic-rev-seg button{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:26px;padding:3px 10px;border:0;border-radius:6px;background:transparent;color:var(--ui-text-secondary);font:inherit;font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap;transition:background .12s,color .12s}
 .huic[data-card-type="review"] .huic-rev-seg button:hover{color:var(--ui-text-primary)}
-.huic[data-card-type="review"] .huic-rev-seg button[aria-checked="true"].is-keep{background:var(--ui-green,var(--huic-accent));color:var(--ui-chat-surface-background,var(--ui-base))}
-.huic[data-card-type="review"] .huic-rev-seg button[aria-checked="true"].is-drop{background:var(--ui-red,var(--ui-text-secondary));color:var(--ui-chat-surface-background,var(--ui-base))}
+.huic[data-card-type="review"] .huic-rev-seg button[aria-checked="true"].is-keep{background:var(--ui-green,var(--huic-accent));color:var(--prc-on-green)}
+.huic[data-card-type="review"] .huic-rev-seg button[aria-checked="true"].is-drop{background:var(--ui-red,var(--ui-text-secondary));color:var(--prc-on-red)}
+.huic[data-card-type="review"] .huic-rev-seg button:focus-visible{outline:2px solid var(--huic-accent);outline-offset:1px}
+.huic[data-card-type="review"] .huic-rev-ask{flex-wrap:wrap}
+.huic[data-card-type="review"] .huic-rev-ask-text{flex:1 1 14em;color:var(--ui-text-primary)}
+.huic[data-card-type="review"].is-answered .huic-rev-item[data-decision="none"] .huic-rev-title{color:var(--ui-text-secondary)}
+.huic[data-card-type="review"] .huic-rev-stamp svg{width:12px;height:12px}
 .huic[data-card-type="review"] .huic-rev-icon{display:grid;place-items:center;width:28px;height:28px;padding:0;border:0;border-radius:7px;background:transparent;color:var(--ui-text-tertiary);cursor:pointer}
 .huic[data-card-type="review"] .huic-rev-icon:hover{background:var(--ui-control-hover-background);color:var(--ui-text-primary)}
 .huic[data-card-type="review"] .huic-rev-icon[aria-expanded="true"],.huic[data-card-type="review"] .huic-rev-icon.has-note{color:var(--huic-accent)}
@@ -121,33 +136,46 @@ const REVIEW_CSS = `
 
 function reviewDefaults(card) {
   const d = card.defaultDecision
-  return d === 'keep' || d === 'drop' ? Object.fromEntries(card.items.map(i => [i.id, d])) : {}
+  return planDict(d === 'keep' || d === 'drop' ? card.items.map(i => [i.id, d]) : [])
 }
 
 function reviewState(card, source) {
   const src = source && typeof source === 'object' ? source : null
-  const decisions = {}
-  const notes = {}
-  if (src && src.decisions && typeof src.decisions === 'object') {
-    for (const item of card.items) if (src.decisions[item.id] === 'keep' || src.decisions[item.id] === 'drop') decisions[item.id] = src.decisions[item.id]
-  } else Object.assign(decisions, reviewDefaults(card))
-  if (src && src.notes && typeof src.notes === 'object') {
-    for (const item of card.items) if (typeof src.notes[item.id] === 'string' && src.notes[item.id]) notes[item.id] = limitText(src.notes[item.id], REVIEW_NOTE_MAX)
+  const srcDecisions = planOwn(src, 'decisions'), srcNotes = planOwn(src, 'notes')
+  const decisions = srcDecisions && typeof srcDecisions === 'object' ? planDict() : reviewDefaults(card)
+  const notes = planDict()
+  for (const item of card.items) {
+    const decision = planOwn(srcDecisions, item.id)
+    if (decision === 'keep' || decision === 'drop') decisions[item.id] = decision
+    const note = planOwn(srcNotes, item.id)
+    if (typeof note === 'string' && note) notes[item.id] = limitText(note, REVIEW_NOTE_MAX)
   }
   return { decisions, notes }
 }
 
-function reviewFromAnswer(answer) {
+function reviewFromAnswer(card, answer) {
   const a = answer?.selection || answer?.data
   if (!a || !Array.isArray(a.keep)) return null
-  const decisions = {}
+  const decisions = planDict()
   for (const id of a.keep) decisions[id] = 'keep'
   for (const id of a.drop || []) decisions[id] = 'drop'
-  return { decisions, notes: a.notes && typeof a.notes === 'object' ? a.notes : {} }
+  const notes = planDict()
+  for (const item of card.items) {
+    const note = planOwn(a.notes, item.id)
+    if (typeof note === 'string' && note) notes[item.id] = note
+  }
+  return { decisions, notes }
 }
 
 function reviewLong(text) {
   return [...text].length > 220 || text.split('\n').length > 3
+}
+
+// Previews are prose (a draft reply) unless they look like code: a shell line, a fence or a path.
+function reviewIsCode(text) {
+  return /^\s*\$\s/.test(text) || text.includes('```') ||
+    /(^|[\s("'`])(~|\.{1,2})?\/[\w.-]+\/[\w.\/-]*/.test(text) || /(^|[\s("'`])~\/[\w.-]+/.test(text) ||
+    /(^|\s)[A-Za-z]:\\[\w.\\ -]+/.test(text) || /(^|\s)[\w.-]+\/[\w.\/-]+\.[A-Za-z]{1,8}\b/.test(text)
 }
 
 function ReviewCard({ card, sessionId, display, lang }) {
@@ -156,54 +184,28 @@ function ReviewCard({ card, sessionId, display, lang }) {
   const pinned = planUsePinned(frameRef)
   const ans = useCardAnswer(card, sessionId, lang)
   const [state, setState] = useState(() => reviewState(card, ans.draft))
-  const view = (ans.answer && reviewFromAnswer(ans.answer)) || state
-  const [openNotes, setOpenNotes] = useState({})
-  const [expanded, setExpanded] = useState({})
+  const view = (ans.answer && reviewFromAnswer(card, ans.answer)) || state
+  const [openNotes, setOpenNotes] = useState(() => planDict())
+  const [expanded, setExpanded] = useState(() => planDict())
   const [announce, setAnnounce] = useState('')
+  const [confirming, setConfirming] = useState(false)
   const focusNote = useRef(null)
-  const rowRefs = useRef({})
+  const rowRefs = useRef(new Map())
+  const applyRef = useRef(null)
+  const goRef = useRef(null)
+  const backFocus = useRef(false)
   const editable = ans.showActions
+  // Custom labels are used everywhere: buttons, bulk actions, tally, announcements, stamps.
+  const custom = Boolean(card.keepLabel || card.dropLabel)
   const keepLabel = card.keepLabel || t(lang, 'reviewKeep')
   const dropLabel = card.dropLabel || t(lang, 'reviewDrop')
+  const decisionLabel = d => (d === 'keep' ? keepLabel : dropLabel)
 
   useEffect(() => {
     if (!focusNote.current) return
-    rowRefs.current[focusNote.current]?.querySelector('.huic-rev-note')?.focus()
+    rowRefs.current.get(focusNote.current)?.querySelector('.huic-rev-note')?.focus()
     focusNote.current = null
   })
-
-  const update = next => {
-    setState(next)
-    ans.saveDraft(next)
-  }
-  const decide = (id, decision) => update({ ...state, decisions: { ...state.decisions, [id]: decision } })
-  const bulk = decision => {
-    update({ ...state, decisions: Object.fromEntries(card.items.map(i => [i.id, decision])) })
-    setAnnounce(t(lang, 'reviewBulkDone', { n: card.items.length, x: decision === 'keep' ? keepLabel : dropLabel }))
-  }
-  const keepRest = () => {
-    const open = card.items.filter(i => !state.decisions[i.id])
-    update({ ...state, decisions: { ...state.decisions, ...Object.fromEntries(open.map(i => [i.id, 'keep'])) } })
-    setAnnounce(t(lang, 'reviewRestDone', { n: open.length, x: keepLabel }))
-  }
-  const reset = () => {
-    update({ ...state, decisions: reviewDefaults(card) })
-    setAnnounce(t(lang, 'reviewResetDone'))
-  }
-  const setNote = (id, text) => {
-    const notes = { ...state.notes }
-    const value = limitText(text, REVIEW_NOTE_MAX)
-    if (value) notes[id] = value
-    else delete notes[id]
-    update({ ...state, notes })
-  }
-  const noteButton = (id, open) => {
-    if (!open) {
-      setOpenNotes(prev => ({ ...prev, [id]: true }))
-      focusNote.current = id
-    } else if (!state.notes[id]) setOpenNotes(prev => ({ ...prev, [id]: false }))
-    else rowRefs.current[id]?.querySelector('.huic-rev-note')?.focus()
-  }
 
   const keep = card.items.filter(i => view.decisions[i.id] === 'keep')
   const drop = card.items.filter(i => view.decisions[i.id] === 'drop')
@@ -211,6 +213,41 @@ function ReviewCard({ card, sessionId, display, lang }) {
   const total = card.items.length
   const defaults = reviewDefaults(card)
   const changed = card.items.some(i => (state.decisions[i.id] || null) !== (defaults[i.id] || null))
+  const asking = editable && confirming && open > 0
+
+  useEffect(() => {
+    if (asking) goRef.current?.focus()
+    else if (backFocus.current) { backFocus.current = false; applyRef.current?.focus() }
+  }, [asking])
+
+  const update = next => {
+    setState(next)
+    ans.saveDraft(next)
+  }
+  const decide = (id, decision) => update({ ...state, decisions: planWith(state.decisions, id, decision) })
+  const bulk = decision => {
+    update({ ...state, decisions: planDict(card.items.map(i => [i.id, decision])) })
+    setAnnounce(t(lang, 'reviewBulkDone', { n: card.items.length, x: decisionLabel(decision) }))
+  }
+  const keepRest = () => {
+    const rest = card.items.filter(i => !state.decisions[i.id])
+    const decisions = planDict(Object.entries(state.decisions))
+    for (const i of rest) decisions[i.id] = 'keep'
+    update({ ...state, decisions })
+    setAnnounce(t(lang, 'reviewRestDone', { n: rest.length, x: keepLabel }))
+  }
+  const reset = () => {
+    update({ ...state, decisions: reviewDefaults(card) })
+    setAnnounce(t(lang, 'reviewResetDone'))
+  }
+  const setNote = (id, text) => update({ ...state, notes: planWith(state.notes, id, limitText(text, REVIEW_NOTE_MAX) || undefined) })
+  const noteButton = (id, isOpen) => {
+    if (!isOpen) {
+      setOpenNotes(prev => planWith(prev, id, true))
+      focusNote.current = id
+    } else if (!state.notes[id]) setOpenNotes(prev => planWith(prev, id, undefined))
+    else rowRefs.current.get(id)?.querySelector('.huic-rev-note')?.focus()
+  }
 
   // Two options in a radio group: one tab stop, arrow keys switch and select.
   const segment = (item, decision) => {
@@ -245,9 +282,10 @@ function ReviewCard({ card, sessionId, display, lang }) {
     const noteId = `${labelId}-${item.id}-note`
     const previewId = `${labelId}-${item.id}-preview`
     const long = item.preview && reviewLong(item.preview)
-    const isOpen = expanded[item.id]
+    const isOpen = Boolean(expanded[item.id])
+    const code = item.preview && reviewIsCode(item.preview)
     return jsxs('li', {
-      ref: el => { rowRefs.current[item.id] = el },
+      ref: el => { if (el) rowRefs.current.set(item.id, el); else rowRefs.current.delete(item.id) },
       className: 'huic-rev-item', 'data-decision': decision || 'none', 'data-item': item.id,
       children: [
         jsxs('div', { className: 'huic-rev-main', children: [
@@ -256,10 +294,10 @@ function ReviewCard({ card, sessionId, display, lang }) {
             item.tag ? jsx('span', { className: 'huic-badge', children: item.tag }) : null
           ] }),
           item.detail ? jsx('p', { className: 'huic-rev-detail', children: item.detail }) : null,
-          item.preview ? jsx('pre', { id: previewId, className: cx('huic-rev-preview', long && !isOpen && 'is-clamped'), children: item.preview }) : null,
+          item.preview ? jsx(code ? 'pre' : 'p', { id: previewId, className: cx('huic-rev-preview', code ? 'is-code' : 'is-prose', long && !isOpen && 'is-clamped'), children: item.preview }) : null,
           long ? jsx('button', {
-            type: 'button', className: 'huic-rev-link', 'aria-expanded': Boolean(isOpen), 'aria-controls': previewId,
-            onClick: () => setExpanded(prev => ({ ...prev, [item.id]: !isOpen })),
+            type: 'button', className: 'huic-rev-link', 'aria-expanded': isOpen, 'aria-controls': previewId,
+            onClick: () => setExpanded(prev => planWith(prev, item.id, isOpen ? undefined : true)),
             children: t(lang, isOpen ? 'reviewLess' : 'reviewMore')
           }) : null,
           noteOpen
@@ -268,7 +306,7 @@ function ReviewCard({ card, sessionId, display, lang }) {
                 placeholder: t(lang, 'reviewCommentPlaceholder'), 'aria-label': t(lang, 'reviewCommentFor', { x: item.title }),
                 onChange: e => setNote(item.id, e.target.value),
                 onKeyDown: e => {
-                  if (e.key === 'Escape' && !note) { e.preventDefault(); setOpenNotes(prev => ({ ...prev, [item.id]: false })); rowRefs.current[item.id]?.querySelector('.huic-rev-icon')?.focus() }
+                  if (e.key === 'Escape' && !note) { e.preventDefault(); setOpenNotes(prev => planWith(prev, item.id, undefined)); rowRefs.current.get(item.id)?.querySelector('.huic-rev-icon')?.focus() }
                 }
               })
             : !editable && note
@@ -288,24 +326,29 @@ function ReviewCard({ card, sessionId, display, lang }) {
             ] })
           : jsx('div', { className: 'huic-rev-side', children: jsxs('span', {
               className: cx('huic-rev-stamp', decision && `is-${decision}`),
-              children: decision ? [planIcon(decision === 'keep' ? 'check' : 'cross'), t(lang, decision === 'keep' ? 'reviewKept' : 'reviewDropped')] : [t(lang, 'reviewUndecided')]
+              children: decision
+                ? [planIcon(decision === 'keep' ? 'check' : 'cross'), custom ? decisionLabel(decision) : t(lang, decision === 'keep' ? 'reviewKept' : 'reviewDropped')]
+                : [t(lang, 'reviewUndecided')]
             }) })
       ]
     }, item.id)
   })
 
   const send = () => {
-    const notes = {}
-    for (const item of card.items) {
-      const note = (view.notes[item.id] || '').trim()
-      if (note) notes[item.id] = note
-    }
+    const notes = Object.fromEntries(card.items.map(i => [i.id, (view.notes[i.id] || '').trim()]).filter(([, note]) => note))
+    setConfirming(false)
     ans.submit({
       keep: keep.map(i => i.id),
       drop: drop.map(i => i.id),
       undecided: card.items.filter(i => !view.decisions[i.id]).map(i => i.id),
       notes
     })
+  }
+  // Undecided items are sent as "undecided", but only after asking once.
+  const apply = () => (open ? setConfirming(true) : send())
+  const back = () => { backFocus.current = true; setConfirming(false) }
+  const onKeyDown = e => {
+    if (asking && e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); back() }
   }
 
   const pct = n => `${(n / total) * 100}%`
@@ -320,9 +363,9 @@ function ReviewCard({ card, sessionId, display, lang }) {
         jsx('span', { className: 'is-drop', style: { width: pct(drop.length) } })
       ] }),
       jsxs('div', { className: 'huic-rev-counts', children: [
-        jsxs('span', { className: 'is-keep', children: [jsx('i', {}), jsx('b', { children: keep.length }), ' ', keepLabel] }),
-        jsxs('span', { className: 'is-drop', children: [jsx('i', {}), jsx('b', { children: drop.length }), ' ', dropLabel] }),
-        jsxs('span', { className: 'is-open', children: [jsx('i', {}), jsx('b', { children: open }), ' ', t(lang, 'reviewOpen')] })
+        jsxs('span', { className: 'is-keep', children: [jsx('i', {}), keepLabel, ' ', jsx('b', { children: keep.length })] }),
+        jsxs('span', { className: 'is-drop', children: [jsx('i', {}), dropLabel, ' ', jsx('b', { children: drop.length })] }),
+        jsxs('span', { className: 'is-open', children: [jsx('i', {}), t(lang, 'reviewOpen'), ' ', jsx('b', { children: open })] })
       ] })
     ] }),
     editable && total > 1 ? jsxs('div', { className: 'huic-rev-bulk', children: [
@@ -333,16 +376,27 @@ function ReviewCard({ card, sessionId, display, lang }) {
     ] }) : null
   ] })
 
+  const askId = `${labelId}-ask`
+  const footer = !editable ? null
+    : asking
+      ? jsxs('div', { className: 'huic-foot huic-rev-ask', role: 'group', 'aria-labelledby': askId, children: [
+          jsx('span', { id: askId, className: 'huic-hint huic-rev-ask-text', children: t(lang, 'reviewAskOpen', { n: open }) }),
+          jsx(Btn, { variant: 'ghost', onClick: back, children: t(lang, 'reviewBack') }),
+          jsx(Btn, { ref: goRef, variant: 'primary', onClick: send, children: t(lang, 'reviewSendAnyway') })
+        ] })
+      : jsx(Footer, {
+          hint: open ? t(lang, 'reviewStillOpen', { n: open }) : t(lang, 'reviewAllDecided', { n: total }),
+          children: jsx(Btn, { ref: applyRef, variant: 'primary', onClick: apply, children: card.applyLabel || t(lang, 'reviewApply') })
+        })
+
   return jsx(PlanFrame, {
-    card, display, labelId, frameRef, pinned, css: REVIEW_CSS, head,
+    card, display, labelId, frameRef, pinned, css: REVIEW_CSS, head, onKeyDown,
+    className: ans.answered && 'is-answered',
     children: [
       jsx('ul', { className: 'huic-rev-list', 'aria-label': t(lang, 'reviewItemsLabel'), children: rows }, 'list'),
       jsx('div', { className: 'huic-sr', role: 'status', 'aria-live': 'polite', children: announce }, 'live')
     ],
-    footer: editable ? jsx(Footer, {
-      hint: open ? t(lang, 'reviewStillOpen', { n: open }) : t(lang, 'reviewAllDecided', { n: total }),
-      children: jsx(Btn, { variant: 'primary', onClick: send, children: card.applyLabel || t(lang, 'reviewApply') })
-    }) : null,
+    footer,
     after: ans.status
   })
 }
@@ -353,11 +407,8 @@ REPLY_BUILDERS.review = (card, answer, lang, data) => {
   data.keep = answer.keep.filter(id => ids.has(id))
   data.drop = answer.drop.filter(id => ids.has(id))
   data.undecided = (answer.undecided || []).filter(id => ids.has(id))
-  data.notes = {}
-  for (const [id, text] of Object.entries(answer.notes || {})) {
-    const note = String(text ?? '').trim()
-    if (ids.has(id) && note) data.notes[id] = note
-  }
+  data.notes = Object.fromEntries(Object.entries(answer.notes || {})
+    .map(([id, text]) => [id, String(text ?? '').trim()]).filter(([id, note]) => ids.has(id) && note))
   let summary = t(lang, 'rReview', { keep: data.keep.length, drop: data.drop.length })
   if (data.undecided.length) summary += t(lang, 'rReviewOpen', { n: data.undecided.length })
   // Titles help the model, but only while the whole reply stays under the cap.

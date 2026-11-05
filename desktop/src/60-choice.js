@@ -93,7 +93,11 @@ const CHOICE_CSS = `
 .huic[data-card-type="choice"] .huic-tile[disabled]:not([aria-checked="true"]){opacity:.6}
 .huic[data-card-type="choice"] .huic-tile-media{position:absolute;inset:0;display:block}
 .huic[data-card-type="choice"] .huic-tile-media>img{display:block;width:100%;height:100%;object-fit:cover}
-.huic[data-card-type="choice"] .huic-tile-ph{position:absolute;inset:0 0 34% 0;display:grid;place-items:center;color:var(--ui-text-tertiary);font-size:34px;font-weight:600;letter-spacing:.02em}
+.huic[data-card-type="choice"] .huic-tile-ph{position:absolute;inset:0;display:grid;place-items:center;padding-bottom:30%;background:radial-gradient(circle,color-mix(in srgb,var(--ui-text-primary) 10%,transparent) 0.8px,transparent 1.3px) 0 0/11px 11px,linear-gradient(155deg,color-mix(in srgb,var(--huic-accent) 9%,var(--ui-bg-quaternary)),var(--ui-bg-quaternary) 70%)}
+.huic[data-card-type="choice"] .huic-tile-ph>span{display:grid;place-items:center;width:52px;height:52px;border-radius:50%;background:color-mix(in srgb,var(--ui-chat-surface-background,var(--ui-base,Canvas)) 78%,transparent);box-shadow:0 0 0 1px var(--huic-line),0 6px 18px -8px rgb(0 0 0 / .35);font-size:26px;line-height:1;color:var(--ui-text-tertiary)}
+.huic[data-card-type="choice"] .huic-tile-ph .huic-ico{font-size:24px;stroke-width:1.4}
+.huic[data-card-type="choice"] .huic-tile[aria-checked="true"] .huic-tile-ph>span{color:var(--huic-accent);box-shadow:0 0 0 1px color-mix(in srgb,var(--huic-accent) 45%,transparent),0 6px 18px -8px rgb(0 0 0 / .35)}
+.huic[data-card-type="choice"] .huic-icon-line{display:grid;place-items:center;width:20px;height:20px;color:var(--ui-text-tertiary);font-size:16px}
 .huic[data-card-type="choice"] .huic-tile-cap{position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;gap:1px;padding:22px 10px 8px;background:linear-gradient(to top,color-mix(in srgb,var(--ui-chat-surface-background,var(--ui-base,Canvas)) 90%,transparent),color-mix(in srgb,var(--ui-chat-surface-background,var(--ui-base,Canvas)) 72%,transparent) 55%,transparent)}
 .huic[data-card-type="choice"] .huic-tile-label{font-weight:600;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .huic[data-card-type="choice"] .huic-tile-desc{color:var(--ui-text-secondary);font-size:12px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
@@ -105,13 +109,8 @@ const CHOICE_CSS = `
 @media (prefers-reduced-motion: reduce){.huic[data-card-type="choice"] .huic-tile[aria-checked="true"]{transform:none}}
 `
 
-function optionInitials(label) {
-  const words = String(label || '').trim().split(/\s+/).filter(Boolean)
-  const letters = words.length > 1 ? [words[0], words[1]].map(w => [...w][0]) : [...(words[0] || '?')].slice(0, 2)
-  return letters.join('').toUpperCase()
-}
-
-// A tile whose picture failed or is missing keeps its shape: neutral block with icon or initials.
+// A tile whose picture failed or is missing keeps its shape: a quiet dotted placeholder with
+// the option's own icon, or a line picture glyph. Never initials (they read as unfinished).
 function TileMedia({ option }) {
   const [failed, setFailed] = useState(false)
   const shown = option.image && !failed
@@ -120,7 +119,7 @@ function TileMedia({ option }) {
     'aria-hidden': true,
     children: shown
       ? jsx('img', { src: option.image, alt: '', loading: 'lazy', referrerPolicy: 'no-referrer', onError: () => setFailed(true) })
-      : jsx('span', { className: 'huic-tile-ph', children: option.icon || optionInitials(option.label) })
+      : jsx('span', { className: 'huic-tile-ph', children: jsx('span', { children: option.icon || jsx(Icon, { name: 'picture' }) }) })
   })
 }
 
@@ -164,11 +163,13 @@ function OptionTile({ option, num, checked, multiple, disabled, ariaDisabled, on
         style: { width: '100%', alignItems: 'flex-start' },
         children: [
           state
-            ? jsx('span', { className: 'huic-num huic-num-state', 'aria-hidden': true, children: state === 'correct' ? '✓' : '✗' })
+            ? jsx('span', { className: 'huic-num huic-num-state', 'aria-hidden': true, children: jsx(Icon, { name: state === 'correct' ? 'check' : 'cross' }) })
             : num
               ? jsx(NumBadge, { n: num, multiple })
               : jsx('span', { className: cx('huic-dot', multiple && 'huic-square'), 'aria-hidden': true }),
-          option.icon ? jsx('span', { className: 'huic-icon', 'aria-hidden': true, children: option.icon }) : null,
+          option.lineIcon
+            ? jsx('span', { className: 'huic-icon huic-icon-line', 'aria-hidden': true, children: jsx(Icon, { name: option.lineIcon }) })
+            : option.icon ? jsx('span', { className: 'huic-icon', 'aria-hidden': true, children: option.icon }) : null,
           jsxs('span', {
             className: 'huic-opt-text',
             children: [
@@ -195,7 +196,7 @@ function ChoiceCard({ card, sessionId, display, lang }) {
   const otherRef = useRef(null)
 
   const options = card.allowOther
-    ? [...card.options, { id: OTHER_ID, label: t(lang, 'other'), icon: card.options.some(o => o.icon) ? '✏️' : undefined }]
+    ? [...card.options, { id: OTHER_ID, label: t(lang, 'other'), lineIcon: card.options.some(o => o.icon || o.image) ? 'pencil' : undefined }]
     : card.options
   const isChecked = id => (id === OTHER_ID ? otherOn : selected.includes(id))
   const focusIndex = Math.max(0, options.findIndex(o => isChecked(o.id)))

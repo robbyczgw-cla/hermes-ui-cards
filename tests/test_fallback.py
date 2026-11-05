@@ -366,5 +366,5 @@ def test_calc_fallback_formats_defaults():
     from hui_cards.schema import validate_card
     card, errors, _ = validate_card({'type':'calc', 'title':'Total', 'inputs':[{'name':'x','label':'Amount','default':1234.56}], 'outputs':[{'label':'Total','expr':'x','format':'currency','decimals':2}]})
     assert not errors
-    assert '1,234.56 €' in render_text(card)
-    assert '1.234,56 €' in render_text({**card, 'lang':'de'})
+    assert '€1,234.56' in render_text(card)
+    assert '1.234,56\u00a0€' in render_text({**card, 'lang':'de'})

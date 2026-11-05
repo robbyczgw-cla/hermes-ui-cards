@@ -5,23 +5,24 @@ Object.assign(STRINGS.en, { keyRate: '{keys} rate · Enter send', rateEcho: '{n}
 Object.assign(STRINGS.de, { keyRate: '{keys} bewerten · Enter senden', rateEcho: '{n} von {max}' })
 
 const RATING_CSS = `
-.huic[data-card-type="rating"] .huic-stars{display:flex;flex-wrap:wrap;width:fit-content;max-width:100%}
-.huic[data-card-type="rating"] .huic-star{appearance:none;display:grid;place-items:center;width:28px;height:28px;padding:0;border:0;border-radius:6px;background:none;color:var(--ui-text-quaternary,var(--ui-text-tertiary));cursor:pointer;transition:color .1s,transform .1s}
-.huic[data-card-type="rating"] .huic-star svg{display:block;width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linejoin:round}
-.huic[data-card-type="rating"] .huic-star-on{color:var(--huic-accent)}
-.huic[data-card-type="rating"] .huic-star-on svg{fill:currentColor}
-.huic[data-card-type="rating"] .huic-star-pre svg{fill-opacity:.4}
-.huic[data-card-type="rating"] .huic-star:hover:not([disabled]){transform:scale(1.08)}
+.huic[data-card-type="rating"] .huic-stars{display:flex;flex-wrap:wrap;gap:2px;width:fit-content;max-width:100%;margin-left:-3px}
+.huic[data-card-type="rating"] .huic-star{appearance:none;display:grid;place-items:center;width:34px;height:34px;padding:0;border:0;border-radius:var(--huic-r-md);background:none;color:var(--huic-accent);cursor:pointer;transition:transform .12s var(--huic-ease)}
+.huic[data-card-type="rating"] .huic-star svg{display:block;width:28px;height:28px;fill:color-mix(in srgb,var(--huic-accent) 7%,transparent);stroke:color-mix(in srgb,var(--huic-accent) 55%,var(--ui-text-tertiary));stroke-width:1.4;stroke-linejoin:round;transition:fill .12s,stroke .12s}
+.huic[data-card-type="rating"] .huic-star-on svg{fill:var(--huic-accent);stroke:color-mix(in srgb,var(--huic-accent) 70%,var(--ui-text-primary))}
+.huic[data-card-type="rating"] .huic-star-pre svg{fill:color-mix(in srgb,var(--huic-accent) 40%,transparent);stroke:var(--huic-accent)}
+.huic[data-card-type="rating"] .huic-star:hover:not([disabled]){transform:scale(1.1)}
+.huic[data-card-type="rating"] .huic-star:focus-visible{outline-offset:0}
 .huic[data-card-type="rating"] .huic-star[disabled]{cursor:default}
+.huic[data-card-type="rating"] .huic-star[disabled]:not(.huic-star-on) svg{fill:transparent;stroke:var(--huic-line-strong)}
 .huic[data-card-type="rating"] .huic-segs{display:flex;width:100%;border:1px solid var(--ui-stroke-secondary);border-radius:9px;overflow:hidden}
 .huic[data-card-type="rating"] .huic-segbtn{appearance:none;flex:1 1 0;min-width:0;padding:7px 0;border:0;border-right:1px solid var(--ui-stroke-tertiary);background:transparent;color:inherit;font:inherit;font-variant-numeric:tabular-nums;cursor:pointer}
 .huic[data-card-type="rating"] .huic-segbtn:last-child{border-right:0}
-.huic[data-card-type="rating"] .huic-segbtn:hover:not([disabled]){background:var(--ui-control-hover-background)}
+.huic[data-card-type="rating"] .huic-segbtn:hover:not([disabled]):not([aria-checked="true"]){background:var(--ui-control-hover-background)}
 .huic[data-card-type="rating"] .huic-segbtn:focus-visible{outline-offset:-2px}
 .huic[data-card-type="rating"] .huic-segbtn[aria-checked="true"]{background:var(--huic-accent);color:var(--huic-on-accent,var(--ui-chat-surface-background,var(--ui-base,Canvas)));font-weight:600}
 .huic[data-card-type="rating"] .huic-segbtn[disabled]{cursor:default}
 .huic[data-card-type="rating"] .huic-rate-meta{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 12px;min-height:1.45em}
-.huic[data-card-type="rating"] .huic-rate-echo{font-weight:600}
+.huic[data-card-type="rating"] .huic-rate-echo{font-weight:600;font-variant-numeric:tabular-nums}
 @media (prefers-reduced-motion: reduce){.huic[data-card-type="rating"] .huic-star:hover:not([disabled]){transform:none}}
 `
 

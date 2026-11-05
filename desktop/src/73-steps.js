@@ -1,10 +1,12 @@
 Object.assign(STRINGS.en, {
   stepsMap: 'Guide steps', stepsWhatHappened: 'What happened?', stepsOptional: 'Optional',
-  stepsNotePlaceholder: 'Tell Hermes where you got stuck'
+  stepsNotePlaceholder: 'Tell Hermes where you got stuck',
+  stepsSentDone: 'Sent: {label}', stepsSentStuck: 'Sent: stuck at step {n}'
 })
 Object.assign(STRINGS.de, {
   stepsMap: 'Schritte der Anleitung', stepsWhatHappened: 'Was ist passiert?', stepsOptional: 'Optional',
-  stepsNotePlaceholder: 'Sag Hermes, wo du festhängst'
+  stepsNotePlaceholder: 'Sag Hermes, wo du festhängst',
+  stepsSentDone: 'Gesendet: {label}', stepsSentStuck: 'Gesendet: hängt bei Schritt {n}'
 })
 
 // A calm guide: one connected track (the progress bar is its line), the current step as
@@ -25,20 +27,24 @@ const STEPS_CSS = `
 .huic[data-card-type="steps"] .huic-steps-title{margin:-6px 0 0;font-size:15px;line-height:22px;font-weight:600;letter-spacing:-.01em;outline:none}
 .huic[data-card-type="steps"] .huic-steps-body{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ui-text-secondary);line-height:1.6}
 .huic[data-card-type="steps"] .huic-steps-left{margin-right:auto;min-width:0}
-.huic[data-card-type="steps"] .huic-steps-left button::before{content:"?";display:grid;place-items:center;width:15px;height:15px;border-radius:50%;border:1.25px solid currentColor;font-size:10px;font-weight:700;line-height:1}
+.huic[data-card-type="steps"] .huic-steps-left .huic-ico{font-size:16px;stroke-width:1.4}
 .huic[data-card-type="steps"] .huic-steps-nav{display:flex;gap:8px;align-items:center;margin-left:auto}
 .huic[data-card-type="steps"] .huic-steps-next::after{content:"→";transition:transform .15s var(--huic-ease)}
 .huic[data-card-type="steps"] .huic-steps-next:hover::after{transform:translateX(2px)}
 .huic[data-card-type="steps"] .huic-steps-report{padding:12px var(--huic-pad);border-top:1px solid var(--huic-line);background:color-mix(in srgb,var(--ui-orange,var(--huic-accent)) 5%,transparent);box-shadow:inset 3px 0 0 var(--ui-orange,var(--huic-accent));display:flex;flex-direction:column;gap:8px;animation:huic-fade .2s var(--huic-ease) both}
 .huic[data-card-type="steps"] .huic-steps-report-actions{display:flex;justify-content:flex-end;gap:8px}
+.huic[data-card-type="steps"] .huic-steps-sent{display:flex;align-items:center;gap:8px;min-width:0;margin-right:auto;padding:3px 12px 3px 3px;border-radius:999px;background:color-mix(in srgb,var(--huic-accent) 12%,transparent);font-size:12.5px;line-height:18px;animation:huic-pop .3s var(--huic-ease) both}
+.huic[data-card-type="steps"] .huic-steps-sent>i{flex:none;display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--huic-accent);color:var(--huic-on-accent);font-size:12px}
+.huic[data-card-type="steps"] .huic-steps-sent>i .huic-ico{stroke-width:2.2}
+.huic[data-card-type="steps"] .huic-steps-sent b{font-weight:600}
+.huic[data-card-type="steps"] .huic-steps-sent q{color:var(--ui-text-secondary);quotes:"“" "”";overflow-wrap:anywhere}
+.huic[data-card-type="steps"] .huic-steps-sent.is-stuck{background:color-mix(in srgb,var(--ui-orange,var(--huic-accent)) 12%,transparent);border-radius:var(--huic-r-md);padding:5px 12px 5px 5px;align-items:flex-start}
+.huic[data-card-type="steps"] .huic-steps-sent.is-stuck>i{background:var(--ui-orange,var(--huic-accent));color:${huicOnColor('var(--ui-orange, var(--huic-accent))')}}
+.huic[data-card-type="steps"] .huic-steps-sent-text{display:flex;flex-direction:column;min-width:0;padding-top:2px}
 @container (max-width: 440px){
  .huic[data-card-type="steps"] .huic-steps-track{--dot:22px}
  .huic-steps-frame[data-many] .huic-steps-map{gap:2px}
- .huic[data-card-type="steps"] .huic-foot{flex-wrap:nowrap}
- .huic[data-card-type="steps"] .huic-steps-left{flex:none;margin-right:0}
  .huic[data-card-type="steps"] .huic-steps-left .huic-btn{padding-inline:8px}
- .huic[data-card-type="steps"] .huic-steps-nav{flex:1;min-width:0}
- .huic[data-card-type="steps"] .huic-steps-nav>.huic-btn{flex:1}
 }
 @container (max-width: 340px){.huic-steps-frame[data-many] .huic-steps-track{--dot:18px}.huic-steps-frame[data-many] .huic-steps-dot{font-size:9.5px}}
 `
@@ -84,6 +90,20 @@ function StepsCard({ card, sessionId, display, lang }) {
   const step = card.steps[index]
   const progressText = t(lang, 'stepOf', { n: index + 1, total: card.steps.length })
   const canNavigate = ans.showActions || ans.answered
+  // Answered: what was sent stays in the footer as the receipt (Done, or Stuck with the note).
+  const sentAs = ans.answer?.selection
+  const sentReceipt = !ans.answered || !sentAs ? null : sentAs.stuck
+    ? jsxs('span', { className: 'huic-steps-sent is-stuck', children: [
+        jsx('i', { 'aria-hidden': true, children: jsx(Icon, { name: 'question' }) }),
+        jsxs('span', { className: 'huic-steps-sent-text', children: [
+          jsx('b', { children: t(lang, 'stepsSentStuck', { n: sentAs.stuck }) }),
+          sentAs.note ? jsx('q', { children: sentAs.note }) : null
+        ] })
+      ] })
+    : jsxs('span', { className: 'huic-steps-sent', children: [
+        jsx('i', { 'aria-hidden': true, children: jsx(Icon, { name: 'check' }) }),
+        jsx('b', { children: t(lang, 'stepsSentDone', { label: card.finishLabel || t(lang, 'finish') }) })
+      ] })
   return jsx('div', { onKeyDown: navigate, 'data-many': card.steps.length > 8 ? '' : undefined, className: 'huic-steps-frame', children: jsx(Shell, {
     card, display, labelId, title: card.title,
     children: [
@@ -130,7 +150,8 @@ function StepsCard({ card, sessionId, display, lang }) {
           ] })
         ] })
       : jsx(Footer, { children: jsxs(Fragment, { children: [
-          ans.showActions ? jsx('span', { className: 'huic-steps-left', children: jsx(Btn, { ref: stuckRef, label: t(lang, 'stuck'), variant: 'ghost', onClick: () => setReporting(true), children: t(lang, 'stuck') }) }) : null,
+          sentReceipt,
+          ans.showActions ? jsx('span', { className: 'huic-steps-left', children: jsx(Btn, { ref: stuckRef, label: t(lang, 'stuck'), variant: 'ghost', onClick: () => setReporting(true), children: jsxs(Fragment, { children: [jsx(Icon, { name: 'help' }), t(lang, 'stuck')] }) }) }) : null,
           jsxs('div', { className: 'huic-steps-nav', children: [
             index > 0 ? jsx(Btn, { onClick: () => move(index - 1), children: t(lang, 'back') }) : null,
             index === card.steps.length - 1

@@ -11,7 +11,7 @@ Object.assign(STRINGS.en, {
   calcResults: 'Results',
   calcNotPossible: 'Not possible with these values',
   calcFix: 'Fix the marked input to see the result',
-  calcRange: '{min} to {max}',
+  calcSent: 'Sent',
   rCalc: 'Calculated: {x}'
 })
 Object.assign(STRINGS.de, {
@@ -22,11 +22,9 @@ Object.assign(STRINGS.de, {
   calcResults: 'Ergebnis',
   calcNotPossible: 'Mit diesen Werten nicht möglich',
   calcFix: 'Markierte Eingabe korrigieren, dann gibt es ein Ergebnis',
-  calcRange: '{min} bis {max}',
+  calcSent: 'Gesendet',
   rCalc: 'Berechnet: {x}'
 })
-
-const CALC_SYMBOLS = { EUR: '€', USD: '$', GBP: '£' }
 
 const CALC_CSS = `
 .huic[data-card-type="calc"] .huic-calc{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
@@ -64,10 +62,17 @@ const CALC_CSS = `
 .huic[data-card-type="calc"] input.huic-calc-switch{appearance:none;position:relative;flex:none;width:32px;height:18px;margin:0;border:1px solid var(--ui-stroke-secondary);border-radius:999px;background:var(--ui-bg-quaternary);cursor:inherit;transition:background .15s,border-color .15s}
 .huic[data-card-type="calc"] input.huic-calc-switch::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:var(--ui-text-secondary);transition:transform .15s}
 .huic[data-card-type="calc"] input.huic-calc-switch:checked{background:var(--huic-accent);border-color:var(--huic-accent)}
-.huic[data-card-type="calc"] input.huic-calc-switch:checked::after{transform:translateX(14px);background:var(--ui-chat-surface-background,var(--ui-base))}
+.huic[data-card-type="calc"] input.huic-calc-switch:checked::after{transform:translateX(14px);background:var(--huic-on-accent)}
 .huic[data-card-type="calc"] .huic-calc-out{position:relative;display:flex;flex-direction:column;gap:12px;min-width:0;padding:14px 16px 12px;border-radius:12px;border:1px solid color-mix(in srgb,var(--huic-accent) 26%,var(--ui-stroke-tertiary));background:linear-gradient(155deg,color-mix(in srgb,var(--huic-accent) 12%,transparent),color-mix(in srgb,var(--huic-accent) 3%,transparent) 70%)}
 .huic[data-card-type="calc"] .huic-calc-live{position:absolute;top:11px;right:13px;display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--huic-accent)}
 .huic[data-card-type="calc"] .huic-calc-live::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;animation:huic-calc-pulse 2.4s ease-in-out infinite}
+.huic[data-card-type="calc"] .huic-calc-live.is-sent{gap:3px;color:var(--ui-text-tertiary)}
+.huic[data-card-type="calc"] .huic-calc-live.is-sent::before{content:none}
+.huic[data-card-type="calc"] .huic-calc-live svg{width:11px;height:11px}
+.huic[data-card-type="calc"] .huic-calc.is-sent .huic-calc-box,.huic[data-card-type="calc"] .huic-calc.is-sent select.huic-input{border-color:var(--ui-stroke-tertiary);border-style:dashed;background:transparent;opacity:1}
+.huic[data-card-type="calc"] .huic-calc.is-sent select.huic-input{appearance:none;-webkit-appearance:none;color:var(--ui-text-secondary)}
+.huic[data-card-type="calc"] .huic-calc.is-sent .huic-calc-range{opacity:.55}
+.huic[data-card-type="calc"] .huic-calc.is-sent .huic-calc-seg button[aria-checked="false"]{opacity:.55}
 @keyframes huic-calc-pulse{0%,100%{opacity:1}50%{opacity:.3}}
 .huic[data-card-type="calc"] .huic-calc-hero{display:flex;flex-direction:column;gap:2px;min-width:0}
 .huic[data-card-type="calc"] .huic-calc-hero+.huic-calc-hero{padding-top:10px;border-top:1px solid color-mix(in srgb,var(--huic-accent) 18%,var(--ui-stroke-tertiary))}
@@ -88,62 +93,73 @@ const CALC_CSS = `
 @media (prefers-reduced-motion: reduce){.huic[data-card-type="calc"] *{transition:none!important;animation:none!important}}
 `
 
-function calcLocale(lang) {
-  return lang === 'de' ? 'de-DE' : 'en-US'
+function calcLocaleSep(lang) {
+  return lang === 'de' ? { group: '.', decimal: ',' } : { group: ',', decimal: '.' }
 }
 
 function calcDecimals(output) {
   return output.decimals ?? ((output.format || 'number') === 'integer' ? 0 : 2)
 }
 
-// Decimal rounding, half away from zero, without binary noise (30.075 → 30.08).
-function calcRoundTo(v, d) {
-  const f = 10 ** d
-  return (Math.sign(v) * Math.round(Number((Math.abs(v) * f).toPrecision(12)))) / f
-}
-
-// Same text as the CLI fallback: fixed decimals, then " %", the currency symbol or code, the unit.
-function calcFormat(output, value, card, lang) {
-  if (value === null || value === undefined || !Number.isFinite(value)) return { num: '–', suffix: '', text: '–', ok: false }
-  const fmt = output.format || 'number'
-  const d = calcDecimals(output)
-  let v = calcRoundTo(fmt === 'percent' ? value * 100 : value, d)
-  if (v === 0) v = 0
-  const num = new Intl.NumberFormat(calcLocale(lang), { minimumFractionDigits: d, maximumFractionDigits: d }).format(v)
-  const parts = []
-  if (fmt === 'percent') parts.push('%')
-  if (fmt === 'currency') { const code = card.currency || 'EUR'; parts.push(CALC_SYMBOLS[code] || code) }
-  if (output.unit) parts.push(output.unit)
-  const suffix = parts.join(' ')
-  return { num, suffix, text: suffix ? `${num} ${suffix}` : num, ok: true }
-}
-
-// The value the model gets: rounded like the display (percent stays a fraction).
-function calcRound(output, value) {
-  if (value === null || value === undefined || !Number.isFinite(value)) return null
-  const d = calcDecimals(output) + ((output.format || 'number') === 'percent' ? 2 : 0)
-  return calcRoundTo(value, Math.min(12, d))
-}
-
-function calcShow(n, lang) {
+// The exact value as a plain decimal string (1e-11 → "0.00000000001"), never rounded.
+function calcPlain(n) {
   if (typeof n !== 'number' || !Number.isFinite(n)) return ''
-  const s = String(Number(n.toPrecision(12)))
-  return lang === 'de' ? s.replace('.', ',') : s
+  const s = String(Object.is(n, -0) ? 0 : n)
+  const m = /^(-?)(\d+)(?:\.(\d+))?e([-+]\d+)$/.exec(s)
+  if (!m) return s
+  const digits = m[2] + (m[3] || ''), point = m[2].length + Number(m[4])
+  const body = point <= 0 ? '0.' + '0'.repeat(-point) + digits
+    : point >= digits.length ? digits + '0'.repeat(point - digits.length)
+      : digits.slice(0, point) + '.' + digits.slice(point)
+  return m[1] + body
 }
 
-// Number fields show grouped values ("250,000") when not being edited.
-function calcShowGrouped(n, lang) {
-  if (typeof n !== 'number' || !Number.isFinite(n)) return ''
-  return new Intl.NumberFormat(calcLocale(lang), { maximumFractionDigits: 10 }).format(Number(n.toPrecision(12)))
+// Editable text for a number: lossless, the locale's decimal sign, grouping only for display.
+function calcText(n, lang, grouped) {
+  const s = calcPlain(n)
+  if (!s) return ''
+  const sep = calcLocaleSep(lang)
+  let [int, frac] = s.split('.')
+  if (grouped) int = int.replace(/\B(?=(\d{3})+(?!\d))/g, sep.group)
+  return frac ? int + sep.decimal + frac : int
 }
 
-function calcShowNice(n, lang) {
-  return new Intl.NumberFormat(calcLocale(lang), { maximumFractionDigits: 6 }).format(n)
+// Decimal rounding, half away from zero, on the decimal digits (like calcFormat, so 2.675 → 2.68).
+function calcRoundText(v, d) {
+  const s = calcPlain(Math.abs(v))
+  const [int, frac = ''] = s.split('.')
+  if (frac.length <= d) return calcPlain(v)
+  let digits = (int + frac.slice(0, d)).replace(/^0+(?=\d)/, '')
+  if (frac[d] >= '5') digits = (BigInt(digits) + 1n).toString()
+  digits = digits.padStart(d + 1, '0')
+  const out = d ? digits.slice(0, -d) + '.' + digits.slice(-d) : digits
+  return (v < 0 && /[1-9]/.test(out) ? '-' : '') + out
+}
+
+// The one place that formats an output: the shared formatter (10-validate.js), the same text
+// as the CLI fallback. "–" means there is no result.
+function calcShown(output, value, card, lang) {
+  return calcFormat(value ?? NaN, output, card, lang)
+}
+
+// The value the model gets: rounded exactly like the display (percent stays a fraction),
+// null whenever the display shows "–".
+function calcRound(output, value, card, lang) {
+  if (calcShown(output, value, card, lang) === '–') return null
+  const percent = (output.format || 'number') === 'percent'
+  const n = Number(calcRoundText(percent ? value * 100 : value, calcDecimals(output)) + (percent ? 'e-2' : ''))
+  return Number.isFinite(n) ? (n === 0 ? 0 : n) : null
+}
+
+// Hero text split so a trailing " %", " €" or unit can be set smaller than the number.
+function calcSplit(text) {
+  const m = /^(.*\d)[\s\u00a0]+(\D+)$/.exec(text)
+  return m ? { num: m[1], suffix: m[2] } : { num: text, suffix: '' }
 }
 
 // Typed numbers: "4.5", "4,5", "1,234.5", "1.234,5", "250 000".
 function calcNumber(text, lang) {
-  let s = String(text ?? '').trim().replace(/[\s  '’_]/g, '')
+  let s = String(text ?? '').trim().replace(/[\s  '’_]/g, '')
   if (!s) return null
   const comma = s.lastIndexOf(','), dot = s.lastIndexOf('.')
   if (comma >= 0 && dot >= 0) s = comma > dot ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '')
@@ -174,29 +190,30 @@ function calcKind(input) {
   return input.kind || 'number'
 }
 
-function calcInitial(card, source, lang) {
-  const raw = {}
-  const src = source && typeof source === 'object' ? source : {}
-  for (const input of card.inputs) {
-    const kind = calcKind(input)
-    const v = src[input.name]
-    if (kind === 'select') raw[input.name] = typeof v === 'number' && input.options.some(o => o.value === v) ? v : input.default
-    else if (kind === 'toggle') raw[input.name] = v === 0 || v === 1 ? v : input.default
-    else {
-      const show = kind === 'slider' ? calcShow : calcShowGrouped
-      raw[input.name] = typeof v === 'string' ? v : show(typeof v === 'number' ? v : input.default, lang)
-    }
-  }
-  return raw
+// One entry per input, keyed by its name in a prototype-free map (a name like "__proto__" is
+// just a key). Number and slider entries keep the text being edited and the exact number it
+// stands for; display grouping never changes the number.
+function calcEntry(input, v, lang) {
+  const kind = calcKind(input)
+  if (kind === 'select') return typeof v === 'number' && input.options.some(o => o.value === v) ? v : input.default
+  if (kind === 'toggle') return v === 0 || v === 1 ? v : input.default
+  if (typeof v === 'string') return { text: v }
+  if (v && typeof v === 'object' && typeof v.text === 'string') return Number.isFinite(v.value) ? { text: v.text, value: v.value } : { text: v.text }
+  const n = typeof v === 'number' && Number.isFinite(v) ? v : input.default
+  return { text: calcText(n, lang, kind === 'number'), value: n }
 }
 
-function calcCheck(input, raw, lang) {
+function calcInitial(card, source, lang) {
+  return planDict(card.inputs.map(input => [input.name, calcEntry(input, planOwn(source, input.name), lang)]))
+}
+
+function calcCheck(input, entry, lang) {
   const kind = calcKind(input)
-  if (kind === 'select' || kind === 'toggle') return { value: raw, error: null }
-  const n = calcNumber(raw, lang)
+  if (kind === 'select' || kind === 'toggle') return { value: entry, error: null }
+  const n = entry.value ?? calcNumber(entry.text, lang)
   if (n === null) return { value: null, error: t(lang, 'errNumber') }
-  if (input.min !== undefined && n < input.min) return { value: null, error: t(lang, 'errMin', { min: calcShowNice(input.min, lang) }) }
-  if (input.max !== undefined && n > input.max) return { value: null, error: t(lang, 'errMax', { max: calcShowNice(input.max, lang) }) }
+  if (input.min !== undefined && n < input.min) return { value: null, error: t(lang, 'errMin', { min: calcText(input.min, lang, true) }) }
+  if (input.max !== undefined && n > input.max) return { value: null, error: t(lang, 'errMax', { max: calcText(input.max, lang, true) }) }
   return { value: n, error: null }
 }
 
@@ -207,6 +224,12 @@ function calcCompute(card, asts, values) {
 function calcHeroIndexes(card) {
   const marked = card.outputs.map((o, i) => (o.emphasis ? i : -1)).filter(i => i >= 0)
   return marked.length ? marked : [0]
+}
+
+// A step nudge without binary noise (0.1 + 0.2 → 0.3): no more decimals than the step or value had.
+function calcNudged(current, delta) {
+  const places = x => (calcPlain(Math.abs(x)).split('.')[1] || '').length
+  return Number((current + delta).toFixed(Math.min(20, Math.max(places(current), places(delta)))))
 }
 
 function CalcSegments({ input, value, disabled, labelId, onChange }) {
@@ -230,12 +253,16 @@ function CalcSegments({ input, value, disabled, labelId, onChange }) {
   })
 }
 
-function CalcInput({ input, raw, error, disabled, lang, baseId, onChange }) {
+function CalcInput({ input, entry, error, disabled, lang, baseId, onChange }) {
   const kind = calcKind(input)
   const id = `${baseId}-${input.name}`
   const labelId = `${id}-label`
   const errId = `${id}-err`
-  const label = jsx('label', { id: labelId, htmlFor: kind === 'select' && input.options.length <= 4 ? undefined : id, className: 'huic-calc-label', children: input.label })
+  const short = kind === 'select' && input.options.length <= 4 && input.options.every(o => [...o.label].length <= 18)
+  // A real <label for> on every native control; segmented selects are named by aria-labelledby.
+  const label = short
+    ? jsx('span', { id: labelId, className: 'huic-calc-label', children: input.label })
+    : jsx('label', { id: labelId, htmlFor: id, className: 'huic-calc-label', children: input.label })
   const unit = input.unit ? jsx('span', { className: 'huic-calc-unit', 'aria-hidden': true, children: input.unit }) : null
   const err = error ? jsx('span', { id: errId, className: 'huic-err', children: error }) : null
 
@@ -245,7 +272,7 @@ function CalcInput({ input, raw, error, disabled, lang, baseId, onChange }) {
       children: [
         jsx('span', { className: 'huic-calc-label', children: input.label }),
         jsx('input', {
-          id, type: 'checkbox', role: 'switch', className: 'huic-calc-switch', checked: raw === 1, disabled,
+          id, type: 'checkbox', role: 'switch', className: 'huic-calc-switch', checked: entry === 1, disabled,
           onChange: e => onChange(e.target.checked ? 1 : 0)
         })
       ]
@@ -253,13 +280,13 @@ function CalcInput({ input, raw, error, disabled, lang, baseId, onChange }) {
   }
 
   if (kind === 'select') {
-    const short = input.options.length <= 4 && input.options.every(o => [...o.label].length <= 18)
     return jsxs('div', { className: 'huic-calc-field', children: [
-      jsx('span', { className: 'huic-calc-labelrow', children: short ? jsx('span', { id: labelId, className: 'huic-calc-label', children: input.label }) : label }),
+      jsx('span', { className: 'huic-calc-labelrow', children: label }),
       short
-        ? jsx(CalcSegments, { input, value: raw, disabled, labelId, onChange })
+        ? jsx(CalcSegments, { input, value: entry, disabled, labelId, onChange })
         : jsx('select', {
-            id, className: 'huic-input', disabled, value: String(input.options.findIndex(o => o.value === raw)),
+            id, className: 'huic-input', disabled, value: String(input.options.findIndex(o => o.value === entry)),
+            'aria-labelledby': labelId,
             onChange: e => onChange(input.options[Number(e.target.value)].value),
             children: input.options.map((o, i) => jsx('option', { value: String(i), children: o.label }, i))
           })
@@ -267,27 +294,27 @@ function CalcInput({ input, raw, error, disabled, lang, baseId, onChange }) {
   }
 
   const step = input.step ?? (kind === 'slider' ? calcRangeOf(input).step : 1)
+  const current = entry.value ?? calcNumber(entry.text, lang)
   const nudge = e => {
     if ((e.key !== 'ArrowUp' && e.key !== 'ArrowDown') || e.altKey || e.ctrlKey || e.metaKey || e.nativeEvent.isComposing) return
-    const current = calcNumber(raw, lang)
     if (current === null) return
     e.preventDefault()
-    let next = current + (e.key === 'ArrowUp' ? 1 : -1) * step * (e.shiftKey ? 10 : 1)
+    let next = calcNudged(current, (e.key === 'ArrowUp' ? 1 : -1) * step * (e.shiftKey ? 10 : 1))
     if (input.min !== undefined) next = Math.max(input.min, next)
     if (input.max !== undefined) next = Math.min(input.max, next)
-    onChange(calcShow(Number(next.toPrecision(12)), lang))
+    onChange({ text: calcText(next, lang, false), value: next })
   }
   const box = small => jsxs('span', {
     className: cx('huic-calc-box', small && 'is-small'), 'data-invalid': error ? 'true' : undefined,
     children: [
       jsx('input', {
-        id, type: 'text', inputMode: 'decimal', autoComplete: 'off', spellCheck: false, value: raw, disabled,
+        id, type: 'text', inputMode: 'decimal', autoComplete: 'off', spellCheck: false, value: entry.text, disabled,
         'aria-invalid': error ? 'true' : undefined, 'aria-describedby': error ? errId : undefined,
         'aria-label': input.unit ? `${input.label} (${input.unit})` : undefined,
-        onChange: e => onChange(e.target.value.slice(0, 40)), onKeyDown: nudge,
+        onChange: e => onChange({ text: e.target.value.slice(0, 40) }), onKeyDown: nudge,
+        // Grouped again after editing ("250,000"); the number itself stays exactly what was typed.
         onBlur: kind === 'number' ? () => {
-          const n = calcNumber(raw, lang)
-          if (n !== null && calcShowGrouped(n, lang) !== raw) onChange(calcShowGrouped(n, lang))
+          if (current !== null && calcText(current, lang, true) !== entry.text) onChange({ text: calcText(current, lang, true), value: current })
         } : undefined
       }),
       unit
@@ -296,17 +323,16 @@ function CalcInput({ input, raw, error, disabled, lang, baseId, onChange }) {
 
   if (kind === 'slider') {
     const range = calcRangeOf(input)
-    const n = calcNumber(raw, lang)
-    const pos = n === null ? range.min : Math.min(range.max, Math.max(range.min, n))
+    const pos = current === null ? range.min : Math.min(range.max, Math.max(range.min, current))
     const fill = `${((pos - range.min) / (range.max - range.min)) * 100}%`
-    const shownMin = calcShowNice(range.min, lang), shownMax = calcShowNice(range.max, lang)
+    const shownMin = calcText(range.min, lang, true), shownMax = calcText(range.max, lang, true)
     return jsxs('div', { className: 'huic-calc-field', children: [
       jsxs('span', { className: 'huic-calc-labelrow', children: [label, box(true)] }),
       jsx('input', {
         type: 'range', className: 'huic-calc-range', min: range.min, max: range.max, step: range.step, value: pos, disabled,
         style: { '--fill': fill }, 'aria-labelledby': labelId,
-        'aria-valuetext': n === null ? undefined : `${calcShowNice(n, lang)}${input.unit ? ' ' + input.unit : ''}`,
-        onChange: e => onChange(calcShow(Number(e.target.value), lang))
+        'aria-valuetext': current === null ? undefined : `${calcText(current, lang, true)}${input.unit ? ' ' + input.unit : ''}`,
+        onChange: e => { const v = Number(e.target.value); onChange({ text: calcText(v, lang, false), value: v }) }
       }),
       jsxs('span', { className: 'huic-calc-ends', 'aria-hidden': true, children: [
         jsx('span', { children: input.unit ? `${shownMin} ${input.unit}` : shownMin }),
@@ -333,16 +359,18 @@ function CalcCard({ card, sessionId, display, lang }) {
 
   const checks = card.inputs.map(input => calcCheck(input, raw[input.name], lang))
   const invalid = checks.some(c => c.error)
-  const values = {}
+  const values = planDict()
   card.inputs.forEach((input, i) => { if (!checks[i].error) values[input.name] = checks[i].value })
   const results = calcCompute(card, asts, values)
-  const shown = card.outputs.map((o, i) => calcFormat(o, results[i], card, lang))
+  const shown = card.outputs.map((o, i) => calcShown(o, results[i], card, lang))
   const heroes = calcHeroIndexes(card)
   const rest = card.outputs.map((o, i) => i).filter(i => !heroes.includes(i))
-  const impossible = !invalid && shown.some(s => !s.ok)
+  const impossible = !invalid && shown.some(s => s === '–')
+  // Nothing worth sending while the headline result is "–".
+  const blank = !invalid && heroes.some(i => shown[i] === '–')
 
   // Screen readers hear the new results once typing pauses, not on every keystroke.
-  const spoken = card.outputs.map((o, i) => `${o.label}: ${shown[i].text}`).join('; ')
+  const spoken = card.outputs.map((o, i) => `${o.label}: ${shown[i]}`).join('; ')
   const firstRender = useRef(true)
   useEffect(() => {
     if (firstRender.current) { firstRender.current = false; return }
@@ -352,28 +380,31 @@ function CalcCard({ card, sessionId, display, lang }) {
 
   const change = (name, value) => {
     if (!editable) return
-    const next = { ...localRaw, [name]: value }
+    const next = planDict(Object.entries(localRaw))
+    next[name] = value
     setRaw(next)
     ans.saveDraft({ inputs: next })
   }
 
   const send = () => ans.submit({
     inputs: Object.fromEntries(card.inputs.map(i => [i.name, values[i.name]])),
-    outputs: card.outputs.map((o, i) => ({ label: o.label, value: calcRound(o, results[i]) }))
+    outputs: card.outputs.map((o, i) => ({ label: o.label, value: calcRound(o, results[i], card, lang) }))
   })
 
   const valueNode = (i, big) => {
-    const s = shown[i]
+    const text = shown[i]
+    const part = big ? calcSplit(text) : { num: text, suffix: '' }
     return jsxs('span', {
-      className: cx(big ? 'huic-calc-hero-value' : null, 'huic-calc-pop', !s.ok && 'huic-calc-na'),
-      children: [s.num, s.ok && s.suffix ? ' ' : null, s.ok && s.suffix ? jsx('span', { className: 'huic-calc-suffix', children: s.suffix }) : null]
-    }, s.text)
+      className: cx(big ? 'huic-calc-hero-value' : null, 'huic-calc-pop', text === '–' && 'huic-calc-na'),
+      children: [part.num, part.suffix ? ' ' : null, part.suffix ? jsx('span', { className: 'huic-calc-suffix', children: part.suffix }) : null]
+    }, text)
   }
 
   const panel = jsxs('div', {
     className: 'huic-calc-out', role: 'group', 'aria-label': t(lang, 'calcResults'),
     children: [
-      editable ? jsx('span', { className: 'huic-calc-live', title: t(lang, 'calcLiveHint'), children: t(lang, 'calcLive') }) : null,
+      editable ? jsx('span', { className: 'huic-calc-live', title: t(lang, 'calcLiveHint'), children: t(lang, 'calcLive') })
+        : ans.answered ? jsxs('span', { className: 'huic-calc-live is-sent', children: [planIcon('check'), t(lang, 'calcSent')] }) : null,
       ...heroes.map(i => jsxs('div', { className: 'huic-calc-hero', children: [
         jsx('span', { className: 'huic-calc-hero-label', children: card.outputs[i].label }),
         valueNode(i, true)
@@ -383,7 +414,7 @@ function CalcCard({ card, sessionId, display, lang }) {
         children: [jsx('span', { children: card.outputs[i].label }), valueNode(i, false)]
       }, i)) }, 'rows') : null,
       invalid ? jsx('p', { className: 'huic-calc-why', children: t(lang, 'calcFix') }, 'why')
-        : impossible ? jsx('p', { className: 'huic-calc-why', children: t(lang, 'calcNotPossible') }, 'why') : null
+        : impossible && !(blank && editable) ? jsx('p', { className: 'huic-calc-why', children: t(lang, 'calcNotPossible') }, 'why') : null
     ]
   })
 
@@ -391,9 +422,9 @@ function CalcCard({ card, sessionId, display, lang }) {
     card, display, labelId, title: card.title,
     children: [
       jsx('style', { children: CALC_CSS }, 'css'),
-      jsxs('div', { className: 'huic-calc', children: [
+      jsxs('div', { className: cx('huic-calc', ans.answered && 'is-sent'), children: [
         jsx('div', { className: 'huic-calc-inputs', role: 'group', 'aria-label': t(lang, 'calcInputs'), children: card.inputs.map((input, i) => jsx(CalcInput, {
-          input, raw: raw[input.name], error: checks[i].error, disabled: !editable, lang, baseId,
+          input, entry: raw[input.name], error: checks[i].error, disabled: !editable, lang, baseId,
           onChange: value => change(input.name, value)
         }, input.name)) }),
         panel
@@ -402,8 +433,8 @@ function CalcCard({ card, sessionId, display, lang }) {
       jsx('div', { className: 'huic-sr', role: 'status', 'aria-live': 'polite', children: announce }, 'live')
     ],
     footer: editable ? jsx(Footer, {
-      hint: invalid ? t(lang, 'errFix') : undefined,
-      children: jsx(Btn, { variant: 'primary', disabled: invalid, onClick: send, children: card.sendLabel || t(lang, 'calcSend') })
+      hint: invalid ? t(lang, 'errFix') : blank ? t(lang, 'calcNotPossible') : undefined,
+      children: jsx(Btn, { variant: 'primary', disabled: invalid || blank, onClick: send, children: card.sendLabel || t(lang, 'calcSend') })
     }) : null,
     after: ans.status
   })
@@ -411,10 +442,11 @@ function CalcCard({ card, sessionId, display, lang }) {
 
 CARD_COMPONENTS.calc = CalcCard
 REPLY_BUILDERS.calc = (card, answer, lang, data) => {
-  data.inputs = { ...answer.inputs }
+  const sent = answer.inputs || {}
+  data.inputs = Object.fromEntries(card.inputs.filter(i => Object.prototype.hasOwnProperty.call(sent, i.name)).map(i => [i.name, sent[i.name]]))
   data.outputs = answer.outputs.map(o => ({ label: o.label, value: o.value ?? null }))
   const i = calcHeroIndexes(card)[0]
   const output = card.outputs[i]
   const value = answer.outputs[i]?.value
-  return { summary: t(lang, 'rCalc', { x: `${clip(output.label, 40)} ${calcFormat(output, value, card, lang).text}` }) }
+  return { summary: t(lang, 'rCalc', { x: `${clip(output.label, 40)} ${calcShown(output, value, card, lang)}` }) }
 }

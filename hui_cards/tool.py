@@ -237,9 +237,10 @@ def answer_context(user_message: str, history=None, answered: tuple | None = Non
 
 
 DESKTOP_HINT = (
-    "[hermes-ui-cards] When the user has to tick off a list, compare 2-4 options, fill in several details, "
-    "follow steps or approve an action with consequences, show an interactive card with the hui_present tool "
-    "(through tool_call if it is deferred). Plain answers and simple either-or questions stay text or clarify."
+    "[hermes-ui-cards] Before a multi-step job show your plan as a card the user can edit; when the user has "
+    "to judge many drafts, tick off a list, compare 2-4 options, fill in details or approve an action with "
+    "consequences, show an interactive card with the hui_present tool (through tool_call if it is deferred). "
+    "Plain answers and simple either-or questions stay text or clarify."
 )
 
 

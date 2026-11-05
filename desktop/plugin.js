@@ -352,7 +352,7 @@ function calcParse(expr, names) {
   let pos = 0
   const funcs = {min:[1,99],max:[1,99],round:[1,2],floor:[1,1],ceil:[1,1],sqrt:[1,1],abs:[1,1],pow:[2,2],log:[1,1],exp:[1,1],if:[3,3]}
   const fail = (message, at = pos) => { throw {message, at: [...expr.slice(0, at)].length} }
-  const skip = () => { while (pos < expr.length && /\s/u.test(expr[pos])) pos++ }
+  const skip = () => { while (pos < expr.length && /[ \t\n\r]/.test(expr[pos])) pos++ }
   function parse(level=0, depth=0) {
     if (depth > 32) fail('maximum depth exceeded')
     skip()
@@ -388,25 +388,62 @@ function calcParse(expr, names) {
     }
     fail('expected expression')
   }
-  try { if ([...expr].length > 300) fail('expression too long',300); const result=parse(); skip(); if (pos !== expr.length) fail('unexpected character'); return result } catch (e) { return e }
+  try { if ([...expr].length > 300) throw {message:'expression too long', at:300}; const result=parse(); skip(); if (pos !== expr.length) fail('unexpected character'); return result } catch (e) { return e }
 }
 function calcEval(ast, values) {
   function ev(n) {
     const [type, op] = n
-    if (type==='number') return op
-    if (type==='name') return values[op]
-    if (type==='unary') return -ev(op)
-    if (type==='binary') {
+    let value
+    if (type==='number') value=op
+    else if (type==='name') value=Object.prototype.hasOwnProperty.call(values,op) ? values[op] : null
+    else if (type==='unary') value=-ev(op)
+    else if (type==='binary') {
       const a=ev(n[2]), b=ev(n[3])
-      if (!Number.isFinite(a) || !Number.isFinite(b) || (op === '/' && b === 0)) throw new Error('invalid result')
-      switch(op) { case '+':return a+b; case '-':return a-b; case '*':return a*b; case '/':return a/b; case '^':return Math.pow(a,b); case '<':return +(a<b); case '<=':return +(a<=b); case '>':return +(a>b); case '>=':return +(a>=b); case '==':return +(a===b); case '!=':return +(a!==b) }
+      switch(op) { case '+':value=a+b; break; case '-':value=a-b; break; case '*':value=a*b; break; case '/':value=a/b; break; case '^':value=Math.pow(a,b); break; case '<':value=+(a<b); break; case '<=':value=+(a<=b); break; case '>':value=+(a>b); break; case '>=':value=+(a>=b); break; case '==':value=+(a===b); break; case '!=':value=+(a!==b); break }
+    } else if (op==='if') value=ev(n[2][ev(n[2][0]) ? 1 : 2])
+    else {
+      const a=n[2].map(ev)
+      if (op==='round') {
+        const digits=a.length>1?a[1]:0
+        if (digits<0) throw new Error('negative digits')
+        const f=10**Math.min(digits,12)
+        value=Math.floor(a[0]*f+0.5)/f
+      } else value=Math[op](...a)
     }
-    if (op==='if') { const condition=ev(n[2][0]); if (!Number.isFinite(condition)) throw new Error('invalid result'); return ev(n[2][condition ? 1 : 2]) }
-    const a=n[2].map(ev)
-    if (op==='round') { const f=10**(a.length>1?a[1]:0); return Math.floor(a[0]*f+0.5)/f }
-    return Math[op](...a)
+    if (!Number.isFinite(value)) throw new Error('invalid result')
+    return value
   }
-  try { const v=ev(ast); return Number.isFinite(v) ? v : null } catch { return null }
+  try { return ev(ast) } catch { return null }
+}
+
+// Decimal half-away-from-zero on the shortest decimal representation of the value.
+function calcFormat(value, output, card, lang) {
+  if (!Number.isFinite(value)) return '–'
+  const fmt=output.format || 'number', decimals=output.decimals ?? (fmt==='integer' ? 0 : 2)
+  if (fmt==='percent') value*=100
+  if (!Number.isFinite(value)) return '–'
+  const negative=value<0, parts=Math.abs(value).toString().toLowerCase().split('e')
+  const exponent=Number(parts[1] || 0), digits=parts[0].replace('.', ''), dot=(parts[0].indexOf('.')<0 ? parts[0].length : parts[0].indexOf('.'))+exponent
+  const shift=dot+decimals
+  let whole
+  if (shift<=0) whole='0'
+  else whole=(digits+'0'.repeat(Math.max(0,shift-digits.length))).slice(0,shift)
+  const next=shift<0 ? '0' : (digits[shift] || '0')
+  if (next>='5') whole=(BigInt(whole)+1n).toString()
+  whole=whole.padStart(decimals+1,'0')
+  let integer=decimals ? whole.slice(0,-decimals) : whole
+  const fraction=decimals ? whole.slice(-decimals) : ''
+  const de=String(lang || '').toLowerCase().startsWith('de')
+  integer=integer.replace(/\B(?=(\d{3})+(?!\d))/g,de ? '.' : ',')
+  let shown=(negative ? '-' : '')+integer+(decimals ? (de ? ',' : '.')+fraction : '')
+  if (fmt==='currency') {
+    const code=card.currency || 'EUR', symbol=(de ? {EUR:'€',USD:'$',GBP:'£',CAD:'CA$',JPY:'¥',AUD:'AU$'} : {EUR:'€',USD:'US$',GBP:'£',CAD:'CA$',JPY:'JP¥',AUD:'A$'})[code] || code
+    if (de) shown+='\u00a0'+symbol
+    else shown=(negative ? '-' : '')+symbol+(symbol===code ? '\u00a0' : '')+(negative ? shown.slice(1) : shown)
+  }
+  if (fmt==='percent') shown+=' %'
+  if (output.unit) shown+=' '+output.unit
+  return shown
 }
 
 // ── 20-i18n.js ──
@@ -1107,15 +1144,36 @@ const ACCENT_VARS = {
   red: 'var(--ui-red, var(--ui-accent))'
 }
 
+// Text on an accent fill only for engines without relative colours (see huicOnColor):
+// checked against the real Desktop presets, dark and light, each at least 4.8:1.
+const ON_ACCENT_FALLBACK = {
+  app: 'var(--dt-primary-foreground, #fff)',
+  blue: '#fff',
+  green: '#000',
+  orange: '#000',
+  purple: '#000',
+  red: 'var(--dt-primary-foreground, #fff)'
+}
+
+// Black or white text for a fill, whichever contrasts more. Y in xyz-d65 is the relative
+// luminance WCAG uses; at Y = 0.17913 both give the same ratio (√(1.05 · 0.05) − 0.05),
+// so the winner always clears 4.58:1. invert = the other one (hover fills move away from it).
+function huicOnColor(fill, invert) {
+  const k = invert ? `clamp(0, (y - 0.17913) * 100000, 1)` : `clamp(0, (0.17913 - y) * 100000, 1)`
+  return `color(from ${fill} xyz-d65 calc(${k} * 0.95047) ${k} calc(${k} * 1.08883) / 1)`
+}
+const HUIC_RELATIVE = '@supports (color: color(from red xyz-d65 x y z))'
+
 // Shared UI strings (fragments after 20-i18n.js may extend the tables).
 Object.assign(STRINGS.en, { copyResult: 'Copy result', copiedResult: 'Copied' })
 Object.assign(STRINGS.de, { copyResult: 'Ergebnis kopieren', copiedResult: 'Kopiert' })
 
-// Design tokens: 4/8 spacing, three radii, one easing, hairlines from the theme strokes.
+// Design tokens: --huic-accent-ink is accent-tinted text that stays readable on the light
+// presets (raw purple/orange text on white is under 3:1). 4/8 spacing, three radii, one easing, hairlines from the theme strokes.
 // Uppercase "eyebrow" labels echo the Desktop sidebar headings; accent rails mark state.
 const CARD_CSS = `
-.huic{--huic-accent:var(--ui-accent);--huic-pad:16px;--huic-line:var(--ui-stroke-tertiary);--huic-line-strong:var(--ui-stroke-secondary);--huic-on-accent:var(--dt-primary-foreground,#fff);--huic-mono:var(--font-mono,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);--huic-ease:cubic-bezier(.2,.8,.2,1);--huic-r:12px;--huic-r-md:8px;--huic-r-sm:6px;container-type:inline-size;box-sizing:border-box;width:100%;max-width:680px;margin:8px 0;border:1px solid var(--huic-line);border-radius:var(--huic-r);background:var(--ui-chat-surface-background,transparent);color:var(--ui-text-primary);font-size:13px;line-height:1.5;text-align:left;transition:border-color .4s var(--huic-ease)}
-@supports (color: oklch(from red l c h)){.huic{--huic-on-accent:oklch(from var(--huic-accent) clamp(0, (0.62 - l) * 1000, 1) 0 0)}}
+.huic{--huic-accent:var(--ui-accent);--huic-pad:16px;--huic-line:var(--ui-stroke-tertiary);--huic-line-strong:var(--ui-stroke-secondary);--huic-on-accent:var(--huic-on-fallback,var(--dt-primary-foreground,#fff));--huic-accent-hover:color-mix(in srgb,var(--huic-accent) 86%,var(--ui-text-primary));--huic-accent-ink:color-mix(in srgb,var(--huic-accent) 50%,var(--ui-text-primary));--huic-mono:var(--font-mono,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);--huic-ease:cubic-bezier(.2,.8,.2,1);--huic-r:12px;--huic-r-md:8px;--huic-r-sm:6px;container-type:inline-size;box-sizing:border-box;width:100%;max-width:680px;margin:8px 0;border:1px solid var(--huic-line);border-radius:var(--huic-r);background:var(--ui-chat-surface-background,transparent);color:var(--ui-text-primary);font-size:13px;line-height:1.5;text-align:left;transition:border-color .4s var(--huic-ease)}
+${HUIC_RELATIVE}{.huic{--huic-on-accent:${huicOnColor('var(--huic-accent)')};--huic-accent-hover:color-mix(in srgb,var(--huic-accent) 86%,${huicOnColor('var(--huic-accent)', true)})}}
 .huic>:first-child{border-top-left-radius:11px;border-top-right-radius:11px}
 .huic>:last-child{border-bottom-left-radius:11px;border-bottom-right-radius:11px}
 .huic *{box-sizing:border-box;overflow-wrap:anywhere}
@@ -1128,6 +1186,7 @@ const CARD_CSS = `
 .huic-eyebrow{margin:0;font-size:11px;line-height:16px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ui-text-tertiary);font-variant-numeric:tabular-nums}
 .huic-body{padding:12px var(--huic-pad) var(--huic-pad);display:flex;flex-direction:column;gap:12px}
 .huic-foot{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:flex-end;padding:12px var(--huic-pad);border-top:1px solid var(--huic-line)}
+.huic-foot-group{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-left:auto;max-width:100%}
 .huic-hint{margin-right:auto;color:var(--ui-text-tertiary);font-size:12px;line-height:16px;font-variant-numeric:tabular-nums}
 .huic-opt{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;padding:10px 12px;border-radius:var(--huic-r-md);border:1px solid var(--huic-line);background:transparent;color:inherit;cursor:pointer;font:inherit;transition:background .15s,border-color .15s,transform .08s}
 .huic-opt:hover:not([disabled]){background:var(--ui-row-hover-background,var(--ui-control-hover-background));border-color:var(--huic-line-strong)}
@@ -1161,7 +1220,7 @@ textarea.huic-input{min-height:72px;resize:vertical;line-height:1.5}
 .huic-err{color:var(--ui-red);font-size:12px;line-height:17px}
 .huic-row{display:flex;gap:8px;align-items:center}
 .huic-badge{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;font-size:11px;line-height:16px;font-weight:500;padding:1px 8px;border-radius:999px;background:var(--ui-bg-tertiary,var(--ui-bg-quaternary));color:var(--ui-text-secondary);white-space:nowrap}
-.huic-best{background:color-mix(in srgb,var(--huic-accent) 14%,transparent);color:var(--huic-accent)}
+.huic-best{background:color-mix(in srgb,var(--huic-accent) 14%,transparent);color:var(--huic-accent-ink)}
 .huic-progress{height:4px;border-radius:999px;background:var(--ui-bg-tertiary,var(--ui-bg-quaternary));overflow:hidden}
 .huic-progress>span{display:block;height:100%;border-radius:inherit;background:var(--huic-accent);transition:width .35s var(--huic-ease)}
 .huic-code{margin:0;font-family:var(--huic-mono);font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-word;padding:8px 10px;border-radius:var(--huic-r-md);background:var(--ui-inline-code-background,var(--ui-bg-quaternary));color:var(--ui-inline-code-foreground,inherit)}
@@ -1169,6 +1228,7 @@ textarea.huic-input{min-height:72px;resize:vertical;line-height:1.5}
 .huic .huic-answer:focus-visible{outline:2px solid var(--huic-accent);outline-offset:-2px}
 .huic-answer-mark{flex:none;display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--huic-accent);color:var(--huic-on-accent);font-size:11px;font-weight:700;line-height:1}
 .huic-answer-mark svg{width:12px;height:12px;display:block}
+.huic-answer-mark .huic-ico{stroke-width:2}
 .huic-answer-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
 .huic-answer-summary{color:var(--ui-text-primary);line-height:18px}
 .huic-answer>.huic-copy{flex:none}
@@ -1192,7 +1252,7 @@ textarea.huic-input{min-height:72px;resize:vertical;line-height:1.5}
 .huic-btn:hover:not([disabled]){background:var(--ui-bg-secondary,var(--ui-control-hover-background))}
 .huic-btn:active:not([disabled]){transform:translateY(1px)}
 .huic-btn-primary{background:var(--huic-accent);color:var(--huic-on-accent);box-shadow:none}
-.huic-btn-primary:hover:not([disabled]){background:color-mix(in srgb,var(--huic-accent) 86%,var(--ui-text-primary))}
+.huic-btn-primary:hover:not([disabled]){background:var(--huic-accent-hover)}
 .huic-btn-ghost{background:transparent;box-shadow:none;color:var(--ui-text-secondary)}
 .huic-btn-ghost:hover:not([disabled]){background:var(--ui-control-hover-background);color:var(--ui-text-primary)}
 .huic-btn-danger{background:color-mix(in srgb,var(--ui-red) 16%,transparent);color:var(--ui-red);box-shadow:none}
@@ -1200,11 +1260,11 @@ textarea.huic-input{min-height:72px;resize:vertical;line-height:1.5}
 .huic-btn-primary[disabled]{opacity:1;background:var(--ui-bg-quaternary);color:var(--ui-text-quaternary,var(--ui-text-tertiary))}
 @container (max-width: 440px){
   .huic-grid{grid-template-columns:1fr}
-  .huic-foot{justify-content:stretch}
-  .huic-foot>.huic-btn,.huic-foot>button{flex:1}
-  .huic-hint{flex-basis:100%}
+  .huic-hint{flex:1 1 9em;min-width:0}
   .huic .huic-copy-text{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 }
+/* one line-icon style for chrome (check, cross, pencil, question, picture) */
+.huic-ico{display:block;flex:none;width:1em;height:1em;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 /* code + key-values */
 .huic .huic-code-block{position:relative;min-width:0;border-radius:var(--huic-r-md);background:var(--ui-inline-code-background,var(--ui-bg-quaternary));box-shadow:inset 0 0 0 1px var(--ui-stroke-quaternary,transparent)}
 .huic .huic-code-block .huic-code{position:relative;padding:10px 44px 10px 12px;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;background:transparent;line-height:1.6}
@@ -1220,7 +1280,8 @@ textarea.huic-input{min-height:72px;resize:vertical;line-height:1.5}
 .huic .huic-kv-value{display:flex;align-items:center;gap:6px;min-width:0}
 .huic .huic-kv-value>span{min-width:0;flex:1}
 .huic .huic-kv-value>.huic-copy{flex:none}
-.huic .huic-kv-path{font-family:var(--huic-mono);font-size:12px}
+.huic .huic-kv-path{font-family:var(--huic-mono);font-size:12px;line-height:1.55;word-break:break-all;overflow-wrap:anywhere}
+.huic .huic-kv-value:has(.huic-kv-path){align-items:flex-start}
 @media (prefers-reduced-motion: reduce){.huic,.huic *,.huic *::before,.huic *::after{transition:none !important;animation:none !important}}
 `
 
@@ -1263,10 +1324,10 @@ function CardImage({ src }) {
 }
 
 function Shell({ card, display, title, subtitle, children, footer, after, labelId }) {
-  const accent = ACCENT_VARS[(display && display.accent) || 'app'] || ACCENT_VARS.app
+  const preset = display && Object.hasOwn(ACCENT_VARS, display.accent) ? display.accent : 'app'
   return jsxs('section', {
     className: cx('huic', display && display.compact && 'huic-compact'),
-    style: { '--huic-accent': accent },
+    style: { '--huic-accent': ACCENT_VARS[preset], '--huic-on-fallback': ON_ACCENT_FALLBACK[preset] },
     'aria-labelledby': title ? labelId : undefined,
     'aria-label': title ? undefined : card.type,
     'data-card-type': card.type,
@@ -1298,6 +1359,27 @@ function Footer({ hint, children }) {
 
 const CHECK_PATH = 'm3.5 8.5 3 3 6-7'
 
+// Line icons on a 16 px grid, drawn with currentColor (the same stroke as the copy and notice icons).
+const ICON_PATHS = {
+  check: [CHECK_PATH],
+  cross: ['m4.5 4.5 7 7M11.5 4.5l-7 7'],
+  pencil: ['M10.5 3.2 12.8 5.5 6 12.3l-3 .7.7-3z', 'M9.2 4.5l2.3 2.3'],
+  question: ['M6.3 6.2a1.8 1.8 0 1 1 2.6 1.6c-.6.3-.9.7-.9 1.3v.4', 'M8 11.6v.1'],
+  help: ['M8 1.75a6.25 6.25 0 1 0 0 12.5 6.25 6.25 0 0 0 0-12.5z', 'M6.5 6.4a1.55 1.55 0 1 1 2.2 1.4c-.45.22-.7.55-.7 1v.3', 'M8 11.1v.1'],
+  alert: ['M8 2.5 14 13H2z', 'M8 6.5v3', 'M8 11.2v.1'],
+  picture: ['M2.75 3.75h10.5v8.5H2.75z', 'm2.75 10.5 3-3 2.5 2.5 1.75-1.75 3.25 3', 'M10.25 6.25v.01'],
+  undo: ['M5.5 4.5 3 7l2.5 2.5', 'M3 7h6.5a3 3 0 0 1 0 6H7']
+}
+function Icon({ name, className }) {
+  return jsx('svg', {
+    className: cx('huic-ico', className), viewBox: '0 0 16 16', 'aria-hidden': true, focusable: 'false',
+    children: ICON_PATHS[name].map((d, i) => jsx('path', { d }, i))
+  })
+}
+
+// Reply marks drawn in the same line style as the check (no emoji next to line icons).
+const MARK_ICONS = { '✗': 'cross', '✎': 'pencil', '⚠': 'alert' }
+
 // The answered state reads like a receipt: accent rail, the mark, what was sent, and a copy action.
 function AnsweredBar({ lang, record, focus }) {
   const ref = useRef(null)
@@ -1311,7 +1393,7 @@ function AnsweredBar({ lang, record, focus }) {
         className: 'huic-answer-mark', 'aria-hidden': true,
         children: mark === '✓'
           ? jsx('svg', { viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: 2.2, children: jsx('path', { d: CHECK_PATH, strokeLinecap: 'round', strokeLinejoin: 'round' }) })
-          : mark
+          : MARK_ICONS[mark] ? jsx(Icon, { name: MARK_ICONS[mark] }) : mark
       }),
       jsxs('span', {
         className: 'huic-answer-text',
@@ -1382,6 +1464,8 @@ function CopyButton({ text, lang, label: idleLabel, doneLabel, showLabel }) {
   })
 }
 
+// Absolute paths are shown in full (wrapped, monospace): the exact target of a destructive
+// action must never be hidden behind an ellipsis.
 // Label/value pairs. The app's Markdown styles reach dl/dt/dd inside messages, so the
 // layout-critical properties are inline; each pair is one flex row (dl > div > dt + dd).
 const KV_ROW = { display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'baseline', padding: '6px 0', borderTop: '1px solid var(--ui-stroke-tertiary)' }
@@ -1396,8 +1480,6 @@ function KeyValues({ rows, lang }) {
       const value = String(row.value ?? '')
       const stacked = [...value].length > 40
       const path = /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(value)
-      const chars = [...value]
-      const shown = path && chars.length > 40 ? chars.slice(0, 18).join('') + '…' + chars.slice(-21).join('') : value
       return jsxs('div', {
         className: stacked ? 'huic-kv-stacked' : undefined,
         style: { ...KV_ROW, ...(stacked ? { flexDirection: 'column', alignItems: 'stretch', gap: 2, padding: '8px 0' } : {}) },
@@ -1408,7 +1490,7 @@ function KeyValues({ rows, lang }) {
             children: path ? jsxs('span', {
               className: 'huic-kv-value',
               children: [
-                jsx('span', { className: 'huic-kv-path', title: value, 'aria-label': value, children: shown }),
+                jsx('span', { className: 'huic-kv-path', children: value }),
                 jsx(CopyButton, { text: value, lang })
               ]
             }) : value
@@ -1603,7 +1685,11 @@ const CHOICE_CSS = `
 .huic[data-card-type="choice"] .huic-tile[disabled]:not([aria-checked="true"]){opacity:.6}
 .huic[data-card-type="choice"] .huic-tile-media{position:absolute;inset:0;display:block}
 .huic[data-card-type="choice"] .huic-tile-media>img{display:block;width:100%;height:100%;object-fit:cover}
-.huic[data-card-type="choice"] .huic-tile-ph{position:absolute;inset:0 0 34% 0;display:grid;place-items:center;color:var(--ui-text-tertiary);font-size:34px;font-weight:600;letter-spacing:.02em}
+.huic[data-card-type="choice"] .huic-tile-ph{position:absolute;inset:0;display:grid;place-items:center;padding-bottom:30%;background:radial-gradient(circle,color-mix(in srgb,var(--ui-text-primary) 10%,transparent) 0.8px,transparent 1.3px) 0 0/11px 11px,linear-gradient(155deg,color-mix(in srgb,var(--huic-accent) 9%,var(--ui-bg-quaternary)),var(--ui-bg-quaternary) 70%)}
+.huic[data-card-type="choice"] .huic-tile-ph>span{display:grid;place-items:center;width:52px;height:52px;border-radius:50%;background:color-mix(in srgb,var(--ui-chat-surface-background,var(--ui-base,Canvas)) 78%,transparent);box-shadow:0 0 0 1px var(--huic-line),0 6px 18px -8px rgb(0 0 0 / .35);font-size:26px;line-height:1;color:var(--ui-text-tertiary)}
+.huic[data-card-type="choice"] .huic-tile-ph .huic-ico{font-size:24px;stroke-width:1.4}
+.huic[data-card-type="choice"] .huic-tile[aria-checked="true"] .huic-tile-ph>span{color:var(--huic-accent);box-shadow:0 0 0 1px color-mix(in srgb,var(--huic-accent) 45%,transparent),0 6px 18px -8px rgb(0 0 0 / .35)}
+.huic[data-card-type="choice"] .huic-icon-line{display:grid;place-items:center;width:20px;height:20px;color:var(--ui-text-tertiary);font-size:16px}
 .huic[data-card-type="choice"] .huic-tile-cap{position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;gap:1px;padding:22px 10px 8px;background:linear-gradient(to top,color-mix(in srgb,var(--ui-chat-surface-background,var(--ui-base,Canvas)) 90%,transparent),color-mix(in srgb,var(--ui-chat-surface-background,var(--ui-base,Canvas)) 72%,transparent) 55%,transparent)}
 .huic[data-card-type="choice"] .huic-tile-label{font-weight:600;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .huic[data-card-type="choice"] .huic-tile-desc{color:var(--ui-text-secondary);font-size:12px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
@@ -1615,13 +1701,8 @@ const CHOICE_CSS = `
 @media (prefers-reduced-motion: reduce){.huic[data-card-type="choice"] .huic-tile[aria-checked="true"]{transform:none}}
 `
 
-function optionInitials(label) {
-  const words = String(label || '').trim().split(/\s+/).filter(Boolean)
-  const letters = words.length > 1 ? [words[0], words[1]].map(w => [...w][0]) : [...(words[0] || '?')].slice(0, 2)
-  return letters.join('').toUpperCase()
-}
-
-// A tile whose picture failed or is missing keeps its shape: neutral block with icon or initials.
+// A tile whose picture failed or is missing keeps its shape: a quiet dotted placeholder with
+// the option's own icon, or a line picture glyph. Never initials (they read as unfinished).
 function TileMedia({ option }) {
   const [failed, setFailed] = useState(false)
   const shown = option.image && !failed
@@ -1630,7 +1711,7 @@ function TileMedia({ option }) {
     'aria-hidden': true,
     children: shown
       ? jsx('img', { src: option.image, alt: '', loading: 'lazy', referrerPolicy: 'no-referrer', onError: () => setFailed(true) })
-      : jsx('span', { className: 'huic-tile-ph', children: option.icon || optionInitials(option.label) })
+      : jsx('span', { className: 'huic-tile-ph', children: jsx('span', { children: option.icon || jsx(Icon, { name: 'picture' }) }) })
   })
 }
 
@@ -1674,11 +1755,13 @@ function OptionTile({ option, num, checked, multiple, disabled, ariaDisabled, on
         style: { width: '100%', alignItems: 'flex-start' },
         children: [
           state
-            ? jsx('span', { className: 'huic-num huic-num-state', 'aria-hidden': true, children: state === 'correct' ? '✓' : '✗' })
+            ? jsx('span', { className: 'huic-num huic-num-state', 'aria-hidden': true, children: jsx(Icon, { name: state === 'correct' ? 'check' : 'cross' }) })
             : num
               ? jsx(NumBadge, { n: num, multiple })
               : jsx('span', { className: cx('huic-dot', multiple && 'huic-square'), 'aria-hidden': true }),
-          option.icon ? jsx('span', { className: 'huic-icon', 'aria-hidden': true, children: option.icon }) : null,
+          option.lineIcon
+            ? jsx('span', { className: 'huic-icon huic-icon-line', 'aria-hidden': true, children: jsx(Icon, { name: option.lineIcon }) })
+            : option.icon ? jsx('span', { className: 'huic-icon', 'aria-hidden': true, children: option.icon }) : null,
           jsxs('span', {
             className: 'huic-opt-text',
             children: [
@@ -1705,7 +1788,7 @@ function ChoiceCard({ card, sessionId, display, lang }) {
   const otherRef = useRef(null)
 
   const options = card.allowOther
-    ? [...card.options, { id: OTHER_ID, label: t(lang, 'other'), icon: card.options.some(o => o.icon) ? '✏️' : undefined }]
+    ? [...card.options, { id: OTHER_ID, label: t(lang, 'other'), lineIcon: card.options.some(o => o.icon || o.image) ? 'pencil' : undefined }]
     : card.options
   const isChecked = id => (id === OTHER_ID ? otherOn : selected.includes(id))
   const focusIndex = Math.max(0, options.findIndex(o => isChecked(o.id)))
@@ -2040,8 +2123,8 @@ function ChecklistCard({ card, sessionId, display, lang }) {
 }
 
 // ── 62-compare.js ──
-Object.assign(STRINGS.en, { compareSources: 'sources', compareChecked: 'Prices checked', compareNoSources: "From the model’s knowledge, no web sources", compareUndo: 'Undo', comparePending: 'Picked {title} · sending in {s} s', compareMore: '+{count} more', compareLess: 'Show less', compareBest: 'best', compareSwitch: 'Compare options', compareYourPick: 'Your pick' })
-Object.assign(STRINGS.de, { compareSources: 'Quellen', compareChecked: 'Preise geprüft', compareNoSources: 'Aus dem Wissen des Modells, ohne Webquellen', compareUndo: 'Rückgängig', comparePending: 'Gewählt: {title} · wird in {s} s gesendet', compareMore: '+{count} weitere', compareLess: 'Weniger anzeigen', compareBest: 'bester Wert', compareSwitch: 'Optionen vergleichen', compareYourPick: 'Deine Wahl' })
+Object.assign(STRINGS.en, { compareSources: 'sources', compareChecked: 'Prices checked', compareNoSources: "From the model’s knowledge, no web sources", compareUndo: 'Undo', comparePending: 'Picked {title} · sending in {s} s', compareMore: '+{count} more', compareLess: 'Show less', compareBest: 'best', compareBestOf: 'Best of {n}', compareSwitch: 'Compare options', compareYourPick: 'Your pick' })
+Object.assign(STRINGS.de, { compareSources: 'Quellen', compareChecked: 'Preise geprüft', compareNoSources: 'Aus dem Wissen des Modells, ohne Webquellen', compareUndo: 'Rückgängig', comparePending: 'Gewählt: {title} · wird in {s} s gesendet', compareMore: '+{count} weitere', compareLess: 'Weniger anzeigen', compareBest: 'bester Wert', compareBestOf: 'Bester von {n}', compareSwitch: 'Optionen vergleichen', compareYourPick: 'Deine Wahl' })
 
 // A real table: full-bleed hairline rows, a quiet tinted column for the recommendation,
 // a dot for the best value per row, small source chips. Narrow views switch columns.
@@ -2067,6 +2150,7 @@ const COMPARE_CSS = `
 .huic[data-card-type="compare"] .huic-compare-head .huic-img{margin-bottom:8px}
 .huic[data-card-type="compare"] .huic-compare-best{font-weight:600;color:var(--ui-text-primary)}
 .huic[data-card-type="compare"] .huic-compare-dot{display:inline-block;width:6px;height:6px;margin:0 7px 0 0;border-radius:50%;background:var(--huic-accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--huic-accent) 18%,transparent);font-size:0;line-height:0;vertical-align:middle;position:relative;top:-1px}
+.huic[data-card-type="compare"] .huic-compare-bestof{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .huic[data-card-type="compare"] .huic-compare-yes{color:var(--ui-green,var(--huic-accent));font-weight:600}
 .huic[data-card-type="compare"] .huic-compare-none{color:var(--ui-text-quaternary,var(--ui-text-tertiary))}
 .huic[data-card-type="compare"] .huic-compare-source{display:inline-flex;align-items:center;gap:3px;max-width:100%;margin:4px 4px 0 0;padding:0 7px;border:1px solid var(--huic-line);border-radius:999px;font-size:11px;line-height:18px;font-weight:400;color:var(--ui-text-tertiary);text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;transition:color .15s,border-color .15s}
@@ -2082,7 +2166,7 @@ const COMPARE_CSS = `
 .huic[data-card-type="compare"] .huic-compare-more:hover{text-decoration:underline;text-underline-offset:2px}
 .huic[data-card-type="compare"] .is-actions .huic-btn{width:100%}
 .huic[data-card-type="compare"] .huic-compare-pick{display:inline-flex;align-items:center;gap:4px}
-.huic[data-card-type="compare"] .huic-compare-pick::before{content:"✓";font-weight:700}
+.huic[data-card-type="compare"] .huic-compare-pick .huic-ico{width:11px;height:11px;stroke-width:2.2}
 .huic[data-card-type="compare"] .huic-compare-switch{display:none;gap:2px;padding:2px;border-radius:var(--huic-r-md);background:var(--ui-bg-tertiary,var(--ui-bg-quaternary))}
 .huic[data-card-type="compare"] .huic-compare-switch button{flex:1 1 0;min-width:0;min-height:30px;padding:4px 8px;border:0;border-radius:var(--huic-r-sm);background:transparent;color:var(--ui-text-secondary);cursor:pointer;font:inherit;font-size:12.5px;line-height:16px;transition:background .15s,color .15s}
 .huic[data-card-type="compare"] .huic-compare-switch button:hover{color:var(--ui-text-primary)}
@@ -2099,6 +2183,9 @@ const COMPARE_CSS = `
  .huic[data-card-type="compare"] .huic-compare-table{grid-template-columns:minmax(84px,32%) minmax(0,1fr)}
  .huic[data-card-type="compare"] .huic-compare-cell[data-visible="false"]{display:none}
  .huic[data-card-type="compare"] .huic-compare-cell[data-visible="true"]{padding-right:var(--huic-pad)}
+ .huic[data-card-type="compare"] .huic-compare-dot{display:none}
+ .huic[data-card-type="compare"] .huic-compare-bestof{position:static;width:auto;height:auto;overflow:visible;clip:auto;display:inline-block;margin:0 0 2px;padding:0 7px;border-radius:999px;background:color-mix(in srgb,var(--huic-accent) 14%,transparent);color:var(--ui-text-primary);font-size:11px;font-weight:600;line-height:18px;letter-spacing:.01em}
+ .huic[data-card-type="compare"] .huic-compare-bestof::after{content:"";display:block}
 }
 `
 function compareValue(value) {
@@ -2124,7 +2211,7 @@ function CompareCard({ card, sessionId, display, lang }) {
   const pickRefs = useRef({})
   const undoRef = useRef(null)
   const returnTo = useRef(null)
-  const delay = typeof undoDelayMs === 'function' ? undoDelayMs() : 4000
+  const delay = typeof undoDelayMs === 'function' ? undoDelayMs(display) : 4000
   const undo = () => {
     if (!timer.current) return
     clearTimeout(timer.current); timer.current = null
@@ -2143,11 +2230,16 @@ function CompareCard({ card, sessionId, display, lang }) {
   }
   const pick = column => {
     if (timer.current) return
+    if (!delay) return void ans.submit({ selected: column.id })
     setPending(column)
     timer.current = setTimeout(() => { timer.current = null; setPending(null); ans.submit({ selected: column.id }) }, delay)
   }
   const picked = ans.answer?.selection?.selected
-  const cell = (column, i, content, extra = '', role = 'cell') => jsx('div', { role, className: cx('huic-compare-cell', column.best && 'huic-compare-recommended', extra), 'data-visible': i === selected ? 'true' : 'false', children: content }, column.id || i)
+  // The tinted wash marks the recommendation until there is a pick, then moves to the pick
+  // (the recommendation keeps only its badge).
+  const chosenId = pending ? pending.id : picked
+  const washed = column => (chosenId !== undefined ? chosenId === column.id : Boolean(column.best))
+  const cell = (column, i, content, extra = '', role = 'cell') => jsx('div', { role, className: cx('huic-compare-cell', washed(column) && 'huic-compare-recommended', extra), 'data-visible': i === selected ? 'true' : 'false', children: content }, column.id || i)
   const row = (label, contents, key, kind) => jsxs('div', { role: 'row', className: cx('huic-compare-row', kind && `is-${kind}`), children: [jsx('div', { role: label ? 'rowheader' : 'cell', className: 'huic-compare-cell huic-compare-label', children: label }), ...contents] }, key)
   const urls = new Set(card.columns.map(c => c.source?.url).concat((card.rows || []).flatMap(r => r.sources || [])).filter(Boolean))
   const head = c => jsxs('div', { className: 'huic-compare-head', children: [
@@ -2155,7 +2247,7 @@ function CompareCard({ card, sessionId, display, lang }) {
     jsx('strong', { className: 'huic-compare-name', children: c.title }),
     c.subtitle ? jsx('div', { className: 'huic-compare-subtitle', children: c.subtitle }) : null,
     jsxs('div', { className: 'huic-compare-tags', children: [
-      picked !== undefined && picked === c.id ? jsx('span', { className: 'huic-badge huic-best huic-compare-pick', children: t(lang, 'compareYourPick') }) : null,
+      picked !== undefined && picked === c.id ? jsxs('span', { className: 'huic-badge huic-best huic-compare-pick', children: [jsx(Icon, { name: 'check' }), t(lang, 'compareYourPick')] }) : null,
       c.best ? jsx('span', { className: 'huic-badge huic-best', children: '★ ' + t(lang, 'recommended') }) : null,
       c.badge ? jsx('span', { className: 'huic-badge', title: c.badge, children: c.badge }) : null,
       c.source ? jsx(CompareSource, { url: c.source.url, label: c.source.label }) : null
@@ -2163,7 +2255,10 @@ function CompareCard({ card, sessionId, display, lang }) {
   ] })
   const rows = [row('', card.columns.map((c, i) => cell(c, i, head(c), '', 'columnheader')), 'header', 'head')]
   for (const [ri, r] of (card.rows || []).entries()) rows.push(row(r.label, card.columns.map((c, i) => cell(c, i, jsxs(Fragment, { children: [
-    r.best === i ? jsx('span', { className: 'huic-compare-dot', 'aria-label': t(lang, 'compareBest'), children: '● ' }) : null,
+    // Wide: a dot beside the best value. Narrow (one column at a time) a dot means nothing,
+    // so it becomes a short "Best of 3"; screen readers always get that text.
+    r.best === i ? jsx('span', { className: 'huic-compare-dot', 'aria-hidden': true }) : null,
+    r.best === i ? jsx('span', { className: 'huic-compare-bestof', children: t(lang, 'compareBestOf', { n: card.columns.length }) }) : null,
     compareValue(r.values[i]),
     r.sources?.[i] ? jsx(CompareSource, { url: r.sources[i] }) : null
   ] }), r.best === i ? 'huic-compare-best' : '')), `row${ri}`))
@@ -2267,6 +2362,7 @@ const FORM_CSS = `
 .huic[data-card-type="form"] .huic-form-status{display:flex;flex-wrap:wrap;column-gap:8px}
 .huic[data-card-type="form"] .huic-form-status>span+span::before{content:"·";margin-right:8px;color:var(--ui-text-quaternary,var(--ui-text-tertiary))}
 .huic[data-card-type="form"] .huic-form-status>.huic-err{color:var(--ui-red)}
+.huic[data-card-type="form"] .huic-form-submit{transition:background .25s var(--huic-ease),color .25s var(--huic-ease),box-shadow .25s var(--huic-ease)}
 @container (min-width:521px){
  .huic[data-card-type="form"] .huic-field{grid-template-columns:20px minmax(0,38%) minmax(0,1fr)}
  .huic[data-card-type="form"] .huic-form-marker{grid-row:auto}
@@ -2553,10 +2649,13 @@ function FormCard({ card, sessionId, display, lang }) {
             ] })
           ]
         }),
+        // Quiet until every required field has a value, then the primary action; clicking
+        // early still works (it marks what is missing).
         children: jsx('button', {
           type: 'submit',
           form: formId,
-          className: 'huic-btn huic-btn-primary',
+          className: cx('huic-btn huic-form-submit', requiredFilled === required.length && 'huic-btn-primary'),
+          'data-ready': requiredFilled === required.length ? 'true' : 'false',
           children: card.submitLabel || t(lang, 'submit')
         })
       })
@@ -2577,13 +2676,17 @@ Object.assign(STRINGS.en, {
   confirmApprovalHint: 'Hermes may still ask for its own approval before running it.',
   confirmCommand: 'Command',
   confirmChangeHint: 'Ctrl/⌘+Enter to send',
-  confirmApproved: 'Approved', confirmDeclined: 'Declined', confirmChanged: 'Change requested'
+  confirmApproved: 'Approved', confirmDeclined: 'Declined', confirmChanged: 'Change requested',
+  confirmChangeExample: 'For example: keep the last 90 days',
+  confirmPending: 'Approved · sending in {s} s', confirmUndo: 'Undo'
 })
 Object.assign(STRINGS.de, {
   confirmApprovalHint: 'Hermes fragt vor dem Ausführen möglicherweise noch nach einer eigenen Freigabe.',
   confirmCommand: 'Befehl',
   confirmChangeHint: 'Mit Strg/⌘+Enter senden',
-  confirmApproved: 'Freigegeben', confirmDeclined: 'Abgelehnt', confirmChanged: 'Änderung angefragt'
+  confirmApproved: 'Freigegeben', confirmDeclined: 'Abgelehnt', confirmChanged: 'Änderung angefragt',
+  confirmChangeExample: 'Zum Beispiel: die letzten 90 Tage behalten',
+  confirmPending: 'Freigegeben · wird in {s} s gesendet', confirmUndo: 'Rückgängig'
 })
 
 // Escalation ladder: low = calm accent, medium = orange outline, high = red fill and a
@@ -2592,11 +2695,11 @@ const CONFIRM_CSS = `
 .huic[data-card-type="confirm"]{--risk:var(--huic-accent)}
 .huic[data-card-type="confirm"]:has(.huic-risk-medium){--risk:var(--ui-orange,var(--ui-yellow,var(--huic-accent)))}
 .huic[data-card-type="confirm"]:has(.huic-risk-high){--risk:var(--ui-red,var(--huic-accent))}
-.huic[data-card-type="confirm"]{--huic-on-risk:var(--huic-on-accent)}
+.huic[data-card-type="confirm"]{--huic-on-risk:var(--huic-on-accent);--risk-hover:color-mix(in srgb,var(--risk) 86%,var(--ui-text-primary))}
 .huic[data-card-type="confirm"] .huic-confirm-receipt>span:first-child{--fill:var(--ui-text-tertiary);--on-fill:var(--huic-on-accent)}
-@supports (color: oklch(from red l c h)){
- .huic[data-card-type="confirm"]{--huic-on-risk:oklch(from var(--risk) clamp(0, (0.62 - l) * 1000, 1) 0 0)}
- .huic[data-card-type="confirm"] .huic-confirm-receipt>span:first-child{--on-fill:oklch(from var(--fill) clamp(0, (0.62 - l) * 1000, 1) 0 0)}
+${HUIC_RELATIVE}{
+ .huic[data-card-type="confirm"]{--huic-on-risk:${huicOnColor('var(--risk)')};--risk-hover:color-mix(in srgb,var(--risk) 86%,${huicOnColor('var(--risk)', true)})}
+ .huic[data-card-type="confirm"] .huic-confirm-receipt>span:first-child{--on-fill:${huicOnColor('var(--fill)')}}
 }
 .huic[data-card-type="confirm"] .huic-confirm-action{margin:0;font-size:13.5px;line-height:20px;color:var(--ui-text-primary)}
 .huic[data-card-type="confirm"] .huic-confirm-reason{margin:-8px 0 0;color:var(--ui-text-tertiary);font-size:12.5px;line-height:18px}
@@ -2614,11 +2717,14 @@ const CONFIRM_CSS = `
 .huic[data-card-type="confirm"] .huic-risk-meter>i:nth-child(3){height:12px}
 .huic[data-card-type="confirm"] .huic-risk-meter>i.on{background:currentColor}
 .huic[data-card-type="confirm"] .huic-risk-low .huic-risk-meter{color:var(--ui-green,var(--huic-accent))}
+.huic[data-card-type="confirm"] .huic-confirm-foot .huic-foot{flex-wrap:wrap-reverse}
 .huic[data-card-type="confirm"] .huic-confirm-foot .huic-foot>.huic-btn-ghost:first-child{margin-right:auto}
+.huic[data-card-type="confirm"] .huic-confirm-decide{display:flex;gap:8px;margin-left:auto;max-width:100%}
+.huic[data-card-type="confirm"] .huic-confirm-decide>.huic-btn{min-width:0}
 .huic[data-card-type="confirm"] .huic-btn-danger-outline{background:transparent;color:var(--risk);box-shadow:inset 0 0 0 1px var(--risk)}
 .huic[data-card-type="confirm"] .huic-btn-danger-outline:hover:not([disabled]){background:color-mix(in srgb,var(--risk) 10%,transparent)}
 .huic[data-card-type="confirm"] .huic-btn-danger{background:var(--risk);color:var(--huic-on-risk)}
-.huic[data-card-type="confirm"] .huic-btn-danger:hover:not([disabled]){background:color-mix(in srgb,var(--risk) 86%,var(--ui-text-primary))}
+.huic[data-card-type="confirm"] .huic-btn-danger:hover:not([disabled]){background:var(--risk-hover)}
 .huic[data-card-type="confirm"] .huic-confirm-approval{display:flex;gap:6px;align-items:flex-start;margin:0;padding:0 var(--huic-pad) 12px;color:var(--ui-text-tertiary);font-size:11.5px;line-height:16px}
 .huic[data-card-type="confirm"] .huic-confirm-approval svg{flex:none;width:13px;height:13px;margin-top:1px}
 .huic[data-card-type="confirm"] .huic-confirm-receipt{align-self:flex-start;display:inline-flex;gap:8px;align-items:center;padding:3px 12px 3px 3px;border-radius:999px;font-size:13px;font-weight:600;line-height:20px;color:var(--ui-text-primary);background:var(--ui-bg-tertiary,var(--ui-bg-quaternary));animation:huic-pop .3s var(--huic-ease) both}
@@ -2627,36 +2733,80 @@ const CONFIRM_CSS = `
 .huic[data-card-type="confirm"] .huic-confirm-receipt.is-yes>span:first-child{--fill:var(--ui-green,var(--huic-accent))}
 .huic[data-card-type="confirm"] .huic-confirm-receipt.is-change{background:color-mix(in srgb,var(--huic-accent) 14%,transparent)}
 .huic[data-card-type="confirm"] .huic-confirm-receipt.is-change>span:first-child{--fill:var(--huic-accent)}
-.huic[data-card-type="confirm"] .huic-confirm-edit{display:flex;flex-direction:column;gap:6px}
+.huic[data-card-type="confirm"] .huic-confirm-receipt .huic-ico{width:12px;height:12px;stroke-width:2}
+.huic[data-card-type="confirm"] .huic-confirm-edit{display:flex;flex-direction:column;gap:8px;padding:12px var(--huic-pad);border-top:1px solid var(--huic-line);background:color-mix(in srgb,var(--huic-accent) 5%,transparent);box-shadow:inset 3px 0 0 var(--huic-accent);animation:huic-fade .2s var(--huic-ease) both}
+.huic[data-card-type="confirm"] .huic-confirm-edit .huic-label{display:flex;align-items:center;gap:6px}
+.huic[data-card-type="confirm"] .huic-confirm-edit .huic-label .huic-ico{color:var(--huic-accent);font-size:14px}
+.huic[data-card-type="confirm"] .huic-confirm-edit textarea{min-height:76px;background:var(--ui-chat-surface-background,var(--ui-base))}
+.huic[data-card-type="confirm"] .huic-confirm-edit-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.huic[data-card-type="confirm"] .huic-confirm-edit-row>.huic-help{margin-right:auto}
+.huic[data-card-type="confirm"] .huic-confirm-pending{position:relative;overflow:hidden;display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px var(--huic-pad);border-top:1px solid var(--huic-line);background:color-mix(in srgb,var(--risk) 8%,transparent);color:var(--ui-text-primary)}
+.huic[data-card-type="confirm"] .huic-confirm-pending>span:first-child{flex:1 1 12em;min-width:0;display:flex;align-items:center;gap:8px;font-variant-numeric:tabular-nums}
+.huic[data-card-type="confirm"] .huic-confirm-pending>span:first-child>.huic-ico{color:var(--risk);font-size:15px}
+.huic[data-card-type="confirm"] .huic-confirm-drain{position:absolute;left:0;bottom:0;height:2px;width:100%;background:var(--risk);transform-origin:left;animation:huic-confirm-drain var(--undo-ms) linear both}
+@keyframes huic-confirm-drain{from{transform:scaleX(1)}to{transform:scaleX(0)}}
 @container (max-width: 440px){
- .huic[data-card-type="confirm"] .huic-confirm-foot .huic-foot>.huic-btn-ghost:first-child:not(:last-child){order:3;flex-basis:100%;margin-right:0}
  .huic[data-card-type="confirm"] .huic-risk-text{flex-basis:100%}
 }
 `
 
+// Undo window for medium and high risk: Yes waits (Settings → Undo time, default 4 s) so a
+// slip can be taken back; low risk, No and Change send at once.
 function ConfirmCard({ card, sessionId, display, lang }) {
   const labelId = useId()
   const changeId = useId()
+  const changeLabelId = useId()
   const ans = useCardAnswer(card, sessionId, lang)
   const [changing, setChanging] = useState(false)
   const [change, setChange] = useState('')
+  const [pending, setPending] = useState(null) // { ms } while an approval can still be undone
   const changeRef = useRef(null)
   const changeButtonRef = useRef(null)
+  const yesRef = useRef(null)
+  const undoRef = useRef(null)
+  const timer = useRef(null)
   const wasChanging = useRef(false)
+  const wasPending = useRef(false)
 
   useEffect(() => {
     if (changing && changeRef.current) changeRef.current.focus()
     else if (wasChanging.current) changeButtonRef.current?.focus()
     wasChanging.current = changing
   }, [changing])
+  // Focus follows the approval: to Undo while it can be taken back, back to Yes after Undo.
+  useEffect(() => {
+    if (pending) undoRef.current?.focus()
+    else if (wasPending.current && !ans.answered) yesRef.current?.focus()
+    wasPending.current = Boolean(pending)
+  }, [pending, ans.answered])
+  useEffect(() => () => clearTimeout(timer.current), [])
 
   const risk = card.risk
+  const guarded = risk?.level === 'medium' || risk?.level === 'high'
+  const approve = () => {
+    if (timer.current) return
+    const ms = guarded ? (typeof undoDelayMs === 'function' ? undoDelayMs(display) : 4000) : 0
+    if (!ms) return void ans.submit({ decision: 'yes' })
+    setPending({ ms })
+    timer.current = setTimeout(() => { timer.current = null; setPending(null); ans.submit({ decision: 'yes' }) }, ms)
+  }
+  const undo = () => {
+    if (!timer.current) return
+    clearTimeout(timer.current); timer.current = null
+    setPending(null)
+  }
+  // Escape only takes back this card's approval, and only from inside the card.
+  const onKeyDown = e => {
+    if (pending && e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); undo() }
+  }
+  const sendChange = () => { if (change.trim()) ans.submit({ decision: 'change', change }) }
+
   const decision = ans.answer?.data?.decision
-  const receipt = { yes: ['✓', 'confirmApproved'], no: ['✗', 'confirmDeclined'], change: ['✎', 'confirmChanged'] }[decision]
+  const receipt = { yes: ['check', 'confirmApproved'], no: ['cross', 'confirmDeclined'], change: ['pencil', 'confirmChanged'] }[decision]
   const body = [
     jsx('style', { children: CONFIRM_CSS }, 'style'),
     receipt ? jsxs('div', { className: cx('huic-confirm-receipt', `is-${decision}`), children: [
-      jsx('span', { 'aria-hidden': true, children: receipt[0] }),
+      jsx('span', { 'aria-hidden': true, children: jsx(Icon, { name: receipt[0] }) }),
       jsx('span', { children: t(lang, receipt[1]) })
     ] }, 'receipt') : null,
     jsx('p', { className: 'huic-confirm-action', children: card.action }, 'action'),
@@ -2681,82 +2831,81 @@ function ConfirmCard({ card, sessionId, display, lang }) {
           },
           'risk'
         )
-      : null,
-    changing && ans.showActions
-      ? jsxs('div', { className: 'huic-confirm-edit', children: [
-          jsx('textarea', {
-            ref: changeRef,
-            className: 'huic-input',
-            value: change,
-            maxLength: 2000,
-            placeholder: t(lang, 'changePlaceholder'),
-            'aria-label': t(lang, 'changePlaceholder'),
-            'aria-describedby': changeId,
-            onChange: e => setChange(limitText(e.target.value, 1000)),
-            onKeyDown: e => {
-              if (e.nativeEvent.isComposing) return
-              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && change.trim()) {
-                e.preventDefault()
-                ans.submit({ decision: 'change', change })
-              } else if (e.key === 'Escape') {
-                e.preventDefault()
-                setChanging(false)
-              }
-            }
-          }),
-          jsx('span', { id: changeId, className: 'huic-help', children: t(lang, 'confirmChangeHint') })
-        ] }, 'change')
       : null
   ]
 
-  const buttons = changing
-    ? [
-        jsx(Btn, { variant: 'ghost', onClick: () => setChanging(false), children: t(lang, 'cancel') }, 'cancel'),
-        jsx(
-          Btn,
-          {
-            variant: 'primary',
-            disabled: !change.trim(),
-            onClick: () => ans.submit({ decision: 'change', change }),
-            children: t(lang, 'sendChange')
-          },
-          'send'
-        )
-      ]
-    : [
-        card.allowChange !== false
-          ? jsx(Btn, { ref: changeButtonRef, variant: 'ghost', onClick: () => setChanging(true), children: t(lang, 'change') }, 'change')
-          : null,
-        jsx(Btn, { variant: 'secondary', onClick: () => ans.submit({ decision: 'no' }), children: card.cancelLabel || t(lang, 'no') }, 'no'),
-        jsx(
-          Btn,
-          {
-            variant: risk?.level === 'high' ? 'danger' : risk?.level === 'medium' ? 'danger-outline' : 'primary',
-            onClick: () => ans.submit({ decision: 'yes' }),
-            children: card.confirmLabel || t(lang, 'yes')
-          },
-          'yes'
-        )
-      ]
+  // The change request takes the footer's place: a labelled box right where Change… was.
+  const editor = jsxs('div', { className: 'huic-confirm-edit', children: [
+    jsxs('label', { className: 'huic-label', id: changeLabelId, htmlFor: changeId + '-area', children: [jsx(Icon, { name: 'pencil' }), t(lang, 'changePlaceholder')] }),
+    jsx('textarea', {
+      id: changeId + '-area',
+      ref: changeRef,
+      className: 'huic-input',
+      value: change,
+      maxLength: 2000,
+      placeholder: t(lang, 'confirmChangeExample'),
+      'aria-describedby': changeId,
+      onChange: e => setChange(limitText(e.target.value, 1000)),
+      onKeyDown: e => {
+        if (e.nativeEvent.isComposing) return
+        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && change.trim()) {
+          e.preventDefault()
+          sendChange()
+        } else if (e.key === 'Escape') {
+          e.preventDefault()
+          setChanging(false)
+        }
+      }
+    }),
+    jsxs('div', { className: 'huic-confirm-edit-row', children: [
+      jsx('span', { id: changeId, className: 'huic-help', children: t(lang, 'confirmChangeHint') }),
+      jsx(Btn, { variant: 'ghost', onClick: () => setChanging(false), children: t(lang, 'cancel') }),
+      jsx(Btn, { variant: 'primary', disabled: !change.trim(), onClick: sendChange, children: t(lang, 'sendChange') })
+    ] })
+  ] })
 
-  return jsx(Shell, {
+  const pendingBar = pending ? jsxs('div', { className: 'huic-confirm-pending', role: 'status', 'aria-live': 'polite', style: { '--undo-ms': `${pending.ms}ms` }, children: [
+    jsxs('span', { children: [jsx(Icon, { name: 'check' }), t(lang, 'confirmPending', { s: Math.round(pending.ms / 1000) })] }),
+    jsx(Btn, { ref: undoRef, variant: 'secondary', onClick: undo, children: jsxs(Fragment, { children: [jsx(Icon, { name: 'undo' }), t(lang, 'confirmUndo')] }) }),
+    jsx('span', { className: 'huic-confirm-drain', 'aria-hidden': true })
+  ] }) : null
+
+  const buttons = [
+    card.allowChange !== false
+      ? jsx(Btn, { ref: changeButtonRef, variant: 'ghost', onClick: () => setChanging(true), children: t(lang, 'change') }, 'change')
+      : null,
+    // No and Yes stay together; when the row is too narrow, Change… moves below them.
+    jsxs('span', { className: 'huic-confirm-decide', children: [
+      jsx(Btn, { variant: 'secondary', onClick: () => ans.submit({ decision: 'no' }), children: card.cancelLabel || t(lang, 'no') }),
+      jsx(Btn, {
+        ref: yesRef,
+        variant: risk?.level === 'high' ? 'danger' : risk?.level === 'medium' ? 'danger-outline' : 'primary',
+        onClick: approve,
+        children: card.confirmLabel || t(lang, 'yes')
+      })
+    ] }, 'decide')
+  ]
+
+  const approval = card.command ? jsxs('p', { className: 'huic-confirm-approval', children: [
+    jsxs('svg', { viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: 1.4, 'aria-hidden': true, children: [
+      jsx('path', { d: 'M8 1.75 3 3.5v4c0 3.1 2.1 5.4 5 6.75 2.9-1.35 5-3.65 5-6.75v-4z', strokeLinejoin: 'round' }),
+      jsx('path', { d: 'm5.75 8 1.6 1.6 2.9-3.2', strokeLinecap: 'round', strokeLinejoin: 'round' })
+    ] }),
+    jsx('span', { children: t(lang, 'confirmApprovalHint') })
+  ] }) : null
+
+  return jsx('div', { onKeyDown, children: jsx(Shell, {
     card,
     display,
     labelId,
     title: card.title,
     children: body,
     footer: ans.showActions ? jsxs('div', { className: 'huic-confirm-foot', children: [
-      jsx(Footer, { children: buttons }),
-      card.command ? jsxs('p', { className: 'huic-confirm-approval', children: [
-        jsxs('svg', { viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: 1.4, 'aria-hidden': true, children: [
-          jsx('path', { d: 'M8 1.75 3 3.5v4c0 3.1 2.1 5.4 5 6.75 2.9-1.35 5-3.65 5-6.75v-4z', strokeLinejoin: 'round' }),
-          jsx('path', { d: 'm5.75 8 1.6 1.6 2.9-3.2', strokeLinecap: 'round', strokeLinejoin: 'round' })
-        ] }),
-        jsx('span', { children: t(lang, 'confirmApprovalHint') })
-      ] }) : null
+      pending ? pendingBar : changing ? editor : jsx(Footer, { children: buttons }),
+      approval
     ] }) : null,
     after: ans.status
-  })
+  }) })
 }
 
 // ── 70-rating.js ──
@@ -2767,23 +2916,24 @@ Object.assign(STRINGS.en, { keyRate: '{keys} rate · Enter send', rateEcho: '{n}
 Object.assign(STRINGS.de, { keyRate: '{keys} bewerten · Enter senden', rateEcho: '{n} von {max}' })
 
 const RATING_CSS = `
-.huic[data-card-type="rating"] .huic-stars{display:flex;flex-wrap:wrap;width:fit-content;max-width:100%}
-.huic[data-card-type="rating"] .huic-star{appearance:none;display:grid;place-items:center;width:28px;height:28px;padding:0;border:0;border-radius:6px;background:none;color:var(--ui-text-quaternary,var(--ui-text-tertiary));cursor:pointer;transition:color .1s,transform .1s}
-.huic[data-card-type="rating"] .huic-star svg{display:block;width:26px;height:26px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linejoin:round}
-.huic[data-card-type="rating"] .huic-star-on{color:var(--huic-accent)}
-.huic[data-card-type="rating"] .huic-star-on svg{fill:currentColor}
-.huic[data-card-type="rating"] .huic-star-pre svg{fill-opacity:.4}
-.huic[data-card-type="rating"] .huic-star:hover:not([disabled]){transform:scale(1.08)}
+.huic[data-card-type="rating"] .huic-stars{display:flex;flex-wrap:wrap;gap:2px;width:fit-content;max-width:100%;margin-left:-3px}
+.huic[data-card-type="rating"] .huic-star{appearance:none;display:grid;place-items:center;width:34px;height:34px;padding:0;border:0;border-radius:var(--huic-r-md);background:none;color:var(--huic-accent);cursor:pointer;transition:transform .12s var(--huic-ease)}
+.huic[data-card-type="rating"] .huic-star svg{display:block;width:28px;height:28px;fill:color-mix(in srgb,var(--huic-accent) 7%,transparent);stroke:color-mix(in srgb,var(--huic-accent) 55%,var(--ui-text-tertiary));stroke-width:1.4;stroke-linejoin:round;transition:fill .12s,stroke .12s}
+.huic[data-card-type="rating"] .huic-star-on svg{fill:var(--huic-accent);stroke:color-mix(in srgb,var(--huic-accent) 70%,var(--ui-text-primary))}
+.huic[data-card-type="rating"] .huic-star-pre svg{fill:color-mix(in srgb,var(--huic-accent) 40%,transparent);stroke:var(--huic-accent)}
+.huic[data-card-type="rating"] .huic-star:hover:not([disabled]){transform:scale(1.1)}
+.huic[data-card-type="rating"] .huic-star:focus-visible{outline-offset:0}
 .huic[data-card-type="rating"] .huic-star[disabled]{cursor:default}
+.huic[data-card-type="rating"] .huic-star[disabled]:not(.huic-star-on) svg{fill:transparent;stroke:var(--huic-line-strong)}
 .huic[data-card-type="rating"] .huic-segs{display:flex;width:100%;border:1px solid var(--ui-stroke-secondary);border-radius:9px;overflow:hidden}
 .huic[data-card-type="rating"] .huic-segbtn{appearance:none;flex:1 1 0;min-width:0;padding:7px 0;border:0;border-right:1px solid var(--ui-stroke-tertiary);background:transparent;color:inherit;font:inherit;font-variant-numeric:tabular-nums;cursor:pointer}
 .huic[data-card-type="rating"] .huic-segbtn:last-child{border-right:0}
-.huic[data-card-type="rating"] .huic-segbtn:hover:not([disabled]){background:var(--ui-control-hover-background)}
+.huic[data-card-type="rating"] .huic-segbtn:hover:not([disabled]):not([aria-checked="true"]){background:var(--ui-control-hover-background)}
 .huic[data-card-type="rating"] .huic-segbtn:focus-visible{outline-offset:-2px}
 .huic[data-card-type="rating"] .huic-segbtn[aria-checked="true"]{background:var(--huic-accent);color:var(--huic-on-accent,var(--ui-chat-surface-background,var(--ui-base,Canvas)));font-weight:600}
 .huic[data-card-type="rating"] .huic-segbtn[disabled]{cursor:default}
 .huic[data-card-type="rating"] .huic-rate-meta{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 12px;min-height:1.45em}
-.huic[data-card-type="rating"] .huic-rate-echo{font-weight:600}
+.huic[data-card-type="rating"] .huic-rate-echo{font-weight:600;font-variant-numeric:tabular-nums}
 @media (prefers-reduced-motion: reduce){.huic[data-card-type="rating"] .huic-star:hover:not([disabled]){transform:none}}
 `
 
@@ -3076,13 +3226,15 @@ function scheduleDays(card, lang) {
 
 const SCHEDULE_CSS = `
 .huic[data-card-type="schedule"] .huic-day{display:flex;flex-direction:column;gap:6px}
-.huic[data-card-type="schedule"] .huic-day-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;margin:6px 0 0;font-size:13px}
-.huic[data-card-type="schedule"] .huic-day-rel{font-weight:600}
-.huic[data-card-type="schedule"] .huic-day-date{color:var(--ui-text-tertiary);font-size:12px}
+.huic[data-card-type="schedule"] .huic-day+.huic-day{margin-top:4px}
+.huic[data-card-type="schedule"] .huic-day-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;margin:4px 0 0;font-size:11px;line-height:16px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ui-text-tertiary)}
+.huic[data-card-type="schedule"] .huic-day-head::after{content:"";flex:1 1 24px;align-self:center;height:1px;background:var(--huic-line)}
+.huic[data-card-type="schedule"] .huic-day-rel{color:var(--ui-text-primary)}
+.huic[data-card-type="schedule"] .huic-day-date{font-weight:500}
 .huic[data-card-type="schedule"] .huic-chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:8px}
 .huic[data-card-type="schedule"] .huic-chip{display:flex;flex-direction:column;gap:2px;min-width:0;padding:8px 10px;text-align:left;font:inherit;color:inherit;cursor:pointer;border-radius:10px;border:1px solid var(--ui-stroke-tertiary);background:transparent;transition:background .12s,border-color .12s,box-shadow .12s}
 .huic[data-card-type="schedule"] .huic-chip:hover:not([disabled]){background:var(--ui-control-hover-background);border-color:var(--ui-stroke-secondary)}
-.huic[data-card-type="schedule"] .huic-chip[aria-checked="true"]{border-color:var(--huic-accent);background:color-mix(in srgb,var(--huic-accent) 12%,transparent);box-shadow:0 0 0 1px var(--huic-accent)}
+.huic[data-card-type="schedule"] .huic-chip[aria-checked="true"]{border-color:var(--huic-accent);background:color-mix(in srgb,var(--huic-accent) 10%,transparent);box-shadow:0 0 0 1px var(--huic-accent)}
 .huic[data-card-type="schedule"] .huic-chip[disabled]{cursor:default}
 .huic[data-card-type="schedule"] .huic-chip[disabled]:not([aria-checked="true"]){opacity:.45}
 .huic[data-card-type="schedule"] .huic-chip-time{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -3184,7 +3336,7 @@ function ScheduleCard({ card, sessionId, display, lang }) {
     }),
     footer: ans.showActions ? jsx(Footer, {
       hint: available.length ? t(lang, card.multiple ? 'keyToggle' : 'keyChoose', { keys: keyRange(available.length) }) : undefined,
-      children: jsxs(Fragment, { children: [
+      children: jsxs('span', { className: 'huic-foot-group', children: [
         card.noneLabel ? jsx(Btn, { variant: 'ghost', onClick: () => ans.submit({ none: true }), children: card.noneLabel }) : null,
         jsx(Btn, { variant: 'primary', disabled: !selected.length, onClick: send, children: t(lang, 'send') })
       ] })
@@ -3196,11 +3348,13 @@ function ScheduleCard({ card, sessionId, display, lang }) {
 // ── 73-steps.js ──
 Object.assign(STRINGS.en, {
   stepsMap: 'Guide steps', stepsWhatHappened: 'What happened?', stepsOptional: 'Optional',
-  stepsNotePlaceholder: 'Tell Hermes where you got stuck'
+  stepsNotePlaceholder: 'Tell Hermes where you got stuck',
+  stepsSentDone: 'Sent: {label}', stepsSentStuck: 'Sent: stuck at step {n}'
 })
 Object.assign(STRINGS.de, {
   stepsMap: 'Schritte der Anleitung', stepsWhatHappened: 'Was ist passiert?', stepsOptional: 'Optional',
-  stepsNotePlaceholder: 'Sag Hermes, wo du festhängst'
+  stepsNotePlaceholder: 'Sag Hermes, wo du festhängst',
+  stepsSentDone: 'Gesendet: {label}', stepsSentStuck: 'Gesendet: hängt bei Schritt {n}'
 })
 
 // A calm guide: one connected track (the progress bar is its line), the current step as
@@ -3221,20 +3375,24 @@ const STEPS_CSS = `
 .huic[data-card-type="steps"] .huic-steps-title{margin:-6px 0 0;font-size:15px;line-height:22px;font-weight:600;letter-spacing:-.01em;outline:none}
 .huic[data-card-type="steps"] .huic-steps-body{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ui-text-secondary);line-height:1.6}
 .huic[data-card-type="steps"] .huic-steps-left{margin-right:auto;min-width:0}
-.huic[data-card-type="steps"] .huic-steps-left button::before{content:"?";display:grid;place-items:center;width:15px;height:15px;border-radius:50%;border:1.25px solid currentColor;font-size:10px;font-weight:700;line-height:1}
+.huic[data-card-type="steps"] .huic-steps-left .huic-ico{font-size:16px;stroke-width:1.4}
 .huic[data-card-type="steps"] .huic-steps-nav{display:flex;gap:8px;align-items:center;margin-left:auto}
 .huic[data-card-type="steps"] .huic-steps-next::after{content:"→";transition:transform .15s var(--huic-ease)}
 .huic[data-card-type="steps"] .huic-steps-next:hover::after{transform:translateX(2px)}
 .huic[data-card-type="steps"] .huic-steps-report{padding:12px var(--huic-pad);border-top:1px solid var(--huic-line);background:color-mix(in srgb,var(--ui-orange,var(--huic-accent)) 5%,transparent);box-shadow:inset 3px 0 0 var(--ui-orange,var(--huic-accent));display:flex;flex-direction:column;gap:8px;animation:huic-fade .2s var(--huic-ease) both}
 .huic[data-card-type="steps"] .huic-steps-report-actions{display:flex;justify-content:flex-end;gap:8px}
+.huic[data-card-type="steps"] .huic-steps-sent{display:flex;align-items:center;gap:8px;min-width:0;margin-right:auto;padding:3px 12px 3px 3px;border-radius:999px;background:color-mix(in srgb,var(--huic-accent) 12%,transparent);font-size:12.5px;line-height:18px;animation:huic-pop .3s var(--huic-ease) both}
+.huic[data-card-type="steps"] .huic-steps-sent>i{flex:none;display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--huic-accent);color:var(--huic-on-accent);font-size:12px}
+.huic[data-card-type="steps"] .huic-steps-sent>i .huic-ico{stroke-width:2.2}
+.huic[data-card-type="steps"] .huic-steps-sent b{font-weight:600}
+.huic[data-card-type="steps"] .huic-steps-sent q{color:var(--ui-text-secondary);quotes:"“" "”";overflow-wrap:anywhere}
+.huic[data-card-type="steps"] .huic-steps-sent.is-stuck{background:color-mix(in srgb,var(--ui-orange,var(--huic-accent)) 12%,transparent);border-radius:var(--huic-r-md);padding:5px 12px 5px 5px;align-items:flex-start}
+.huic[data-card-type="steps"] .huic-steps-sent.is-stuck>i{background:var(--ui-orange,var(--huic-accent));color:${huicOnColor('var(--ui-orange, var(--huic-accent))')}}
+.huic[data-card-type="steps"] .huic-steps-sent-text{display:flex;flex-direction:column;min-width:0;padding-top:2px}
 @container (max-width: 440px){
  .huic[data-card-type="steps"] .huic-steps-track{--dot:22px}
  .huic-steps-frame[data-many] .huic-steps-map{gap:2px}
- .huic[data-card-type="steps"] .huic-foot{flex-wrap:nowrap}
- .huic[data-card-type="steps"] .huic-steps-left{flex:none;margin-right:0}
  .huic[data-card-type="steps"] .huic-steps-left .huic-btn{padding-inline:8px}
- .huic[data-card-type="steps"] .huic-steps-nav{flex:1;min-width:0}
- .huic[data-card-type="steps"] .huic-steps-nav>.huic-btn{flex:1}
 }
 @container (max-width: 340px){.huic-steps-frame[data-many] .huic-steps-track{--dot:18px}.huic-steps-frame[data-many] .huic-steps-dot{font-size:9.5px}}
 `
@@ -3280,6 +3438,20 @@ function StepsCard({ card, sessionId, display, lang }) {
   const step = card.steps[index]
   const progressText = t(lang, 'stepOf', { n: index + 1, total: card.steps.length })
   const canNavigate = ans.showActions || ans.answered
+  // Answered: what was sent stays in the footer as the receipt (Done, or Stuck with the note).
+  const sentAs = ans.answer?.selection
+  const sentReceipt = !ans.answered || !sentAs ? null : sentAs.stuck
+    ? jsxs('span', { className: 'huic-steps-sent is-stuck', children: [
+        jsx('i', { 'aria-hidden': true, children: jsx(Icon, { name: 'question' }) }),
+        jsxs('span', { className: 'huic-steps-sent-text', children: [
+          jsx('b', { children: t(lang, 'stepsSentStuck', { n: sentAs.stuck }) }),
+          sentAs.note ? jsx('q', { children: sentAs.note }) : null
+        ] })
+      ] })
+    : jsxs('span', { className: 'huic-steps-sent', children: [
+        jsx('i', { 'aria-hidden': true, children: jsx(Icon, { name: 'check' }) }),
+        jsx('b', { children: t(lang, 'stepsSentDone', { label: card.finishLabel || t(lang, 'finish') }) })
+      ] })
   return jsx('div', { onKeyDown: navigate, 'data-many': card.steps.length > 8 ? '' : undefined, className: 'huic-steps-frame', children: jsx(Shell, {
     card, display, labelId, title: card.title,
     children: [
@@ -3326,7 +3498,8 @@ function StepsCard({ card, sessionId, display, lang }) {
           ] })
         ] })
       : jsx(Footer, { children: jsxs(Fragment, { children: [
-          ans.showActions ? jsx('span', { className: 'huic-steps-left', children: jsx(Btn, { ref: stuckRef, label: t(lang, 'stuck'), variant: 'ghost', onClick: () => setReporting(true), children: t(lang, 'stuck') }) }) : null,
+          sentReceipt,
+          ans.showActions ? jsx('span', { className: 'huic-steps-left', children: jsx(Btn, { ref: stuckRef, label: t(lang, 'stuck'), variant: 'ghost', onClick: () => setReporting(true), children: jsxs(Fragment, { children: [jsx(Icon, { name: 'help' }), t(lang, 'stuck')] }) }) }) : null,
           jsxs('div', { className: 'huic-steps-nav', children: [
             index > 0 ? jsx(Btn, { onClick: () => move(index - 1), children: t(lang, 'back') }) : null,
             index === card.steps.length - 1
@@ -3357,29 +3530,33 @@ Object.assign(STRINGS.de, {
 
 const QUIZ_CSS = `
 .huic[data-card-type="quiz"] h4[tabindex="-1"]:focus{outline:0}
-.huic[data-card-type="quiz"] .huic-qsegs{display:flex;gap:4px;margin:2px 0 4px}
-.huic[data-card-type="quiz"] .huic-qseg{flex:1 1 0;height:6px;border-radius:999px;background:var(--ui-bg-quaternary);transition:background .15s}
-.huic[data-card-type="quiz"] .huic-qseg-cur{background:color-mix(in srgb,var(--huic-accent) 55%,transparent);box-shadow:0 0 0 1.5px var(--ui-chat-surface-background,var(--ui-base,Canvas)),0 0 0 3px var(--ui-stroke-secondary)}
+.huic[data-card-type="quiz"] .huic-qsegs{display:flex;gap:4px;margin:2px 0 6px}
+.huic[data-card-type="quiz"] .huic-qseg{flex:1 1 0;height:4px;border-radius:999px;background:var(--huic-line-strong);transition:background .2s var(--huic-ease)}
+.huic[data-card-type="quiz"] .huic-qseg-cur{background:var(--huic-accent)}
 .huic[data-card-type="quiz"] .huic-qseg-ok{background:var(--ui-green,var(--huic-accent))}
 .huic[data-card-type="quiz"] .huic-qseg-bad{background:var(--ui-red,var(--ui-text-tertiary))}
 .huic[data-card-type="quiz"] .huic-opt-correct{border-color:var(--ui-green,var(--huic-accent));background:color-mix(in srgb,var(--ui-green,var(--huic-accent)) 14%,transparent)}
 .huic[data-card-type="quiz"] .huic-opt-wrong{border-color:var(--ui-red,var(--ui-text-tertiary));background:color-mix(in srgb,var(--ui-red,var(--ui-text-tertiary)) 12%,transparent)}
-.huic[data-card-type="quiz"] .huic-opt-correct .huic-num-state{background:var(--ui-green,var(--huic-accent));border-color:var(--ui-green,var(--huic-accent));color:var(--ui-chat-surface-background,var(--ui-base,Canvas))}
-.huic[data-card-type="quiz"] .huic-opt-wrong .huic-num-state{background:var(--ui-red,var(--ui-text-tertiary));border-color:var(--ui-red,var(--ui-text-tertiary));color:var(--ui-chat-surface-background,var(--ui-base,Canvas))}
+.huic[data-card-type="quiz"] .huic-num-state .huic-ico{width:11px;height:11px;stroke-width:2.2}
+.huic[data-card-type="quiz"] .huic-opt-correct .huic-num-state{background:var(--ui-green,var(--huic-accent));border-color:var(--ui-green,var(--huic-accent));color:${huicOnColor('var(--ui-green, var(--huic-accent))')}}
+.huic[data-card-type="quiz"] .huic-opt-wrong .huic-num-state{background:var(--ui-red,var(--ui-text-tertiary));border-color:var(--ui-red,var(--ui-text-tertiary));color:${huicOnColor('var(--ui-red, var(--ui-text-tertiary))')}}
 .huic[data-card-type="quiz"] .huic-quiz-done .huic-opt{cursor:default}
 .huic[data-card-type="quiz"] .huic-quiz-done .huic-opt:not(.huic-opt-correct):not(.huic-opt-wrong){opacity:.6}
 .huic[data-card-type="quiz"] .huic-quiz-done .huic-opt:not(.huic-opt-correct):not(.huic-opt-wrong):hover{background:transparent}
 .huic[data-card-type="quiz"] .huic-callout{display:flex;flex-direction:column;gap:2px;padding:9px 12px;border-radius:9px;background:var(--ui-bg-quaternary);border-left:3px solid var(--ui-text-tertiary)}
 .huic[data-card-type="quiz"] .huic-callout-ok{border-left-color:var(--ui-green,var(--huic-accent))}
 .huic[data-card-type="quiz"] .huic-callout-bad{border-left-color:var(--ui-red,var(--ui-text-tertiary))}
-.huic[data-card-type="quiz"] .huic-callout-ok b{color:var(--ui-green,var(--huic-accent))}
-.huic[data-card-type="quiz"] .huic-callout-bad b{color:var(--ui-red,var(--ui-text-primary))}
+.huic[data-card-type="quiz"] .huic-callout b{display:flex;align-items:center;gap:6px}
+.huic[data-card-type="quiz"] .huic-callout b .huic-ico{stroke-width:2}
+.huic[data-card-type="quiz"] .huic-callout-ok b .huic-ico{color:var(--ui-green,var(--huic-accent))}
+.huic[data-card-type="quiz"] .huic-callout-bad b .huic-ico{color:var(--ui-red,var(--ui-text-primary))}
 .huic[data-card-type="quiz"] .huic-callout p{margin:0;color:var(--ui-text-secondary)}
 .huic[data-card-type="quiz"] .huic-score{display:flex;align-items:baseline;gap:8px;margin:2px 0 0}
-.huic[data-card-type="quiz"] .huic-score-big{font-size:30px;font-weight:700;line-height:1.1;color:var(--huic-accent);font-variant-numeric:tabular-nums}
+.huic[data-card-type="quiz"] .huic-score-big{font-size:30px;font-weight:700;line-height:1.1;color:var(--huic-accent-ink);font-variant-numeric:tabular-nums}
 .huic[data-card-type="quiz"] .huic-review{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
 .huic[data-card-type="quiz"] .huic-review li{display:flex;gap:8px;align-items:flex-start;padding:7px 10px;border-radius:9px;border:1px solid var(--ui-stroke-tertiary)}
-.huic[data-card-type="quiz"] .huic-review-mark{flex:none;width:18px;text-align:center;font-weight:700}
+.huic[data-card-type="quiz"] .huic-review-mark{flex:none;display:grid;place-items:center;width:18px;height:20px;font-size:14px}
+.huic[data-card-type="quiz"] .huic-review-mark .huic-ico{stroke-width:2}
 .huic[data-card-type="quiz"] .huic-review-ok .huic-review-mark{color:var(--ui-green,var(--huic-accent))}
 .huic[data-card-type="quiz"] .huic-review-bad .huic-review-mark{color:var(--ui-red,var(--ui-text-primary))}
 `
@@ -3471,7 +3648,7 @@ function QuizCard({ card, sessionId, display, lang }) {
         children: card.questions.map((item, i) => jsxs('li', {
           className: isRight(i) ? 'huic-review-ok' : 'huic-review-bad',
           children: [
-            jsx('span', { className: 'huic-review-mark', 'aria-hidden': true, children: isRight(i) ? '✓' : '✗' }),
+            jsx('span', { className: 'huic-review-mark', 'aria-hidden': true, children: jsx(Icon, { name: isRight(i) ? 'check' : 'cross' }) }),
             jsxs('span', {
               className: 'huic-opt-text',
               children: [
@@ -3503,7 +3680,7 @@ function QuizCard({ card, sessionId, display, lang }) {
       done ? jsxs('div', {
         role: 'status', className: cx('huic-callout', isRight(index) ? 'huic-callout-ok' : 'huic-callout-bad'),
         children: [
-          jsx('b', { children: (isRight(index) ? '✓ ' : '✗ ') + t(lang, isRight(index) ? 'correct' : 'wrong') }),
+          jsxs('b', { children: [jsx(Icon, { name: isRight(index) ? 'check' : 'cross' }), t(lang, isRight(index) ? 'correct' : 'wrong')] }),
           q.explanation ? jsx('p', { children: q.explanation }) : null
         ]
       }) : null
@@ -3521,7 +3698,7 @@ function QuizCard({ card, sessionId, display, lang }) {
     }),
     footer: ans.showActions ? jsx(Footer, {
       hint: t(lang, hintKey, { keys: keyRange(q ? q.options.length : 0) }),
-      children: jsxs(Fragment, { children: [
+      children: jsxs('span', { className: 'huic-foot-group', children: [
         index > 0 ? jsx(Btn, { onClick: () => update({ index: index - 1 }), children: t(lang, 'back') }) : null,
         inResult
           ? jsx(Btn, { variant: 'primary', disabled: !allChecked, onClick: sendResult, children: t(lang, 'sendScore') })
@@ -3632,6 +3809,9 @@ Object.assign(STRINGS.en, {
   planHighRisk: 'includes a high-risk step',
   planNothing: 'Switch on at least one step',
   planStepsLabel: 'Steps of the plan',
+  planRequired: 'Required, always runs',
+  planPending: 'Running {n} of {total} steps in {s} s',
+  planUndo: 'Undo',
   rPlan: 'Run the plan: {n} of {total} steps',
   rPlanSkipped: 'skipped: {x}',
   rPlanReordered: 'reordered'
@@ -3655,6 +3835,9 @@ Object.assign(STRINGS.de, {
   planHighRisk: 'mit riskantem Schritt',
   planNothing: 'Mindestens einen Schritt einschalten',
   planStepsLabel: 'Schritte des Plans',
+  planRequired: 'Pflichtschritt, läuft immer',
+  planPending: '{n} von {total} Schritten starten in {s} s',
+  planUndo: 'Rückgängig',
   rPlan: 'Plan ausführen: {n} von {total} Schritten',
   rPlanSkipped: 'übersprungen: {x}',
   rPlanReordered: 'neu geordnet'
@@ -3664,7 +3847,10 @@ const PLAN_NOTE_MAX = 200
 const PLAN_RISK = { low: ['●', 'riskLow'], medium: ['▲', 'riskMedium'], high: ['⬣', 'riskHigh'] }
 
 const PLAN_CSS = `
-.huic[data-card-type="plan"],.huic[data-card-type="review"]{background:var(--ui-chat-surface-background,var(--ui-base))}
+.huic[data-card-type="plan"],.huic[data-card-type="review"]{background:var(--ui-chat-surface-background,var(--ui-base));--prc-on-red:#fff;--prc-on-green:#fff}
+@supports (color: color(from red xyz-d65 x y z)){.huic[data-card-type="plan"],.huic[data-card-type="review"]{
+  --prc-on-red:color(from var(--ui-red) xyz-d65 calc(.9505 * clamp(0, (.1791 - y) * 1000, 1)) clamp(0, (.1791 - y) * 1000, 1) calc(1.089 * clamp(0, (.1791 - y) * 1000, 1)));
+  --prc-on-green:color(from var(--ui-green) xyz-d65 calc(.9505 * clamp(0, (.1791 - y) * 1000, 1)) clamp(0, (.1791 - y) * 1000, 1) calc(1.089 * clamp(0, (.1791 - y) * 1000, 1)))}}
 .huic[data-card-type="plan"]>.huic-foot,.huic[data-card-type="review"]>.huic-foot{background:inherit;border-radius:0 0 11px 11px}
 .huic[data-card-type="plan"].huic-pinned>.huic-foot,.huic[data-card-type="review"].huic-pinned>.huic-foot{position:sticky;bottom:0;z-index:2;box-shadow:0 -10px 14px -14px var(--ui-text-primary)}
 .huic[data-card-type="plan"] .huic-plan-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
@@ -3690,7 +3876,11 @@ const PLAN_CSS = `
 @keyframes huic-plan-moved-a{from{background:color-mix(in srgb,var(--huic-accent) 16%,transparent)}to{background:transparent}}
 @keyframes huic-plan-moved-b{from{background:color-mix(in srgb,var(--huic-accent) 16%,transparent)}to{background:transparent}}
 .huic[data-card-type="plan"] .huic-plan-main{display:flex;flex-direction:column;gap:6px;min-width:0;padding-top:3px;border-radius:6px}
-.huic[data-card-type="plan"] .huic-plan-titlerow{display:flex;flex-wrap:wrap;align-items:baseline;gap:3px 8px}
+.huic[data-card-type="plan"] .huic-plan-titlerow{display:flex;align-items:flex-start;gap:10px;min-width:0}
+.huic[data-card-type="plan"] .huic-plan-titles{flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:baseline;gap:3px 8px}
+.huic[data-card-type="plan"] .huic-plan-titlerow>input.huic-plan-switch{margin-top:1px}
+.huic[data-card-type="plan"] .huic-plan-lock{flex:none;display:grid;place-items:center;width:32px;height:20px;color:var(--ui-text-quaternary,var(--ui-text-tertiary))}
+.huic[data-card-type="plan"] .huic-plan-lock svg{width:13px;height:13px}
 .huic[data-card-type="plan"] .huic-plan-title{font-weight:600}
 .huic[data-card-type="plan"] .huic-plan-detail{margin:0;color:var(--ui-text-secondary);font-size:12.5px;white-space:pre-wrap}
 .huic[data-card-type="plan"] .huic-plan-chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;line-height:16px;padding:0 7px;border-radius:999px;border:1px solid var(--ui-stroke-tertiary);color:var(--ui-text-tertiary);white-space:nowrap}
@@ -3703,11 +3893,24 @@ const PLAN_CSS = `
 .huic[data-card-type="plan"] .huic-plan-icon:hover:not(:disabled){background:var(--ui-control-hover-background);color:var(--ui-text-primary)}
 .huic[data-card-type="plan"] .huic-plan-icon:disabled{opacity:.28;cursor:default}
 .huic[data-card-type="plan"] .huic-plan-icon[aria-expanded="true"],.huic[data-card-type="plan"] .huic-plan-icon.has-note{color:var(--huic-accent)}
-.huic[data-card-type="plan"] .huic-plan-switch-wrap{display:grid;place-items:center;width:42px;height:28px}
 .huic[data-card-type="plan"] input.huic-plan-switch{appearance:none;position:relative;flex:none;width:32px;height:18px;margin:0;border:1px solid var(--ui-stroke-secondary);border-radius:999px;background:var(--ui-bg-quaternary);cursor:pointer;transition:background .15s,border-color .15s}
 .huic[data-card-type="plan"] input.huic-plan-switch::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:var(--ui-text-secondary);transition:transform .15s}
 .huic[data-card-type="plan"] input.huic-plan-switch:checked{background:var(--huic-accent);border-color:var(--huic-accent)}
-.huic[data-card-type="plan"] input.huic-plan-switch:checked::after{transform:translateX(14px);background:var(--ui-chat-surface-background,var(--ui-base))}
+.huic[data-card-type="plan"] input.huic-plan-switch:checked::after{transform:translateX(14px);background:var(--huic-on-accent)}
+.huic[data-card-type="plan"] input.huic-plan-switch:disabled{cursor:default;opacity:.6}
+.huic[data-card-type="plan"] input.huic-plan-switch:focus-visible{outline:2px solid var(--huic-accent);outline-offset:2px}
+.huic[data-card-type="plan"] .huic-foot .huic-btn-danger{background:var(--ui-red);color:var(--prc-on-red);box-shadow:none}
+.huic[data-card-type="plan"] .huic-foot .huic-btn-danger:hover:not(:disabled){background:color-mix(in srgb,var(--ui-red) 86%,var(--ui-text-primary))}
+.huic[data-card-type="plan"] .huic-foot .huic-btn-danger:focus-visible{outline:2px solid var(--ui-red);outline-offset:2px}
+.huic[data-card-type="plan"] .huic-foot:has(.huic-plan-pending){padding-top:10px}
+.huic[data-card-type="plan"] .huic-plan-pending{position:relative;overflow:hidden;flex:1;display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 8px 8px 12px;border-radius:var(--huic-r-md,8px);background:color-mix(in srgb,var(--huic-accent) 8%,transparent);color:var(--ui-text-secondary)}
+.huic[data-card-type="plan"] .huic-plan-pending-text{flex:1;min-width:12em}
+.huic[data-card-type="plan"] .huic-plan-drain{position:absolute;left:0;bottom:0;height:2px;width:100%;background:var(--huic-accent);transform-origin:left;animation:huic-plan-drain var(--undo-ms) linear both}
+@keyframes huic-plan-drain{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+.huic[data-card-type="plan"].is-pending .huic-plan-list,.huic[data-card-type="plan"].is-pending .huic-plan-keys{opacity:.62;transition:opacity .2s}
+.huic[data-card-type="plan"].is-answered .huic-plan-step:not(.is-off) .huic-plan-node{background:var(--huic-accent);border-color:var(--huic-accent);color:var(--huic-on-accent)}
+.huic[data-card-type="plan"].is-answered .huic-plan-step:not(.is-off)::before{background:color-mix(in srgb,var(--huic-accent) 45%,var(--ui-stroke-tertiary))}
+.huic[data-card-type="plan"] .huic-plan-node svg{width:13px;height:13px}
 .huic[data-card-type="plan"] .huic-plan-note{min-height:30px;padding:5px 8px;font-size:12.5px;background:color-mix(in srgb,var(--ui-bg-quaternary) 35%,transparent)}
 .huic[data-card-type="plan"] .huic-plan-note-text{margin:0;padding:2px 0 2px 9px;border-left:2px solid var(--huic-accent);color:var(--ui-text-secondary);font-size:12.5px;white-space:pre-wrap}
 .huic[data-card-type="plan"] .huic-plan-keys{margin:0 0 0 38px;color:var(--ui-text-tertiary);font-size:11.5px}
@@ -3716,7 +3919,6 @@ const PLAN_CSS = `
 @container (max-width: 440px){
   .huic[data-card-type="plan"] .huic-plan-step{grid-template-columns:26px minmax(0,1fr)}
   .huic[data-card-type="plan"] .huic-plan-ctrl{grid-column:2;margin-left:-6px}
-  .huic[data-card-type="plan"] .huic-plan-switch-wrap:empty{display:none}
   .huic[data-card-type="plan"] .huic-plan-keys{display:none}
 }
 @media (prefers-reduced-motion: reduce){.huic[data-card-type="plan"] *{transition:none!important;animation:none!important}}
@@ -3756,10 +3958,11 @@ function planUsePinned(frameRef) {
 }
 
 // Like Shell, plus a ref and the pinned state for tall cards.
-function PlanFrame({ card, display, labelId, frameRef, pinned, css, head, children, footer, after }) {
+function PlanFrame({ card, display, labelId, frameRef, pinned, css, head, children, footer, after, onKeyDown, className }) {
   return jsxs('section', {
     ref: frameRef,
-    className: cx('huic', display?.compact && 'huic-compact', pinned && 'huic-pinned'),
+    className: cx('huic', display?.compact && 'huic-compact', pinned && 'huic-pinned', className),
+    onKeyDown,
     style: { '--huic-accent': ACCENT_VARS[display?.accent || 'app'] || ACCENT_VARS.app },
     'data-card-type': card.type,
     'aria-labelledby': labelId,
@@ -3781,7 +3984,8 @@ const PLAN_ICONS = {
   note: 'M2.5 13.5h3l7.2-7.2a1.4 1.4 0 0 0 0-2l-1-1a1.4 1.4 0 0 0-2 0L2.5 10.5v3Z',
   check: 'm3.5 8.5 3 3 6-7',
   cross: 'm4.5 4.5 7 7m0-7-7 7',
-  chevron: 'm6 4 4 4-4 4'
+  chevron: 'm6 4 4 4-4 4',
+  lock: 'M4.5 7.5h7v5.5h-7zM6 7.5V5.5a2 2 0 0 1 4 0v2'
 }
 
 function planIcon(kind) {
@@ -3797,16 +4001,36 @@ function planKeysHint(lang) {
   return [text[0], jsx('kbd', { children: 'Alt' }, 'a'), '+', jsx('kbd', { children: '↑' }, 'u'), '/', jsx('kbd', { children: '↓' }, 'd'), text[1]]
 }
 
+// Ids and input names come from the model: keep them in prototype-free maps, so an id like
+// "constructor" or a calc input named "__proto__" is an ordinary key. Shared with review and calc.
+function planDict(entries) {
+  const dict = Object.create(null)
+  for (const [key, value] of entries || []) dict[key] = value
+  return dict
+}
+function planOwn(obj, key) {
+  return obj && typeof obj === 'object' && Object.prototype.hasOwnProperty.call(obj, key) ? obj[key] : undefined
+}
+// A copy with one key set (or removed when value is undefined).
+function planWith(dict, key, value) {
+  const next = planDict(Object.entries(dict))
+  if (value === undefined) delete next[key]
+  else next[key] = value
+  return next
+}
+
 function planState(card, source) {
   const ids = card.steps.map(s => s.id)
   const optional = new Set(card.steps.filter(s => s.optional).map(s => s.id))
   const src = source && typeof source === 'object' ? source : {}
-  const order = Array.isArray(src.order) ? src.order.filter((id, i, all) => ids.includes(id) && all.indexOf(id) === i) : []
+  const srcOrder = planOwn(src, 'order'), srcOff = planOwn(src, 'off'), srcNotes = planOwn(src, 'notes')
+  const order = Array.isArray(srcOrder) ? srcOrder.filter((id, i, all) => ids.includes(id) && all.indexOf(id) === i) : []
   for (const id of ids) if (!order.includes(id)) order.push(id)
-  const off = Array.isArray(src.off) ? src.off.filter(id => optional.has(id)) : []
-  const notes = {}
-  if (src.notes && typeof src.notes === 'object') {
-    for (const id of ids) if (typeof src.notes[id] === 'string' && src.notes[id]) notes[id] = limitText(src.notes[id], PLAN_NOTE_MAX)
+  const off = Array.isArray(srcOff) ? srcOff.filter(id => optional.has(id)) : []
+  const notes = planDict()
+  for (const id of ids) {
+    const note = planOwn(srcNotes, id)
+    if (typeof note === 'string' && note) notes[id] = limitText(note, PLAN_NOTE_MAX)
   }
   return { order, off, notes }
 }
@@ -3818,8 +4042,49 @@ function planFromAnswer(card, answer) {
   return {
     order: steps.map(s => s.id).filter(id => card.steps.some(s => s.id === id)),
     off: steps.filter(s => s.included === false).map(s => s.id),
-    notes: Object.fromEntries(steps.filter(s => s.note).map(s => [s.id, s.note]))
+    notes: planDict(steps.filter(s => typeof s.note === 'string' && s.note).map(s => [s.id, s.note]))
   }
+}
+
+// Pending send with an undo window, like compare: Escape or Undo inside the card cancels,
+// focus goes to Undo and back to the button that started it; unmounting sends nothing.
+function planUseUndo(display, onSend) {
+  const [pending, setPending] = useState(null)
+  const timer = useRef(null)
+  const undoRef = useRef(null)
+  const startRef = useRef(null)
+  const returnFocus = useRef(false)
+  useEffect(() => () => { clearTimeout(timer.current); timer.current = null }, [])
+  useEffect(() => {
+    if (pending) undoRef.current?.focus()
+    else if (returnFocus.current) { returnFocus.current = false; startRef.current?.focus() }
+  }, [pending])
+  const start = (payload, info) => {
+    if (timer.current) return
+    const ms = typeof undoDelayMs === 'function' ? undoDelayMs(display) : 4000
+    if (!ms) { onSend(payload); return }
+    setPending({ ...info, ms })
+    timer.current = setTimeout(() => { timer.current = null; setPending(null); onSend(payload) }, ms)
+  }
+  const cancel = () => {
+    if (!timer.current) return
+    clearTimeout(timer.current)
+    timer.current = null
+    returnFocus.current = true
+    setPending(null)
+  }
+  const onKeyDown = e => {
+    if (timer.current && e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); cancel() }
+  }
+  return { pending, start, cancel, onKeyDown, undoRef, startRef }
+}
+
+function PlanPendingBar({ text, ms, undoRef, onUndo, lang }) {
+  return jsxs('div', { className: 'huic-plan-pending', role: 'status', 'aria-live': 'polite', style: { '--undo-ms': `${ms}ms` }, children: [
+    jsx('span', { className: 'huic-plan-pending-text', children: text }),
+    jsx(Btn, { ref: undoRef, variant: 'ghost', onClick: onUndo, children: t(lang, 'planUndo') }),
+    jsx('span', { className: 'huic-plan-drain', 'aria-hidden': true })
+  ] })
 }
 
 function PlanCard({ card, sessionId, display, lang }) {
@@ -3829,21 +4094,23 @@ function PlanCard({ card, sessionId, display, lang }) {
   const ans = useCardAnswer(card, sessionId, lang)
   const [state, setState] = useState(() => planState(card, ans.draft))
   const view = (ans.answer && planFromAnswer(card, ans.answer)) || state
-  const [openNotes, setOpenNotes] = useState({})
+  const [openNotes, setOpenNotes] = useState(() => planDict())
   const [announce, setAnnounce] = useState('')
   const [drag, setDrag] = useState(null)
   const [moved, setMoved] = useState(null)
   const focusAfter = useRef(null)
-  const rowRefs = useRef({})
-  const byId = useMemo(() => Object.fromEntries(card.steps.map(s => [s.id, s])), [card])
+  const rowRefs = useRef(new Map())
+  const byId = useMemo(() => new Map(card.steps.map(s => [s.id, s])), [card])
+  const undo = planUseUndo(display, answer => ans.submit(answer))
   const editable = ans.showActions
+  const locked = !editable || Boolean(undo.pending)
 
   // Reordering moves DOM nodes, which can drop focus: put it back on the same control.
   useEffect(() => {
     const target = focusAfter.current
     if (!target) return
     focusAfter.current = null
-    const row = rowRefs.current[target.id]
+    const row = rowRefs.current.get(target.id)
     if (!row) return
     let el = row.querySelector(`[data-plan-focus="${target.which}"]`)
     if (!el || el.disabled) el = row.querySelector('[data-plan-focus="up"]:not(:disabled),[data-plan-focus="down"]:not(:disabled)')
@@ -3851,42 +4118,37 @@ function PlanCard({ card, sessionId, display, lang }) {
   })
 
   const update = next => {
+    if (locked) return
     setState(next)
     ans.saveDraft(next)
   }
 
   const moveTo = (id, to, which) => {
     const from = state.order.indexOf(id)
-    if (from < 0 || to < 0 || to >= state.order.length || to === from) return
+    if (locked || from < 0 || to < 0 || to >= state.order.length || to === from) return
     const order = state.order.filter(x => x !== id)
     order.splice(to, 0, id)
     update({ ...state, order })
     focusAfter.current = which ? { id, which } : null
     setMoved({ id, n: (moved?.n || 0) + 1 })
-    setAnnounce(t(lang, 'planMoved', { x: byId[id].title, n: to + 1, total: order.length }))
+    setAnnounce(t(lang, 'planMoved', { x: byId.get(id).title, n: to + 1, total: order.length }))
   }
 
   const toggle = id => update({ ...state, off: state.off.includes(id) ? state.off.filter(x => x !== id) : [...state.off, id] })
-  const setNote = (id, text) => {
-    const notes = { ...state.notes }
-    const value = limitText(text, PLAN_NOTE_MAX)
-    if (value) notes[id] = value
-    else delete notes[id]
-    update({ ...state, notes })
-  }
+  const setNote = (id, text) => update({ ...state, notes: planWith(state.notes, id, limitText(text, PLAN_NOTE_MAX) || undefined) })
   const noteButton = (id, open) => {
     if (!open) {
-      setOpenNotes(prev => ({ ...prev, [id]: true }))
+      setOpenNotes(prev => planWith(prev, id, true))
       focusAfter.current = { id, which: 'note' }
     } else if (!state.notes[id]) {
-      setOpenNotes(prev => ({ ...prev, [id]: false }))
+      setOpenNotes(prev => planWith(prev, id, undefined))
     } else {
-      rowRefs.current[id]?.querySelector('[data-plan-focus="note"]')?.focus()
+      rowRefs.current.get(id)?.querySelector('[data-plan-focus="note"]')?.focus()
     }
   }
 
   const onRowKey = (id, index) => e => {
-    if (!editable || !e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.nativeEvent?.isComposing) return
+    if (locked || !e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || e.nativeEvent?.isComposing) return
     if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
     e.preventDefault()
     const which = e.target.closest?.('[data-plan-focus]')?.dataset.planFocus || (e.key === 'ArrowUp' ? 'up' : 'down')
@@ -3905,10 +4167,10 @@ function PlanCard({ card, sessionId, display, lang }) {
   const total = view.order.length
   const included = view.order.filter(id => !view.off.includes(id))
   const reordered = view.order.some((id, i) => id !== card.steps[i].id)
-  const highRisk = included.some(id => byId[id].risk === 'high')
+  const highRisk = included.some(id => byId.get(id).risk === 'high')
 
   const rows = view.order.map((id, i) => {
-    const step = byId[id]
+    const step = byId.get(id)
     const on = !view.off.includes(id)
     const note = view.notes[id] || ''
     const noteOpen = editable && Boolean(openNotes[id] || note)
@@ -3916,54 +4178,68 @@ function PlanCard({ card, sessionId, display, lang }) {
     const noteId = `${labelId}-${id}-note`
     const risk = step.risk && PLAN_RISK[step.risk]
     const isDropTarget = drag?.id && drag.over === id && drag.id !== id
+    // Right end of the title row: the on/off switch for optional steps, a lock for required ones.
+    const toggleSlot = !editable ? null
+      : step.optional
+        ? jsx('input', {
+            type: 'checkbox', role: 'switch', className: 'huic-plan-switch', checked: on, disabled: locked,
+            'data-plan-focus': 'switch', 'aria-label': t(lang, 'planInclude', { x: step.title }),
+            title: t(lang, 'planInclude', { x: step.title }),
+            onChange: () => toggle(id)
+          })
+        : jsx('span', { className: 'huic-plan-lock', role: 'img', 'aria-label': t(lang, 'planRequired'), title: t(lang, 'planRequired'), children: planIcon('lock') })
     return jsxs('li', {
-      ref: el => { rowRefs.current[id] = el },
+      ref: el => { if (el) rowRefs.current.set(id, el); else rowRefs.current.delete(id) },
       className: cx('huic-plan-step', !on && 'is-off', step.risk === 'high' && 'is-risk-high',
         drag?.id === id && 'is-dragging', isDropTarget && (drag.after ? 'is-drop-after' : 'is-drop-before'),
         moved?.id === id && (moved.n % 2 ? 'is-moved-a' : 'is-moved-b')),
       'data-step': id,
       'aria-labelledby': titleId,
       onKeyDown: onRowKey(id, i),
-      onDragOver: editable && drag?.id ? e => {
+      onDragOver: !locked && drag?.id ? e => {
         e.preventDefault()
         const r = e.currentTarget.getBoundingClientRect()
         const after = e.clientY > r.top + r.height / 2
         if (drag.over !== id || drag.after !== after) setDrag({ ...drag, over: id, after })
       } : undefined,
-      onDrop: editable && drag?.id ? e => { e.preventDefault(); dropAt(id) } : undefined,
+      onDrop: !locked && drag?.id ? e => { e.preventDefault(); dropAt(id) } : undefined,
       children: [
         jsx('span', {
           className: 'huic-plan-node', 'aria-hidden': true,
-          draggable: editable ? 'true' : undefined,
-          title: editable && total > 1 ? t(lang, 'planDrag') : undefined,
-          onDragStart: editable ? e => {
+          draggable: !locked ? 'true' : undefined,
+          title: !locked && total > 1 ? t(lang, 'planDrag') : undefined,
+          onDragStart: !locked ? e => {
             e.dataTransfer.effectAllowed = 'move'
             try { e.dataTransfer.setData('text/plain', step.title) } catch {}
-            if (rowRefs.current[id] && e.dataTransfer.setDragImage) e.dataTransfer.setDragImage(rowRefs.current[id], 14, 14)
+            const row = rowRefs.current.get(id)
+            if (row && e.dataTransfer.setDragImage) e.dataTransfer.setDragImage(row, 14, 14)
             setDrag({ id })
           } : undefined,
-          onDragEnd: editable ? () => setDrag(null) : undefined,
-          children: i + 1
+          onDragEnd: !locked ? () => setDrag(null) : undefined,
+          children: ans.answered && on ? planIcon('check') : i + 1
         }),
         jsxs('div', {
           className: 'huic-plan-main',
           children: [
             jsxs('div', { className: 'huic-plan-titlerow', children: [
-              jsx('span', { id: titleId, className: 'huic-plan-title', children: step.title }),
-              !on ? jsx('span', { className: 'huic-plan-chip', children: t(lang, 'planSkipped') }) : step.optional ? jsx('span', { className: 'huic-plan-chip', children: t(lang, 'planOptional') }) : null,
-              risk ? jsxs('span', { className: cx('huic-plan-chip', `huic-plan-chip-${step.risk}`), children: [jsx('span', { 'aria-hidden': true, children: risk[0] }), t(lang, risk[1])] }) : null
+              jsxs('div', { className: 'huic-plan-titles', children: [
+                jsx('span', { id: titleId, className: 'huic-plan-title', children: step.title }),
+                !on ? jsx('span', { className: 'huic-plan-chip', children: t(lang, 'planSkipped') }) : step.optional && !ans.answered ? jsx('span', { className: 'huic-plan-chip', children: t(lang, 'planOptional') }) : null,
+                risk ? jsxs('span', { className: cx('huic-plan-chip', `huic-plan-chip-${step.risk}`), children: [jsx('span', { 'aria-hidden': true, children: risk[0] }), t(lang, risk[1])] }) : null
+              ] }),
+              toggleSlot
             ] }),
             step.detail ? jsx('p', { className: 'huic-plan-detail', children: step.detail }) : null,
             step.command ? jsx(CodeBlock, { code: step.command, lang }) : null,
             noteOpen
               ? jsx('input', {
-                  id: noteId, className: 'huic-input huic-plan-note', type: 'text', value: note,
+                  id: noteId, className: 'huic-input huic-plan-note', type: 'text', value: note, disabled: locked,
                   'data-plan-focus': 'note', maxLength: PLAN_NOTE_MAX * 2,
                   placeholder: t(lang, 'planNotePlaceholder'),
                   'aria-label': t(lang, 'planNoteFor', { n: i + 1, x: step.title }),
                   onChange: e => setNote(id, e.target.value),
                   onKeyDown: e => {
-                    if (e.key === 'Escape' && !note) { e.preventDefault(); noteButton(id, true); rowRefs.current[id]?.querySelector('[data-plan-focus="notebtn"]')?.focus() }
+                    if (e.key === 'Escape' && !note && !undo.pending) { e.preventDefault(); noteButton(id, true); rowRefs.current.get(id)?.querySelector('[data-plan-focus="notebtn"]')?.focus() }
                   }
                 })
               : !editable && note
@@ -3974,26 +4250,20 @@ function PlanCard({ card, sessionId, display, lang }) {
         editable ? jsxs('div', {
           className: 'huic-plan-ctrl',
           children: [
-            jsx('span', { className: 'huic-plan-switch-wrap', children: step.optional ? jsx('input', {
-              type: 'checkbox', role: 'switch', className: 'huic-plan-switch', checked: on,
-              'data-plan-focus': 'switch', 'aria-label': t(lang, 'planInclude', { x: step.title }),
-              title: t(lang, 'planInclude', { x: step.title }),
-              onChange: () => toggle(id)
-            }) : null }),
             jsx('button', {
-              type: 'button', className: cx('huic-plan-icon', note && 'has-note'), 'data-plan-focus': 'notebtn',
+              type: 'button', className: cx('huic-plan-icon', note && 'has-note'), 'data-plan-focus': 'notebtn', disabled: locked,
               'aria-label': t(lang, 'planNoteFor', { n: i + 1, x: step.title }), title: t(lang, 'planNote'),
               'aria-expanded': noteOpen, 'aria-controls': noteOpen ? noteId : undefined,
               onClick: () => noteButton(id, noteOpen),
               children: planIcon('note')
             }),
             total > 1 ? jsx('button', {
-              type: 'button', className: 'huic-plan-icon', 'data-plan-focus': 'up', disabled: i === 0,
+              type: 'button', className: 'huic-plan-icon', 'data-plan-focus': 'up', disabled: locked || i === 0,
               'aria-label': t(lang, 'planMoveUp', { x: step.title }), title: 'Alt+↑', 'aria-keyshortcuts': 'Alt+ArrowUp',
               onClick: () => moveTo(id, i - 1, 'up'), children: planIcon('up')
             }) : null,
             total > 1 ? jsx('button', {
-              type: 'button', className: 'huic-plan-icon', 'data-plan-focus': 'down', disabled: i === total - 1,
+              type: 'button', className: 'huic-plan-icon', 'data-plan-focus': 'down', disabled: locked || i === total - 1,
               'aria-label': t(lang, 'planMoveDown', { x: step.title }), title: 'Alt+↓', 'aria-keyshortcuts': 'Alt+ArrowDown',
               onClick: () => moveTo(id, i + 1, 'down'), children: planIcon('down')
             }) : null
@@ -4003,12 +4273,12 @@ function PlanCard({ card, sessionId, display, lang }) {
     }, id)
   })
 
-  const send = () => ans.submit({
+  const run = () => undo.start({
     steps: view.order.map(id => {
       const note = (view.notes[id] || '').trim()
-      return { id, title: byId[id].title, included: !view.off.includes(id), ...(note ? { note } : {}) }
+      return { id, title: byId.get(id).title, included: !view.off.includes(id), ...(note ? { note } : {}) }
     })
-  })
+  }, { n: included.length })
 
   const hint = included.length
     ? jsxs(Fragment, { children: [
@@ -4018,8 +4288,20 @@ function PlanCard({ card, sessionId, display, lang }) {
       ] })
     : t(lang, 'planNothing')
 
+  const footer = !editable ? null
+    : undo.pending
+      ? jsx('div', { className: 'huic-foot', children: jsx(PlanPendingBar, {
+          text: t(lang, 'planPending', { n: undo.pending.n, total, s: Math.round(undo.pending.ms / 1000) }),
+          ms: undo.pending.ms, undoRef: undo.undoRef, onUndo: undo.cancel, lang
+        }) })
+      : jsx(Footer, {
+          hint,
+          children: jsx(Btn, { ref: undo.startRef, variant: highRisk ? 'danger' : 'primary', disabled: !included.length, onClick: run, children: card.runLabel || t(lang, 'planRun') })
+        })
+
   return jsx(PlanFrame, {
-    card, display, labelId, frameRef, pinned,
+    card, display, labelId, frameRef, pinned, onKeyDown: undo.onKeyDown,
+    className: cx(undo.pending && 'is-pending', ans.answered && 'is-answered'),
     head: jsxs('header', { className: 'huic-head', children: [
       jsx('h3', { className: 'huic-title', id: labelId, style: { margin: 0 }, children: card.title }),
       card.summary ? jsx('p', { className: 'huic-sub', style: { margin: '2px 0 0' }, children: card.summary }) : null
@@ -4029,10 +4311,7 @@ function PlanCard({ card, sessionId, display, lang }) {
       editable && total > 1 ? jsx('p', { className: 'huic-plan-keys', children: planKeysHint(lang) }, 'keys') : null,
       jsx('div', { className: 'huic-sr', role: 'status', 'aria-live': 'polite', children: announce }, 'live')
     ],
-    footer: editable ? jsx(Footer, {
-      hint,
-      children: jsx(Btn, { variant: highRisk ? 'danger' : 'primary', disabled: !included.length, onClick: send, children: card.runLabel || t(lang, 'planRun') })
-    }) : null,
+    footer,
     after: ans.status
   })
 }
@@ -4075,7 +4354,10 @@ Object.assign(STRINGS.en, {
   reviewCommentPlaceholder: 'Why? (optional, for Hermes)',
   reviewMore: 'Show all',
   reviewLess: 'Show less',
-  reviewStillOpen: '{n} still open, sent as undecided',
+  reviewStillOpen: '{n} still open',
+  reviewAskOpen: '{n} still open — send anyway? They go to Hermes as undecided.',
+  reviewSendAnyway: 'Send anyway',
+  reviewBack: 'Back',
   reviewAllDecided: 'All {n} decided',
   reviewBulkDone: 'All {n} set to {x}.',
   reviewRestDone: '{n} more set to {x}.',
@@ -4102,7 +4384,10 @@ Object.assign(STRINGS.de, {
   reviewCommentPlaceholder: 'Warum? (optional, für Hermes)',
   reviewMore: 'Alles zeigen',
   reviewLess: 'Weniger zeigen',
-  reviewStillOpen: '{n} noch offen, gehen als offen raus',
+  reviewStillOpen: '{n} noch offen',
+  reviewAskOpen: '{n} noch offen – trotzdem senden? Sie gehen als offen an Hermes.',
+  reviewSendAnyway: 'Trotzdem senden',
+  reviewBack: 'Zurück',
   reviewAllDecided: 'Alle {n} entschieden',
   reviewBulkDone: 'Alle {n} auf {x} gesetzt.',
   reviewRestDone: 'Weitere {n} auf {x} gesetzt.',
@@ -4125,6 +4410,8 @@ const REVIEW_CSS = `
 .huic[data-card-type="review"] .huic-rev-bar>.is-drop{background:var(--ui-red,var(--ui-text-secondary))}
 .huic[data-card-type="review"] .huic-rev-counts{display:flex;gap:10px;font-size:12px;color:var(--ui-text-secondary);font-variant-numeric:tabular-nums;white-space:nowrap}
 .huic[data-card-type="review"] .huic-rev-counts b{font-weight:600;color:var(--ui-text-primary)}
+.huic[data-card-type="review"] .huic-rev-counts>span{display:inline-flex;align-items:center;gap:4px}
+.huic[data-card-type="review"] .huic-rev-counts i{margin-right:1px}
 .huic[data-card-type="review"] .huic-rev-counts i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;vertical-align:1px;font-style:normal}
 .huic[data-card-type="review"] .huic-rev-counts .is-keep i{background:var(--ui-green,var(--huic-accent))}
 .huic[data-card-type="review"] .huic-rev-counts .is-drop i{background:var(--ui-red,var(--ui-text-secondary))}
@@ -4146,7 +4433,9 @@ const REVIEW_CSS = `
 .huic[data-card-type="review"] .huic-rev-titlerow{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px}
 .huic[data-card-type="review"] .huic-rev-title{font-weight:600}
 .huic[data-card-type="review"] .huic-rev-detail{margin:0;color:var(--ui-text-secondary);font-size:12.5px;white-space:pre-wrap}
-.huic[data-card-type="review"] .huic-rev-preview{margin:2px 0 0;font-family:var(--font-mono,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:11.5px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere;padding:6px 9px;border-radius:7px;background:var(--ui-inline-code-background,var(--ui-bg-quaternary));color:var(--ui-inline-code-foreground,var(--ui-text-secondary))}
+.huic[data-card-type="review"] .huic-rev-preview{margin:2px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.huic[data-card-type="review"] .huic-rev-preview.is-prose{padding:1px 0 1px 10px;border-left:2px solid var(--ui-stroke-tertiary);color:var(--ui-text-secondary);font-size:13px;line-height:1.5}
+.huic[data-card-type="review"] .huic-rev-preview.is-code{font-family:var(--font-mono,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);font-size:11.5px;line-height:1.5;padding:6px 9px;border-radius:7px;background:var(--ui-inline-code-background,var(--ui-bg-quaternary));color:var(--ui-inline-code-foreground,var(--ui-text-secondary))}
 .huic[data-card-type="review"] .huic-rev-preview.is-clamped{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
 .huic[data-card-type="review"] .huic-rev-link{align-self:flex-start;padding:0;border:0;background:transparent;color:var(--huic-accent);font:inherit;font-size:12px;cursor:pointer}
 .huic[data-card-type="review"] .huic-rev-link:hover{text-decoration:underline}
@@ -4156,8 +4445,13 @@ const REVIEW_CSS = `
 .huic[data-card-type="review"] .huic-rev-seg{display:inline-flex;padding:2px;gap:2px;border-radius:8px;background:var(--ui-bg-quaternary)}
 .huic[data-card-type="review"] .huic-rev-seg button{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:26px;padding:3px 10px;border:0;border-radius:6px;background:transparent;color:var(--ui-text-secondary);font:inherit;font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap;transition:background .12s,color .12s}
 .huic[data-card-type="review"] .huic-rev-seg button:hover{color:var(--ui-text-primary)}
-.huic[data-card-type="review"] .huic-rev-seg button[aria-checked="true"].is-keep{background:var(--ui-green,var(--huic-accent));color:var(--ui-chat-surface-background,var(--ui-base))}
-.huic[data-card-type="review"] .huic-rev-seg button[aria-checked="true"].is-drop{background:var(--ui-red,var(--ui-text-secondary));color:var(--ui-chat-surface-background,var(--ui-base))}
+.huic[data-card-type="review"] .huic-rev-seg button[aria-checked="true"].is-keep{background:var(--ui-green,var(--huic-accent));color:var(--prc-on-green)}
+.huic[data-card-type="review"] .huic-rev-seg button[aria-checked="true"].is-drop{background:var(--ui-red,var(--ui-text-secondary));color:var(--prc-on-red)}
+.huic[data-card-type="review"] .huic-rev-seg button:focus-visible{outline:2px solid var(--huic-accent);outline-offset:1px}
+.huic[data-card-type="review"] .huic-rev-ask{flex-wrap:wrap}
+.huic[data-card-type="review"] .huic-rev-ask-text{flex:1 1 14em;color:var(--ui-text-primary)}
+.huic[data-card-type="review"].is-answered .huic-rev-item[data-decision="none"] .huic-rev-title{color:var(--ui-text-secondary)}
+.huic[data-card-type="review"] .huic-rev-stamp svg{width:12px;height:12px}
 .huic[data-card-type="review"] .huic-rev-icon{display:grid;place-items:center;width:28px;height:28px;padding:0;border:0;border-radius:7px;background:transparent;color:var(--ui-text-tertiary);cursor:pointer}
 .huic[data-card-type="review"] .huic-rev-icon:hover{background:var(--ui-control-hover-background);color:var(--ui-text-primary)}
 .huic[data-card-type="review"] .huic-rev-icon[aria-expanded="true"],.huic[data-card-type="review"] .huic-rev-icon.has-note{color:var(--huic-accent)}
@@ -4177,33 +4471,46 @@ const REVIEW_CSS = `
 
 function reviewDefaults(card) {
   const d = card.defaultDecision
-  return d === 'keep' || d === 'drop' ? Object.fromEntries(card.items.map(i => [i.id, d])) : {}
+  return planDict(d === 'keep' || d === 'drop' ? card.items.map(i => [i.id, d]) : [])
 }
 
 function reviewState(card, source) {
   const src = source && typeof source === 'object' ? source : null
-  const decisions = {}
-  const notes = {}
-  if (src && src.decisions && typeof src.decisions === 'object') {
-    for (const item of card.items) if (src.decisions[item.id] === 'keep' || src.decisions[item.id] === 'drop') decisions[item.id] = src.decisions[item.id]
-  } else Object.assign(decisions, reviewDefaults(card))
-  if (src && src.notes && typeof src.notes === 'object') {
-    for (const item of card.items) if (typeof src.notes[item.id] === 'string' && src.notes[item.id]) notes[item.id] = limitText(src.notes[item.id], REVIEW_NOTE_MAX)
+  const srcDecisions = planOwn(src, 'decisions'), srcNotes = planOwn(src, 'notes')
+  const decisions = srcDecisions && typeof srcDecisions === 'object' ? planDict() : reviewDefaults(card)
+  const notes = planDict()
+  for (const item of card.items) {
+    const decision = planOwn(srcDecisions, item.id)
+    if (decision === 'keep' || decision === 'drop') decisions[item.id] = decision
+    const note = planOwn(srcNotes, item.id)
+    if (typeof note === 'string' && note) notes[item.id] = limitText(note, REVIEW_NOTE_MAX)
   }
   return { decisions, notes }
 }
 
-function reviewFromAnswer(answer) {
+function reviewFromAnswer(card, answer) {
   const a = answer?.selection || answer?.data
   if (!a || !Array.isArray(a.keep)) return null
-  const decisions = {}
+  const decisions = planDict()
   for (const id of a.keep) decisions[id] = 'keep'
   for (const id of a.drop || []) decisions[id] = 'drop'
-  return { decisions, notes: a.notes && typeof a.notes === 'object' ? a.notes : {} }
+  const notes = planDict()
+  for (const item of card.items) {
+    const note = planOwn(a.notes, item.id)
+    if (typeof note === 'string' && note) notes[item.id] = note
+  }
+  return { decisions, notes }
 }
 
 function reviewLong(text) {
   return [...text].length > 220 || text.split('\n').length > 3
+}
+
+// Previews are prose (a draft reply) unless they look like code: a shell line, a fence or a path.
+function reviewIsCode(text) {
+  return /^\s*\$\s/.test(text) || text.includes('```') ||
+    /(^|[\s("'`])(~|\.{1,2})?\/[\w.-]+\/[\w.\/-]*/.test(text) || /(^|[\s("'`])~\/[\w.-]+/.test(text) ||
+    /(^|\s)[A-Za-z]:\\[\w.\\ -]+/.test(text) || /(^|\s)[\w.-]+\/[\w.\/-]+\.[A-Za-z]{1,8}\b/.test(text)
 }
 
 function ReviewCard({ card, sessionId, display, lang }) {
@@ -4212,54 +4519,28 @@ function ReviewCard({ card, sessionId, display, lang }) {
   const pinned = planUsePinned(frameRef)
   const ans = useCardAnswer(card, sessionId, lang)
   const [state, setState] = useState(() => reviewState(card, ans.draft))
-  const view = (ans.answer && reviewFromAnswer(ans.answer)) || state
-  const [openNotes, setOpenNotes] = useState({})
-  const [expanded, setExpanded] = useState({})
+  const view = (ans.answer && reviewFromAnswer(card, ans.answer)) || state
+  const [openNotes, setOpenNotes] = useState(() => planDict())
+  const [expanded, setExpanded] = useState(() => planDict())
   const [announce, setAnnounce] = useState('')
+  const [confirming, setConfirming] = useState(false)
   const focusNote = useRef(null)
-  const rowRefs = useRef({})
+  const rowRefs = useRef(new Map())
+  const applyRef = useRef(null)
+  const goRef = useRef(null)
+  const backFocus = useRef(false)
   const editable = ans.showActions
+  // Custom labels are used everywhere: buttons, bulk actions, tally, announcements, stamps.
+  const custom = Boolean(card.keepLabel || card.dropLabel)
   const keepLabel = card.keepLabel || t(lang, 'reviewKeep')
   const dropLabel = card.dropLabel || t(lang, 'reviewDrop')
+  const decisionLabel = d => (d === 'keep' ? keepLabel : dropLabel)
 
   useEffect(() => {
     if (!focusNote.current) return
-    rowRefs.current[focusNote.current]?.querySelector('.huic-rev-note')?.focus()
+    rowRefs.current.get(focusNote.current)?.querySelector('.huic-rev-note')?.focus()
     focusNote.current = null
   })
-
-  const update = next => {
-    setState(next)
-    ans.saveDraft(next)
-  }
-  const decide = (id, decision) => update({ ...state, decisions: { ...state.decisions, [id]: decision } })
-  const bulk = decision => {
-    update({ ...state, decisions: Object.fromEntries(card.items.map(i => [i.id, decision])) })
-    setAnnounce(t(lang, 'reviewBulkDone', { n: card.items.length, x: decision === 'keep' ? keepLabel : dropLabel }))
-  }
-  const keepRest = () => {
-    const open = card.items.filter(i => !state.decisions[i.id])
-    update({ ...state, decisions: { ...state.decisions, ...Object.fromEntries(open.map(i => [i.id, 'keep'])) } })
-    setAnnounce(t(lang, 'reviewRestDone', { n: open.length, x: keepLabel }))
-  }
-  const reset = () => {
-    update({ ...state, decisions: reviewDefaults(card) })
-    setAnnounce(t(lang, 'reviewResetDone'))
-  }
-  const setNote = (id, text) => {
-    const notes = { ...state.notes }
-    const value = limitText(text, REVIEW_NOTE_MAX)
-    if (value) notes[id] = value
-    else delete notes[id]
-    update({ ...state, notes })
-  }
-  const noteButton = (id, open) => {
-    if (!open) {
-      setOpenNotes(prev => ({ ...prev, [id]: true }))
-      focusNote.current = id
-    } else if (!state.notes[id]) setOpenNotes(prev => ({ ...prev, [id]: false }))
-    else rowRefs.current[id]?.querySelector('.huic-rev-note')?.focus()
-  }
 
   const keep = card.items.filter(i => view.decisions[i.id] === 'keep')
   const drop = card.items.filter(i => view.decisions[i.id] === 'drop')
@@ -4267,6 +4548,41 @@ function ReviewCard({ card, sessionId, display, lang }) {
   const total = card.items.length
   const defaults = reviewDefaults(card)
   const changed = card.items.some(i => (state.decisions[i.id] || null) !== (defaults[i.id] || null))
+  const asking = editable && confirming && open > 0
+
+  useEffect(() => {
+    if (asking) goRef.current?.focus()
+    else if (backFocus.current) { backFocus.current = false; applyRef.current?.focus() }
+  }, [asking])
+
+  const update = next => {
+    setState(next)
+    ans.saveDraft(next)
+  }
+  const decide = (id, decision) => update({ ...state, decisions: planWith(state.decisions, id, decision) })
+  const bulk = decision => {
+    update({ ...state, decisions: planDict(card.items.map(i => [i.id, decision])) })
+    setAnnounce(t(lang, 'reviewBulkDone', { n: card.items.length, x: decisionLabel(decision) }))
+  }
+  const keepRest = () => {
+    const rest = card.items.filter(i => !state.decisions[i.id])
+    const decisions = planDict(Object.entries(state.decisions))
+    for (const i of rest) decisions[i.id] = 'keep'
+    update({ ...state, decisions })
+    setAnnounce(t(lang, 'reviewRestDone', { n: rest.length, x: keepLabel }))
+  }
+  const reset = () => {
+    update({ ...state, decisions: reviewDefaults(card) })
+    setAnnounce(t(lang, 'reviewResetDone'))
+  }
+  const setNote = (id, text) => update({ ...state, notes: planWith(state.notes, id, limitText(text, REVIEW_NOTE_MAX) || undefined) })
+  const noteButton = (id, isOpen) => {
+    if (!isOpen) {
+      setOpenNotes(prev => planWith(prev, id, true))
+      focusNote.current = id
+    } else if (!state.notes[id]) setOpenNotes(prev => planWith(prev, id, undefined))
+    else rowRefs.current.get(id)?.querySelector('.huic-rev-note')?.focus()
+  }
 
   // Two options in a radio group: one tab stop, arrow keys switch and select.
   const segment = (item, decision) => {
@@ -4301,9 +4617,10 @@ function ReviewCard({ card, sessionId, display, lang }) {
     const noteId = `${labelId}-${item.id}-note`
     const previewId = `${labelId}-${item.id}-preview`
     const long = item.preview && reviewLong(item.preview)
-    const isOpen = expanded[item.id]
+    const isOpen = Boolean(expanded[item.id])
+    const code = item.preview && reviewIsCode(item.preview)
     return jsxs('li', {
-      ref: el => { rowRefs.current[item.id] = el },
+      ref: el => { if (el) rowRefs.current.set(item.id, el); else rowRefs.current.delete(item.id) },
       className: 'huic-rev-item', 'data-decision': decision || 'none', 'data-item': item.id,
       children: [
         jsxs('div', { className: 'huic-rev-main', children: [
@@ -4312,10 +4629,10 @@ function ReviewCard({ card, sessionId, display, lang }) {
             item.tag ? jsx('span', { className: 'huic-badge', children: item.tag }) : null
           ] }),
           item.detail ? jsx('p', { className: 'huic-rev-detail', children: item.detail }) : null,
-          item.preview ? jsx('pre', { id: previewId, className: cx('huic-rev-preview', long && !isOpen && 'is-clamped'), children: item.preview }) : null,
+          item.preview ? jsx(code ? 'pre' : 'p', { id: previewId, className: cx('huic-rev-preview', code ? 'is-code' : 'is-prose', long && !isOpen && 'is-clamped'), children: item.preview }) : null,
           long ? jsx('button', {
-            type: 'button', className: 'huic-rev-link', 'aria-expanded': Boolean(isOpen), 'aria-controls': previewId,
-            onClick: () => setExpanded(prev => ({ ...prev, [item.id]: !isOpen })),
+            type: 'button', className: 'huic-rev-link', 'aria-expanded': isOpen, 'aria-controls': previewId,
+            onClick: () => setExpanded(prev => planWith(prev, item.id, isOpen ? undefined : true)),
             children: t(lang, isOpen ? 'reviewLess' : 'reviewMore')
           }) : null,
           noteOpen
@@ -4324,7 +4641,7 @@ function ReviewCard({ card, sessionId, display, lang }) {
                 placeholder: t(lang, 'reviewCommentPlaceholder'), 'aria-label': t(lang, 'reviewCommentFor', { x: item.title }),
                 onChange: e => setNote(item.id, e.target.value),
                 onKeyDown: e => {
-                  if (e.key === 'Escape' && !note) { e.preventDefault(); setOpenNotes(prev => ({ ...prev, [item.id]: false })); rowRefs.current[item.id]?.querySelector('.huic-rev-icon')?.focus() }
+                  if (e.key === 'Escape' && !note) { e.preventDefault(); setOpenNotes(prev => planWith(prev, item.id, undefined)); rowRefs.current.get(item.id)?.querySelector('.huic-rev-icon')?.focus() }
                 }
               })
             : !editable && note
@@ -4344,24 +4661,29 @@ function ReviewCard({ card, sessionId, display, lang }) {
             ] })
           : jsx('div', { className: 'huic-rev-side', children: jsxs('span', {
               className: cx('huic-rev-stamp', decision && `is-${decision}`),
-              children: decision ? [planIcon(decision === 'keep' ? 'check' : 'cross'), t(lang, decision === 'keep' ? 'reviewKept' : 'reviewDropped')] : [t(lang, 'reviewUndecided')]
+              children: decision
+                ? [planIcon(decision === 'keep' ? 'check' : 'cross'), custom ? decisionLabel(decision) : t(lang, decision === 'keep' ? 'reviewKept' : 'reviewDropped')]
+                : [t(lang, 'reviewUndecided')]
             }) })
       ]
     }, item.id)
   })
 
   const send = () => {
-    const notes = {}
-    for (const item of card.items) {
-      const note = (view.notes[item.id] || '').trim()
-      if (note) notes[item.id] = note
-    }
+    const notes = Object.fromEntries(card.items.map(i => [i.id, (view.notes[i.id] || '').trim()]).filter(([, note]) => note))
+    setConfirming(false)
     ans.submit({
       keep: keep.map(i => i.id),
       drop: drop.map(i => i.id),
       undecided: card.items.filter(i => !view.decisions[i.id]).map(i => i.id),
       notes
     })
+  }
+  // Undecided items are sent as "undecided", but only after asking once.
+  const apply = () => (open ? setConfirming(true) : send())
+  const back = () => { backFocus.current = true; setConfirming(false) }
+  const onKeyDown = e => {
+    if (asking && e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); back() }
   }
 
   const pct = n => `${(n / total) * 100}%`
@@ -4376,9 +4698,9 @@ function ReviewCard({ card, sessionId, display, lang }) {
         jsx('span', { className: 'is-drop', style: { width: pct(drop.length) } })
       ] }),
       jsxs('div', { className: 'huic-rev-counts', children: [
-        jsxs('span', { className: 'is-keep', children: [jsx('i', {}), jsx('b', { children: keep.length }), ' ', keepLabel] }),
-        jsxs('span', { className: 'is-drop', children: [jsx('i', {}), jsx('b', { children: drop.length }), ' ', dropLabel] }),
-        jsxs('span', { className: 'is-open', children: [jsx('i', {}), jsx('b', { children: open }), ' ', t(lang, 'reviewOpen')] })
+        jsxs('span', { className: 'is-keep', children: [jsx('i', {}), keepLabel, ' ', jsx('b', { children: keep.length })] }),
+        jsxs('span', { className: 'is-drop', children: [jsx('i', {}), dropLabel, ' ', jsx('b', { children: drop.length })] }),
+        jsxs('span', { className: 'is-open', children: [jsx('i', {}), t(lang, 'reviewOpen'), ' ', jsx('b', { children: open })] })
       ] })
     ] }),
     editable && total > 1 ? jsxs('div', { className: 'huic-rev-bulk', children: [
@@ -4389,16 +4711,27 @@ function ReviewCard({ card, sessionId, display, lang }) {
     ] }) : null
   ] })
 
+  const askId = `${labelId}-ask`
+  const footer = !editable ? null
+    : asking
+      ? jsxs('div', { className: 'huic-foot huic-rev-ask', role: 'group', 'aria-labelledby': askId, children: [
+          jsx('span', { id: askId, className: 'huic-hint huic-rev-ask-text', children: t(lang, 'reviewAskOpen', { n: open }) }),
+          jsx(Btn, { variant: 'ghost', onClick: back, children: t(lang, 'reviewBack') }),
+          jsx(Btn, { ref: goRef, variant: 'primary', onClick: send, children: t(lang, 'reviewSendAnyway') })
+        ] })
+      : jsx(Footer, {
+          hint: open ? t(lang, 'reviewStillOpen', { n: open }) : t(lang, 'reviewAllDecided', { n: total }),
+          children: jsx(Btn, { ref: applyRef, variant: 'primary', onClick: apply, children: card.applyLabel || t(lang, 'reviewApply') })
+        })
+
   return jsx(PlanFrame, {
-    card, display, labelId, frameRef, pinned, css: REVIEW_CSS, head,
+    card, display, labelId, frameRef, pinned, css: REVIEW_CSS, head, onKeyDown,
+    className: ans.answered && 'is-answered',
     children: [
       jsx('ul', { className: 'huic-rev-list', 'aria-label': t(lang, 'reviewItemsLabel'), children: rows }, 'list'),
       jsx('div', { className: 'huic-sr', role: 'status', 'aria-live': 'polite', children: announce }, 'live')
     ],
-    footer: editable ? jsx(Footer, {
-      hint: open ? t(lang, 'reviewStillOpen', { n: open }) : t(lang, 'reviewAllDecided', { n: total }),
-      children: jsx(Btn, { variant: 'primary', onClick: send, children: card.applyLabel || t(lang, 'reviewApply') })
-    }) : null,
+    footer,
     after: ans.status
   })
 }
@@ -4409,11 +4742,8 @@ REPLY_BUILDERS.review = (card, answer, lang, data) => {
   data.keep = answer.keep.filter(id => ids.has(id))
   data.drop = answer.drop.filter(id => ids.has(id))
   data.undecided = (answer.undecided || []).filter(id => ids.has(id))
-  data.notes = {}
-  for (const [id, text] of Object.entries(answer.notes || {})) {
-    const note = String(text ?? '').trim()
-    if (ids.has(id) && note) data.notes[id] = note
-  }
+  data.notes = Object.fromEntries(Object.entries(answer.notes || {})
+    .map(([id, text]) => [id, String(text ?? '').trim()]).filter(([id, note]) => ids.has(id) && note))
   let summary = t(lang, 'rReview', { keep: data.keep.length, drop: data.drop.length })
   if (data.undecided.length) summary += t(lang, 'rReviewOpen', { n: data.undecided.length })
   // Titles help the model, but only while the whole reply stays under the cap.
@@ -4437,7 +4767,7 @@ Object.assign(STRINGS.en, {
   calcResults: 'Results',
   calcNotPossible: 'Not possible with these values',
   calcFix: 'Fix the marked input to see the result',
-  calcRange: '{min} to {max}',
+  calcSent: 'Sent',
   rCalc: 'Calculated: {x}'
 })
 Object.assign(STRINGS.de, {
@@ -4448,11 +4778,9 @@ Object.assign(STRINGS.de, {
   calcResults: 'Ergebnis',
   calcNotPossible: 'Mit diesen Werten nicht möglich',
   calcFix: 'Markierte Eingabe korrigieren, dann gibt es ein Ergebnis',
-  calcRange: '{min} bis {max}',
+  calcSent: 'Gesendet',
   rCalc: 'Berechnet: {x}'
 })
-
-const CALC_SYMBOLS = { EUR: '€', USD: '$', GBP: '£' }
 
 const CALC_CSS = `
 .huic[data-card-type="calc"] .huic-calc{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
@@ -4490,10 +4818,17 @@ const CALC_CSS = `
 .huic[data-card-type="calc"] input.huic-calc-switch{appearance:none;position:relative;flex:none;width:32px;height:18px;margin:0;border:1px solid var(--ui-stroke-secondary);border-radius:999px;background:var(--ui-bg-quaternary);cursor:inherit;transition:background .15s,border-color .15s}
 .huic[data-card-type="calc"] input.huic-calc-switch::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:var(--ui-text-secondary);transition:transform .15s}
 .huic[data-card-type="calc"] input.huic-calc-switch:checked{background:var(--huic-accent);border-color:var(--huic-accent)}
-.huic[data-card-type="calc"] input.huic-calc-switch:checked::after{transform:translateX(14px);background:var(--ui-chat-surface-background,var(--ui-base))}
+.huic[data-card-type="calc"] input.huic-calc-switch:checked::after{transform:translateX(14px);background:var(--huic-on-accent)}
 .huic[data-card-type="calc"] .huic-calc-out{position:relative;display:flex;flex-direction:column;gap:12px;min-width:0;padding:14px 16px 12px;border-radius:12px;border:1px solid color-mix(in srgb,var(--huic-accent) 26%,var(--ui-stroke-tertiary));background:linear-gradient(155deg,color-mix(in srgb,var(--huic-accent) 12%,transparent),color-mix(in srgb,var(--huic-accent) 3%,transparent) 70%)}
 .huic[data-card-type="calc"] .huic-calc-live{position:absolute;top:11px;right:13px;display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--huic-accent)}
 .huic[data-card-type="calc"] .huic-calc-live::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;animation:huic-calc-pulse 2.4s ease-in-out infinite}
+.huic[data-card-type="calc"] .huic-calc-live.is-sent{gap:3px;color:var(--ui-text-tertiary)}
+.huic[data-card-type="calc"] .huic-calc-live.is-sent::before{content:none}
+.huic[data-card-type="calc"] .huic-calc-live svg{width:11px;height:11px}
+.huic[data-card-type="calc"] .huic-calc.is-sent .huic-calc-box,.huic[data-card-type="calc"] .huic-calc.is-sent select.huic-input{border-color:var(--ui-stroke-tertiary);border-style:dashed;background:transparent;opacity:1}
+.huic[data-card-type="calc"] .huic-calc.is-sent select.huic-input{appearance:none;-webkit-appearance:none;color:var(--ui-text-secondary)}
+.huic[data-card-type="calc"] .huic-calc.is-sent .huic-calc-range{opacity:.55}
+.huic[data-card-type="calc"] .huic-calc.is-sent .huic-calc-seg button[aria-checked="false"]{opacity:.55}
 @keyframes huic-calc-pulse{0%,100%{opacity:1}50%{opacity:.3}}
 .huic[data-card-type="calc"] .huic-calc-hero{display:flex;flex-direction:column;gap:2px;min-width:0}
 .huic[data-card-type="calc"] .huic-calc-hero+.huic-calc-hero{padding-top:10px;border-top:1px solid color-mix(in srgb,var(--huic-accent) 18%,var(--ui-stroke-tertiary))}
@@ -4514,62 +4849,73 @@ const CALC_CSS = `
 @media (prefers-reduced-motion: reduce){.huic[data-card-type="calc"] *{transition:none!important;animation:none!important}}
 `
 
-function calcLocale(lang) {
-  return lang === 'de' ? 'de-DE' : 'en-US'
+function calcLocaleSep(lang) {
+  return lang === 'de' ? { group: '.', decimal: ',' } : { group: ',', decimal: '.' }
 }
 
 function calcDecimals(output) {
   return output.decimals ?? ((output.format || 'number') === 'integer' ? 0 : 2)
 }
 
-// Decimal rounding, half away from zero, without binary noise (30.075 → 30.08).
-function calcRoundTo(v, d) {
-  const f = 10 ** d
-  return (Math.sign(v) * Math.round(Number((Math.abs(v) * f).toPrecision(12)))) / f
-}
-
-// Same text as the CLI fallback: fixed decimals, then " %", the currency symbol or code, the unit.
-function calcFormat(output, value, card, lang) {
-  if (value === null || value === undefined || !Number.isFinite(value)) return { num: '–', suffix: '', text: '–', ok: false }
-  const fmt = output.format || 'number'
-  const d = calcDecimals(output)
-  let v = calcRoundTo(fmt === 'percent' ? value * 100 : value, d)
-  if (v === 0) v = 0
-  const num = new Intl.NumberFormat(calcLocale(lang), { minimumFractionDigits: d, maximumFractionDigits: d }).format(v)
-  const parts = []
-  if (fmt === 'percent') parts.push('%')
-  if (fmt === 'currency') { const code = card.currency || 'EUR'; parts.push(CALC_SYMBOLS[code] || code) }
-  if (output.unit) parts.push(output.unit)
-  const suffix = parts.join(' ')
-  return { num, suffix, text: suffix ? `${num} ${suffix}` : num, ok: true }
-}
-
-// The value the model gets: rounded like the display (percent stays a fraction).
-function calcRound(output, value) {
-  if (value === null || value === undefined || !Number.isFinite(value)) return null
-  const d = calcDecimals(output) + ((output.format || 'number') === 'percent' ? 2 : 0)
-  return calcRoundTo(value, Math.min(12, d))
-}
-
-function calcShow(n, lang) {
+// The exact value as a plain decimal string (1e-11 → "0.00000000001"), never rounded.
+function calcPlain(n) {
   if (typeof n !== 'number' || !Number.isFinite(n)) return ''
-  const s = String(Number(n.toPrecision(12)))
-  return lang === 'de' ? s.replace('.', ',') : s
+  const s = String(Object.is(n, -0) ? 0 : n)
+  const m = /^(-?)(\d+)(?:\.(\d+))?e([-+]\d+)$/.exec(s)
+  if (!m) return s
+  const digits = m[2] + (m[3] || ''), point = m[2].length + Number(m[4])
+  const body = point <= 0 ? '0.' + '0'.repeat(-point) + digits
+    : point >= digits.length ? digits + '0'.repeat(point - digits.length)
+      : digits.slice(0, point) + '.' + digits.slice(point)
+  return m[1] + body
 }
 
-// Number fields show grouped values ("250,000") when not being edited.
-function calcShowGrouped(n, lang) {
-  if (typeof n !== 'number' || !Number.isFinite(n)) return ''
-  return new Intl.NumberFormat(calcLocale(lang), { maximumFractionDigits: 10 }).format(Number(n.toPrecision(12)))
+// Editable text for a number: lossless, the locale's decimal sign, grouping only for display.
+function calcText(n, lang, grouped) {
+  const s = calcPlain(n)
+  if (!s) return ''
+  const sep = calcLocaleSep(lang)
+  let [int, frac] = s.split('.')
+  if (grouped) int = int.replace(/\B(?=(\d{3})+(?!\d))/g, sep.group)
+  return frac ? int + sep.decimal + frac : int
 }
 
-function calcShowNice(n, lang) {
-  return new Intl.NumberFormat(calcLocale(lang), { maximumFractionDigits: 6 }).format(n)
+// Decimal rounding, half away from zero, on the decimal digits (like calcFormat, so 2.675 → 2.68).
+function calcRoundText(v, d) {
+  const s = calcPlain(Math.abs(v))
+  const [int, frac = ''] = s.split('.')
+  if (frac.length <= d) return calcPlain(v)
+  let digits = (int + frac.slice(0, d)).replace(/^0+(?=\d)/, '')
+  if (frac[d] >= '5') digits = (BigInt(digits) + 1n).toString()
+  digits = digits.padStart(d + 1, '0')
+  const out = d ? digits.slice(0, -d) + '.' + digits.slice(-d) : digits
+  return (v < 0 && /[1-9]/.test(out) ? '-' : '') + out
+}
+
+// The one place that formats an output: the shared formatter (10-validate.js), the same text
+// as the CLI fallback. "–" means there is no result.
+function calcShown(output, value, card, lang) {
+  return calcFormat(value ?? NaN, output, card, lang)
+}
+
+// The value the model gets: rounded exactly like the display (percent stays a fraction),
+// null whenever the display shows "–".
+function calcRound(output, value, card, lang) {
+  if (calcShown(output, value, card, lang) === '–') return null
+  const percent = (output.format || 'number') === 'percent'
+  const n = Number(calcRoundText(percent ? value * 100 : value, calcDecimals(output)) + (percent ? 'e-2' : ''))
+  return Number.isFinite(n) ? (n === 0 ? 0 : n) : null
+}
+
+// Hero text split so a trailing " %", " €" or unit can be set smaller than the number.
+function calcSplit(text) {
+  const m = /^(.*\d)[\s\u00a0]+(\D+)$/.exec(text)
+  return m ? { num: m[1], suffix: m[2] } : { num: text, suffix: '' }
 }
 
 // Typed numbers: "4.5", "4,5", "1,234.5", "1.234,5", "250 000".
 function calcNumber(text, lang) {
-  let s = String(text ?? '').trim().replace(/[\s  '’_]/g, '')
+  let s = String(text ?? '').trim().replace(/[\s  '’_]/g, '')
   if (!s) return null
   const comma = s.lastIndexOf(','), dot = s.lastIndexOf('.')
   if (comma >= 0 && dot >= 0) s = comma > dot ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '')
@@ -4600,29 +4946,30 @@ function calcKind(input) {
   return input.kind || 'number'
 }
 
-function calcInitial(card, source, lang) {
-  const raw = {}
-  const src = source && typeof source === 'object' ? source : {}
-  for (const input of card.inputs) {
-    const kind = calcKind(input)
-    const v = src[input.name]
-    if (kind === 'select') raw[input.name] = typeof v === 'number' && input.options.some(o => o.value === v) ? v : input.default
-    else if (kind === 'toggle') raw[input.name] = v === 0 || v === 1 ? v : input.default
-    else {
-      const show = kind === 'slider' ? calcShow : calcShowGrouped
-      raw[input.name] = typeof v === 'string' ? v : show(typeof v === 'number' ? v : input.default, lang)
-    }
-  }
-  return raw
+// One entry per input, keyed by its name in a prototype-free map (a name like "__proto__" is
+// just a key). Number and slider entries keep the text being edited and the exact number it
+// stands for; display grouping never changes the number.
+function calcEntry(input, v, lang) {
+  const kind = calcKind(input)
+  if (kind === 'select') return typeof v === 'number' && input.options.some(o => o.value === v) ? v : input.default
+  if (kind === 'toggle') return v === 0 || v === 1 ? v : input.default
+  if (typeof v === 'string') return { text: v }
+  if (v && typeof v === 'object' && typeof v.text === 'string') return Number.isFinite(v.value) ? { text: v.text, value: v.value } : { text: v.text }
+  const n = typeof v === 'number' && Number.isFinite(v) ? v : input.default
+  return { text: calcText(n, lang, kind === 'number'), value: n }
 }
 
-function calcCheck(input, raw, lang) {
+function calcInitial(card, source, lang) {
+  return planDict(card.inputs.map(input => [input.name, calcEntry(input, planOwn(source, input.name), lang)]))
+}
+
+function calcCheck(input, entry, lang) {
   const kind = calcKind(input)
-  if (kind === 'select' || kind === 'toggle') return { value: raw, error: null }
-  const n = calcNumber(raw, lang)
+  if (kind === 'select' || kind === 'toggle') return { value: entry, error: null }
+  const n = entry.value ?? calcNumber(entry.text, lang)
   if (n === null) return { value: null, error: t(lang, 'errNumber') }
-  if (input.min !== undefined && n < input.min) return { value: null, error: t(lang, 'errMin', { min: calcShowNice(input.min, lang) }) }
-  if (input.max !== undefined && n > input.max) return { value: null, error: t(lang, 'errMax', { max: calcShowNice(input.max, lang) }) }
+  if (input.min !== undefined && n < input.min) return { value: null, error: t(lang, 'errMin', { min: calcText(input.min, lang, true) }) }
+  if (input.max !== undefined && n > input.max) return { value: null, error: t(lang, 'errMax', { max: calcText(input.max, lang, true) }) }
   return { value: n, error: null }
 }
 
@@ -4633,6 +4980,12 @@ function calcCompute(card, asts, values) {
 function calcHeroIndexes(card) {
   const marked = card.outputs.map((o, i) => (o.emphasis ? i : -1)).filter(i => i >= 0)
   return marked.length ? marked : [0]
+}
+
+// A step nudge without binary noise (0.1 + 0.2 → 0.3): no more decimals than the step or value had.
+function calcNudged(current, delta) {
+  const places = x => (calcPlain(Math.abs(x)).split('.')[1] || '').length
+  return Number((current + delta).toFixed(Math.min(20, Math.max(places(current), places(delta)))))
 }
 
 function CalcSegments({ input, value, disabled, labelId, onChange }) {
@@ -4656,12 +5009,16 @@ function CalcSegments({ input, value, disabled, labelId, onChange }) {
   })
 }
 
-function CalcInput({ input, raw, error, disabled, lang, baseId, onChange }) {
+function CalcInput({ input, entry, error, disabled, lang, baseId, onChange }) {
   const kind = calcKind(input)
   const id = `${baseId}-${input.name}`
   const labelId = `${id}-label`
   const errId = `${id}-err`
-  const label = jsx('label', { id: labelId, htmlFor: kind === 'select' && input.options.length <= 4 ? undefined : id, className: 'huic-calc-label', children: input.label })
+  const short = kind === 'select' && input.options.length <= 4 && input.options.every(o => [...o.label].length <= 18)
+  // A real <label for> on every native control; segmented selects are named by aria-labelledby.
+  const label = short
+    ? jsx('span', { id: labelId, className: 'huic-calc-label', children: input.label })
+    : jsx('label', { id: labelId, htmlFor: id, className: 'huic-calc-label', children: input.label })
   const unit = input.unit ? jsx('span', { className: 'huic-calc-unit', 'aria-hidden': true, children: input.unit }) : null
   const err = error ? jsx('span', { id: errId, className: 'huic-err', children: error }) : null
 
@@ -4671,7 +5028,7 @@ function CalcInput({ input, raw, error, disabled, lang, baseId, onChange }) {
       children: [
         jsx('span', { className: 'huic-calc-label', children: input.label }),
         jsx('input', {
-          id, type: 'checkbox', role: 'switch', className: 'huic-calc-switch', checked: raw === 1, disabled,
+          id, type: 'checkbox', role: 'switch', className: 'huic-calc-switch', checked: entry === 1, disabled,
           onChange: e => onChange(e.target.checked ? 1 : 0)
         })
       ]
@@ -4679,13 +5036,13 @@ function CalcInput({ input, raw, error, disabled, lang, baseId, onChange }) {
   }
 
   if (kind === 'select') {
-    const short = input.options.length <= 4 && input.options.every(o => [...o.label].length <= 18)
     return jsxs('div', { className: 'huic-calc-field', children: [
-      jsx('span', { className: 'huic-calc-labelrow', children: short ? jsx('span', { id: labelId, className: 'huic-calc-label', children: input.label }) : label }),
+      jsx('span', { className: 'huic-calc-labelrow', children: label }),
       short
-        ? jsx(CalcSegments, { input, value: raw, disabled, labelId, onChange })
+        ? jsx(CalcSegments, { input, value: entry, disabled, labelId, onChange })
         : jsx('select', {
-            id, className: 'huic-input', disabled, value: String(input.options.findIndex(o => o.value === raw)),
+            id, className: 'huic-input', disabled, value: String(input.options.findIndex(o => o.value === entry)),
+            'aria-labelledby': labelId,
             onChange: e => onChange(input.options[Number(e.target.value)].value),
             children: input.options.map((o, i) => jsx('option', { value: String(i), children: o.label }, i))
           })
@@ -4693,27 +5050,27 @@ function CalcInput({ input, raw, error, disabled, lang, baseId, onChange }) {
   }
 
   const step = input.step ?? (kind === 'slider' ? calcRangeOf(input).step : 1)
+  const current = entry.value ?? calcNumber(entry.text, lang)
   const nudge = e => {
     if ((e.key !== 'ArrowUp' && e.key !== 'ArrowDown') || e.altKey || e.ctrlKey || e.metaKey || e.nativeEvent.isComposing) return
-    const current = calcNumber(raw, lang)
     if (current === null) return
     e.preventDefault()
-    let next = current + (e.key === 'ArrowUp' ? 1 : -1) * step * (e.shiftKey ? 10 : 1)
+    let next = calcNudged(current, (e.key === 'ArrowUp' ? 1 : -1) * step * (e.shiftKey ? 10 : 1))
     if (input.min !== undefined) next = Math.max(input.min, next)
     if (input.max !== undefined) next = Math.min(input.max, next)
-    onChange(calcShow(Number(next.toPrecision(12)), lang))
+    onChange({ text: calcText(next, lang, false), value: next })
   }
   const box = small => jsxs('span', {
     className: cx('huic-calc-box', small && 'is-small'), 'data-invalid': error ? 'true' : undefined,
     children: [
       jsx('input', {
-        id, type: 'text', inputMode: 'decimal', autoComplete: 'off', spellCheck: false, value: raw, disabled,
+        id, type: 'text', inputMode: 'decimal', autoComplete: 'off', spellCheck: false, value: entry.text, disabled,
         'aria-invalid': error ? 'true' : undefined, 'aria-describedby': error ? errId : undefined,
         'aria-label': input.unit ? `${input.label} (${input.unit})` : undefined,
-        onChange: e => onChange(e.target.value.slice(0, 40)), onKeyDown: nudge,
+        onChange: e => onChange({ text: e.target.value.slice(0, 40) }), onKeyDown: nudge,
+        // Grouped again after editing ("250,000"); the number itself stays exactly what was typed.
         onBlur: kind === 'number' ? () => {
-          const n = calcNumber(raw, lang)
-          if (n !== null && calcShowGrouped(n, lang) !== raw) onChange(calcShowGrouped(n, lang))
+          if (current !== null && calcText(current, lang, true) !== entry.text) onChange({ text: calcText(current, lang, true), value: current })
         } : undefined
       }),
       unit
@@ -4722,17 +5079,16 @@ function CalcInput({ input, raw, error, disabled, lang, baseId, onChange }) {
 
   if (kind === 'slider') {
     const range = calcRangeOf(input)
-    const n = calcNumber(raw, lang)
-    const pos = n === null ? range.min : Math.min(range.max, Math.max(range.min, n))
+    const pos = current === null ? range.min : Math.min(range.max, Math.max(range.min, current))
     const fill = `${((pos - range.min) / (range.max - range.min)) * 100}%`
-    const shownMin = calcShowNice(range.min, lang), shownMax = calcShowNice(range.max, lang)
+    const shownMin = calcText(range.min, lang, true), shownMax = calcText(range.max, lang, true)
     return jsxs('div', { className: 'huic-calc-field', children: [
       jsxs('span', { className: 'huic-calc-labelrow', children: [label, box(true)] }),
       jsx('input', {
         type: 'range', className: 'huic-calc-range', min: range.min, max: range.max, step: range.step, value: pos, disabled,
         style: { '--fill': fill }, 'aria-labelledby': labelId,
-        'aria-valuetext': n === null ? undefined : `${calcShowNice(n, lang)}${input.unit ? ' ' + input.unit : ''}`,
-        onChange: e => onChange(calcShow(Number(e.target.value), lang))
+        'aria-valuetext': current === null ? undefined : `${calcText(current, lang, true)}${input.unit ? ' ' + input.unit : ''}`,
+        onChange: e => { const v = Number(e.target.value); onChange({ text: calcText(v, lang, false), value: v }) }
       }),
       jsxs('span', { className: 'huic-calc-ends', 'aria-hidden': true, children: [
         jsx('span', { children: input.unit ? `${shownMin} ${input.unit}` : shownMin }),
@@ -4759,16 +5115,18 @@ function CalcCard({ card, sessionId, display, lang }) {
 
   const checks = card.inputs.map(input => calcCheck(input, raw[input.name], lang))
   const invalid = checks.some(c => c.error)
-  const values = {}
+  const values = planDict()
   card.inputs.forEach((input, i) => { if (!checks[i].error) values[input.name] = checks[i].value })
   const results = calcCompute(card, asts, values)
-  const shown = card.outputs.map((o, i) => calcFormat(o, results[i], card, lang))
+  const shown = card.outputs.map((o, i) => calcShown(o, results[i], card, lang))
   const heroes = calcHeroIndexes(card)
   const rest = card.outputs.map((o, i) => i).filter(i => !heroes.includes(i))
-  const impossible = !invalid && shown.some(s => !s.ok)
+  const impossible = !invalid && shown.some(s => s === '–')
+  // Nothing worth sending while the headline result is "–".
+  const blank = !invalid && heroes.some(i => shown[i] === '–')
 
   // Screen readers hear the new results once typing pauses, not on every keystroke.
-  const spoken = card.outputs.map((o, i) => `${o.label}: ${shown[i].text}`).join('; ')
+  const spoken = card.outputs.map((o, i) => `${o.label}: ${shown[i]}`).join('; ')
   const firstRender = useRef(true)
   useEffect(() => {
     if (firstRender.current) { firstRender.current = false; return }
@@ -4778,28 +5136,31 @@ function CalcCard({ card, sessionId, display, lang }) {
 
   const change = (name, value) => {
     if (!editable) return
-    const next = { ...localRaw, [name]: value }
+    const next = planDict(Object.entries(localRaw))
+    next[name] = value
     setRaw(next)
     ans.saveDraft({ inputs: next })
   }
 
   const send = () => ans.submit({
     inputs: Object.fromEntries(card.inputs.map(i => [i.name, values[i.name]])),
-    outputs: card.outputs.map((o, i) => ({ label: o.label, value: calcRound(o, results[i]) }))
+    outputs: card.outputs.map((o, i) => ({ label: o.label, value: calcRound(o, results[i], card, lang) }))
   })
 
   const valueNode = (i, big) => {
-    const s = shown[i]
+    const text = shown[i]
+    const part = big ? calcSplit(text) : { num: text, suffix: '' }
     return jsxs('span', {
-      className: cx(big ? 'huic-calc-hero-value' : null, 'huic-calc-pop', !s.ok && 'huic-calc-na'),
-      children: [s.num, s.ok && s.suffix ? ' ' : null, s.ok && s.suffix ? jsx('span', { className: 'huic-calc-suffix', children: s.suffix }) : null]
-    }, s.text)
+      className: cx(big ? 'huic-calc-hero-value' : null, 'huic-calc-pop', text === '–' && 'huic-calc-na'),
+      children: [part.num, part.suffix ? ' ' : null, part.suffix ? jsx('span', { className: 'huic-calc-suffix', children: part.suffix }) : null]
+    }, text)
   }
 
   const panel = jsxs('div', {
     className: 'huic-calc-out', role: 'group', 'aria-label': t(lang, 'calcResults'),
     children: [
-      editable ? jsx('span', { className: 'huic-calc-live', title: t(lang, 'calcLiveHint'), children: t(lang, 'calcLive') }) : null,
+      editable ? jsx('span', { className: 'huic-calc-live', title: t(lang, 'calcLiveHint'), children: t(lang, 'calcLive') })
+        : ans.answered ? jsxs('span', { className: 'huic-calc-live is-sent', children: [planIcon('check'), t(lang, 'calcSent')] }) : null,
       ...heroes.map(i => jsxs('div', { className: 'huic-calc-hero', children: [
         jsx('span', { className: 'huic-calc-hero-label', children: card.outputs[i].label }),
         valueNode(i, true)
@@ -4809,7 +5170,7 @@ function CalcCard({ card, sessionId, display, lang }) {
         children: [jsx('span', { children: card.outputs[i].label }), valueNode(i, false)]
       }, i)) }, 'rows') : null,
       invalid ? jsx('p', { className: 'huic-calc-why', children: t(lang, 'calcFix') }, 'why')
-        : impossible ? jsx('p', { className: 'huic-calc-why', children: t(lang, 'calcNotPossible') }, 'why') : null
+        : impossible && !(blank && editable) ? jsx('p', { className: 'huic-calc-why', children: t(lang, 'calcNotPossible') }, 'why') : null
     ]
   })
 
@@ -4817,9 +5178,9 @@ function CalcCard({ card, sessionId, display, lang }) {
     card, display, labelId, title: card.title,
     children: [
       jsx('style', { children: CALC_CSS }, 'css'),
-      jsxs('div', { className: 'huic-calc', children: [
+      jsxs('div', { className: cx('huic-calc', ans.answered && 'is-sent'), children: [
         jsx('div', { className: 'huic-calc-inputs', role: 'group', 'aria-label': t(lang, 'calcInputs'), children: card.inputs.map((input, i) => jsx(CalcInput, {
-          input, raw: raw[input.name], error: checks[i].error, disabled: !editable, lang, baseId,
+          input, entry: raw[input.name], error: checks[i].error, disabled: !editable, lang, baseId,
           onChange: value => change(input.name, value)
         }, input.name)) }),
         panel
@@ -4828,8 +5189,8 @@ function CalcCard({ card, sessionId, display, lang }) {
       jsx('div', { className: 'huic-sr', role: 'status', 'aria-live': 'polite', children: announce }, 'live')
     ],
     footer: editable ? jsx(Footer, {
-      hint: invalid ? t(lang, 'errFix') : undefined,
-      children: jsx(Btn, { variant: 'primary', disabled: invalid, onClick: send, children: card.sendLabel || t(lang, 'calcSend') })
+      hint: invalid ? t(lang, 'errFix') : blank ? t(lang, 'calcNotPossible') : undefined,
+      children: jsx(Btn, { variant: 'primary', disabled: invalid || blank, onClick: send, children: card.sendLabel || t(lang, 'calcSend') })
     }) : null,
     after: ans.status
   })
@@ -4837,12 +5198,13 @@ function CalcCard({ card, sessionId, display, lang }) {
 
 CARD_COMPONENTS.calc = CalcCard
 REPLY_BUILDERS.calc = (card, answer, lang, data) => {
-  data.inputs = { ...answer.inputs }
+  const sent = answer.inputs || {}
+  data.inputs = Object.fromEntries(card.inputs.filter(i => Object.prototype.hasOwnProperty.call(sent, i.name)).map(i => [i.name, sent[i.name]]))
   data.outputs = answer.outputs.map(o => ({ label: o.label, value: o.value ?? null }))
   const i = calcHeroIndexes(card)[0]
   const output = card.outputs[i]
   const value = answer.outputs[i]?.value
-  return { summary: t(lang, 'rCalc', { x: `${clip(output.label, 40)} ${calcFormat(output, value, card, lang).text}` }) }
+  return { summary: t(lang, 'rCalc', { x: `${clip(output.label, 40)} ${calcShown(output, value, card, lang)}` }) }
 }
 
 // ── 84-decision.js ──
@@ -4864,7 +5226,10 @@ Object.assign(STRINGS.en, {
   decPicked: 'Picked',
   decReset: 'Reset weights',
   rDecision: 'Decision: {a} ({as}) ahead of {b} ({bs})',
-  rDecisionPicked: 'Picked: {x} ({s})'
+  rDecisionPicked: 'Picked: {x} ({s})',
+  rDecisionTie: 'Tie: {a} and {b} ({s})',
+  rDecisionTieMore: 'Tie: {a}, {b} and {n} more ({s})',
+  rDecisionNone: 'No weights set'
 })
 Object.assign(STRINGS.de, {
   decCriteria: 'Was dir wichtig ist',
@@ -4882,7 +5247,10 @@ Object.assign(STRINGS.de, {
   decPicked: 'Gewählt',
   decReset: 'Gewichte zurücksetzen',
   rDecision: 'Entscheidung: {a} ({as}) vor {b} ({bs})',
-  rDecisionPicked: 'Gewählt: {x} ({s})'
+  rDecisionPicked: 'Gewählt: {x} ({s})',
+  rDecisionTie: 'Gleichauf: {a} und {b} ({s})',
+  rDecisionTieMore: 'Gleichauf: {a}, {b} und {n} weitere ({s})',
+  rDecisionNone: 'Keine Gewichte gesetzt'
 })
 
 const DECISION_CSS = `
@@ -4906,7 +5274,7 @@ const DECISION_CSS = `
 .huic[data-card-type="decision"] .huic-dec-opt[aria-pressed="true"]{border-color:var(--huic-accent);background:color-mix(in srgb,var(--huic-accent) 10%,transparent)}
 .huic[data-card-type="decision"] .huic-dec-lead{border-color:color-mix(in srgb,var(--huic-accent) 55%,var(--ui-stroke-tertiary))}
 .huic[data-card-type="decision"] .huic-dec-rank{grid-row:1/3;align-self:start;display:inline-grid;place-items:center;width:22px;height:22px;margin-top:1px;border-radius:50%;border:1px solid var(--ui-stroke-secondary);font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--ui-text-tertiary)}
-.huic[data-card-type="decision"] .huic-dec-lead .huic-dec-rank{background:var(--huic-accent);border-color:var(--huic-accent);color:var(--ui-chat-surface-background,var(--ui-base,Canvas))}
+.huic[data-card-type="decision"] .huic-dec-lead .huic-dec-rank{background:var(--huic-accent);border-color:var(--huic-accent);color:var(--huic-on-accent)}
 .huic[data-card-type="decision"] .huic-dec-name{display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;min-width:0;font-weight:600}
 .huic[data-card-type="decision"] .huic-dec-score{font-size:18px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums;text-align:right}
 .huic[data-card-type="decision"] .huic-dec-score small{font-size:11px;font-weight:500;color:var(--ui-text-tertiary)}
@@ -4968,7 +5336,7 @@ function DecisionCard({ card, sessionId, display, lang }) {
   const weights = sent ? decCleanWeights(card, sent.weights) : state.weights
   const picked = sent ? (sent.picked || null) : state.picked
   const { rows, total } = decRank(card, weights)
-  const tied = rows.length > 1 && rows[0].raw - rows[1].raw < 1e-9 && total > 0
+  const tied = rows.length > 1 && rows[0].score === rows[1].score && total > 0
   const changed = card.criteria.some(c => weights[c.id] !== c.weight)
 
   const update = next => {
@@ -5105,7 +5473,12 @@ REPLY_BUILDERS.decision = (card, answer, lang, data) => {
     const row = data.ranking.find(r => r.id === data.picked)
     return { mark: '✓', summary: t(lang, 'rDecisionPicked', { x: clip(row.label), s: sc(row) }) }
   }
+  // Honest line 1: no weights → no ranking; equal top scores → a tie, not an order the numbers don't support.
+  if (!Object.values(data.weights).some(w => w > 0)) return { mark: '✓', summary: t(lang, 'rDecisionNone') }
   const [a, b] = data.ranking
+  const tiedAtTop = data.ranking.filter(r => r.score === a.score)
+  if (tiedAtTop.length > 2) return { mark: '✓', summary: t(lang, 'rDecisionTieMore', { a: clip(a.label, 24), b: clip(b.label, 24), n: tiedAtTop.length - 2, s: sc(a) }) }
+  if (tiedAtTop.length === 2) return { mark: '✓', summary: t(lang, 'rDecisionTie', { a: clip(a.label, 30), b: clip(b.label, 30), s: sc(a) }) }
   return { mark: '✓', summary: t(lang, 'rDecision', { a: clip(a.label, 30), as: sc(a), b: clip(b.label, 30), bs: sc(b) }) }
 }
 CARD_COMPONENTS.decision = DecisionCard
@@ -5148,20 +5521,21 @@ const RANK_CSS = `
 .huic[data-card-type="rank"] .huic-rank-drag .huic-rank-grip{cursor:grabbing}
 .huic[data-card-type="rank"] .huic-rank-grip svg{width:12px;height:16px}
 .huic[data-card-type="rank"] .huic-rank-pos{flex:none;display:inline-grid;place-items:center;min-width:24px;height:24px;border-radius:50%;background:var(--ui-bg-quaternary);color:var(--ui-text-secondary);font-size:12px;font-weight:700;font-variant-numeric:tabular-nums}
-.huic[data-card-type="rank"] .huic-rank-item[data-pos="1"] .huic-rank-pos{background:var(--huic-accent);color:var(--ui-chat-surface-background,var(--ui-base,Canvas))}
+.huic[data-card-type="rank"] .huic-rank-item[data-pos="1"] .huic-rank-pos{background:var(--huic-accent);color:var(--huic-on-accent)}
 .huic[data-card-type="rank"] .huic-rank-text{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
 .huic[data-card-type="rank"] .huic-rank-label{font-weight:500}
 .huic[data-card-type="rank"] .huic-rank-detail{color:var(--ui-text-tertiary);font-size:12px}
-.huic[data-card-type="rank"] .huic-rank-moves{flex:none;display:flex;flex-direction:column;gap:2px}
+.huic[data-card-type="rank"] .huic-rank-moves{flex:none;display:flex;flex-direction:column;gap:2px;opacity:0;transition:opacity .12s}
+.huic[data-card-type="rank"] .huic-rank-item:hover .huic-rank-moves,.huic[data-card-type="rank"] .huic-rank-item:focus-within .huic-rank-moves,.huic[data-card-type="rank"] .huic-rank-drag .huic-rank-moves{opacity:1}
+@media (hover:none){.huic[data-card-type="rank"] .huic-rank-moves{opacity:1}}
 .huic[data-card-type="rank"] .huic-rank-move{display:grid;place-items:center;width:28px;height:22px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--ui-text-secondary);cursor:pointer}
 .huic[data-card-type="rank"] .huic-rank-move:hover:not([aria-disabled="true"]){background:var(--ui-control-hover-background);color:var(--ui-text-primary)}
 .huic[data-card-type="rank"] .huic-rank-move[aria-disabled="true"]{opacity:.3;cursor:default}
 .huic[data-card-type="rank"] .huic-rank-move svg{width:12px;height:12px}
 .huic[data-card-type="rank"] .huic-rank-locked .huic-rank-item{padding-left:10px}
 @container (max-width: 440px){
-  .huic[data-card-type="rank"] .huic-rank-moves{flex-direction:row;gap:4px}
-  .huic[data-card-type="rank"] .huic-rank-move{width:34px;height:34px;border:1px solid var(--ui-stroke-tertiary)}
   .huic[data-card-type="rank"] .huic-rank-item{gap:8px}
+  .huic[data-card-type="rank"] .huic-rank-move{width:32px;height:24px}
 }
 @media (prefers-reduced-motion: reduce){.huic[data-card-type="rank"] .huic-rank-item{transition:none !important}}
 `
@@ -5262,12 +5636,32 @@ function RankCard({ card, sessionId, display, lang }) {
     const natural = el.getBoundingClientRect().top
     el.style.transform = `translateY(${d.y - d.grab - natural}px)`
   }
+  // The drag listens on the window, not on the grip: React moves the row's DOM node while it is dragged, which
+  // releases pointer capture, and a release outside the grip must still end the drag.
+  const live = useRef(null)
+  const stopListening = useRef(null)
   const dragStart = (e, id) => {
-    if (!interactive || (e.button !== undefined && e.button !== 0)) return
+    if (!interactive || drag.current || (e.button !== undefined && e.button !== 0)) return
     const el = rowRefs.current.get(id)
     if (!el) return
-    try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* not capturable: drag still follows move events */ }
+    try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* not capturable: window listeners still follow the pointer */ }
     drag.current = { id, grab: e.clientY - el.getBoundingClientRect().top, y: e.clientY }
+    const mine = ev => ev.pointerId === undefined || e.pointerId === undefined || ev.pointerId === e.pointerId
+    const onMove = ev => {
+      if (!mine(ev)) return
+      if (ev.pointerType === 'mouse' && ev.buttons === 0) live.current.end() // released where no event reached us
+      else live.current.move(ev)
+    }
+    const onEnd = ev => { if (mine(ev)) live.current.end() }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onEnd)
+    window.addEventListener('pointercancel', onEnd)
+    stopListening.current = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onEnd)
+      window.removeEventListener('pointercancel', onEnd)
+      stopListening.current = null
+    }
     setDragId(id)
     setAnnounce(t(lang, 'rankGrabbed', { x: byId.get(id).label, n: order.indexOf(id) + 1, total: order.length }))
     e.preventDefault()
@@ -5288,6 +5682,7 @@ function RankCard({ card, sessionId, display, lang }) {
   }
   const dragEnd = () => {
     const d = drag.current
+    if (stopListening.current) stopListening.current()
     if (!d) return
     drag.current = null
     const el = rowRefs.current.get(d.id)
@@ -5295,6 +5690,11 @@ function RankCard({ card, sessionId, display, lang }) {
     setDragId(null)
     setAnnounce(t(lang, 'rankMoved', { x: byId.get(d.id).label, n: order.indexOf(d.id) + 1, total: order.length }))
   }
+  live.current = { move: dragMove, end: dragEnd }
+  // Leaving mid-drag (answered elsewhere, card removed): no listener stays behind.
+  useEffect(() => () => { if (stopListening.current) stopListening.current(); drag.current = null }, [])
+  // A card that becomes locked while a drag is running ends it too.
+  useEffect(() => { if (!interactive && drag.current) dragEnd() }, [interactive])
 
   const changed = shown.some((id, i) => id !== card.items[i].id)
   const send = () => ans.submit({ order, labels: order.map(id => byId.get(id).label) })
@@ -5316,7 +5716,7 @@ function RankCard({ card, sessionId, display, lang }) {
             children: [
               interactive ? jsx('div', {
                 className: 'huic-rank-grip', 'aria-hidden': true,
-                onPointerDown: e => dragStart(e, id), onPointerMove: dragMove, onPointerUp: dragEnd, onPointerCancel: dragEnd,
+                onPointerDown: e => dragStart(e, id),
                 children: jsx('svg', {
                   viewBox: '0 0 12 16', fill: 'currentColor',
                   children: [3, 8, 13].flatMap(y => [3, 9].map(x => jsx('circle', { cx: x, cy: y, r: 1.3 }, `${x}-${y}`)))
@@ -5429,57 +5829,75 @@ const RECIPE_CSS = `
 .huic[data-card-type="recipe"] .huic-rcp-gname{margin:0 0 2px;padding:0 0 3px;border-bottom:1px solid var(--ui-stroke-tertiary);font-size:12px;font-weight:600;color:var(--ui-text-secondary)}
 .huic[data-card-type="recipe"] .huic-rcp-list{list-style:none;margin:0;padding:0}
 .huic[data-card-type="recipe"] .huic-rcp-list>li{margin:0;padding:0;display:block}
-.huic[data-card-type="recipe"] .huic-rcp-ing{display:flex;align-items:flex-start;gap:9px;padding:5px 2px;border-radius:7px;cursor:pointer}
-.huic[data-card-type="recipe"] .huic-rcp-ing:hover{background:var(--ui-control-hover-background)}
-.huic[data-card-type="recipe"] .huic-rcp-ing input{flex:none;width:16px;height:16px;margin:2px 0 0;accent-color:var(--huic-accent);cursor:pointer}
-.huic[data-card-type="recipe"] .huic-rcp-ing input:disabled{cursor:default}
+.huic[data-card-type="recipe"] .huic-rcp-ing{display:flex;align-items:flex-start;gap:9px;padding:5px 6px;margin:0 -6px;border-radius:7px;cursor:pointer}
+.huic[data-card-type="recipe"] .huic-rcp-ing:hover:has(input:not(:disabled)){background:var(--ui-control-hover-background)}
+.huic[data-card-type="recipe"] .huic-rcp-ing:has(input:disabled){cursor:default}
+.huic[data-card-type="recipe"] .huic-rcp-ing input{appearance:none;-webkit-appearance:none;display:grid;place-items:center;flex:none;width:16px;height:16px;margin:2px 0 0;border:1.5px solid var(--ui-text-quaternary,var(--huic-line-strong));border-radius:5px;background:transparent;cursor:inherit;transition:background .15s,border-color .15s}
+.huic[data-card-type="recipe"] .huic-rcp-ing input::after{content:"";width:8px;height:4px;border-left:2px solid var(--huic-on-accent);border-bottom:2px solid var(--huic-on-accent);transform:translateY(-1px) rotate(-45deg) scale(0);transition:transform .2s var(--huic-ease)}
+.huic[data-card-type="recipe"] .huic-rcp-ing:hover input:not(:checked):not(:disabled){border-color:var(--huic-accent)}
+.huic[data-card-type="recipe"] .huic-rcp-ing input:checked{background:var(--huic-accent);border-color:var(--huic-accent)}
+.huic[data-card-type="recipe"] .huic-rcp-ing input:checked::after{transform:translateY(-1px) rotate(-45deg) scale(1)}
+.huic[data-card-type="recipe"] .huic-rcp-ing input:disabled{opacity:.7}
 .huic[data-card-type="recipe"] .huic-rcp-qty{flex:none;min-width:7ch;font-weight:600;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
 .huic[data-card-type="recipe"] .huic-rcp-item{min-width:0;flex:1}
 .huic[data-card-type="recipe"] .huic-rcp-note{display:block;color:var(--ui-text-tertiary);font-size:12px}
-.huic[data-card-type="recipe"] .huic-rcp-ing.huic-rcp-have .huic-rcp-qty,.huic[data-card-type="recipe"] .huic-rcp-ing.huic-rcp-have .huic-rcp-name{color:var(--ui-text-tertiary);text-decoration:line-through;text-decoration-color:var(--ui-text-quaternary,var(--ui-stroke-secondary))}
+.huic[data-card-type="recipe"] .huic-rcp-ing.huic-rcp-have .huic-rcp-qty,.huic[data-card-type="recipe"] .huic-rcp-ing.huic-rcp-have .huic-rcp-name{color:var(--ui-text-tertiary);text-decoration:line-through;text-decoration-color:var(--ui-text-quaternary,currentColor)}
+.huic[data-card-type="recipe"] .huic-rcp-ing.huic-rcp-have .huic-rcp-note{opacity:.7}
 .huic[data-card-type="recipe"] .huic-rcp-steps{list-style:none;counter-reset:rcp;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
 .huic[data-card-type="recipe"] .huic-rcp-steps>li{counter-increment:rcp;display:flex;gap:10px;align-items:flex-start;margin:0;padding:0}
 .huic[data-card-type="recipe"] .huic-rcp-steps>li::before{content:counter(rcp);flex:none;display:grid;place-items:center;width:22px;height:22px;margin-top:1px;border-radius:50%;background:var(--ui-bg-quaternary);color:var(--ui-text-secondary);font-size:11px;font-weight:700;font-variant-numeric:tabular-nums}
 .huic[data-card-type="recipe"] .huic-rcp-steptext{min-width:0;flex:1;white-space:pre-wrap}
-.huic[data-card-type="recipe"] .huic-rcp-time{flex:none;display:inline-flex;align-items:center;gap:4px;padding:1px 8px;border-radius:999px;background:color-mix(in srgb,var(--huic-accent) 12%,transparent);color:var(--huic-accent);font-size:11.5px;font-weight:600;white-space:nowrap}
+.huic[data-card-type="recipe"] .huic-rcp-time{flex:none;display:inline-flex;align-items:center;gap:4px;margin-top:1px;color:var(--ui-text-tertiary);font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .huic[data-card-type="recipe"] .huic-rcp-time svg{width:11px;height:11px}
 @container (max-width: 440px){
   .huic[data-card-type="recipe"] .huic-rcp-groups{columns:1}
   .huic[data-card-type="recipe"] .huic-rcp-step{width:40px;height:38px}
   .huic[data-card-type="recipe"] .huic-rcp-steps>li{flex-wrap:wrap}
-  .huic[data-card-type="recipe"] .huic-rcp-steps>li .huic-rcp-time{margin-left:32px}
+  .huic[data-card-type="recipe"] .huic-rcp-steps>li .huic-rcp-time{margin-left:32px;margin-top:0}
 }
 `
 
 const RCP_FRACTIONS = { 0.125: '⅛', 0.25: '¼', 0.375: '⅜', 0.5: '½', 0.625: '⅝', 0.75: '¾', 0.875: '⅞' }
 
-// Cooking-friendly rounding: tiny amounts to eighths, small ones to quarters, up to 10 to halves, above that whole numbers.
-function rcpNice(value) {
+// Metric units read better as decimals (0.5 g, 12.5 ml) than as kitchen fractions.
+function rcpMetric(unit) { return /^(mg|g|ml)$/i.test(unit || '') }
+
+// Cooking-friendly rounding that stays honest: a step (eighths, quarters, halves) is used only while it is within
+// ~10 % of the exact amount, otherwise 2 significant digits. A smaller recipe never needs more than the original.
+function rcpNice(value, unit, original) {
   if (!(value > 0)) return 0
-  if (value > 10) return Math.round(value)
-  if (value < 0.5) return Math.max(0.125, Math.round(value * 8) / 8)
-  if (value < 5) return Math.round(value * 4) / 4
-  return Math.round(value * 2) / 2
+  let out
+  if (value >= 10) out = Math.round(value)
+  else if (rcpMetric(unit)) out = value >= 1 ? Math.round(value * 10) / 10 : Number(value.toPrecision(2))
+  else {
+    const step = value < 0.5 ? 8 : value < 5 ? 4 : 2
+    out = Math.round(value * step) / step
+    if (!(out > 0) || Math.abs(out - value) / value > 0.1) out = value >= 1 ? Math.round(value * 10) / 10 : Number(value.toPrecision(2))
+  }
+  if (original > 0) out = value < original ? Math.min(out, original) : Math.max(out, original)
+  return out
 }
 
-function rcpScaled(qty, servings, base) {
+function rcpScaled(qty, servings, base, unit) {
   if (qty === undefined || qty === null) return undefined
-  return servings === base ? qty : rcpNice(qty * servings / base)
+  return servings === base ? qty : rcpNice(qty * servings / base, unit, qty)
 }
 
-// 1.5 → "1½", 0.25 → "¼", 400 → "400", 0.3 → "0.3" (comma in German).
-function rcpFormat(value, lang) {
+// 1.5 → "1½", 0.25 → "¼", 400 → "400", 0.3 → "0.3", 0.05 → "0.05" (comma in German).
+function rcpFormat(value, lang, metric) {
   const whole = Math.floor(value + 1e-9)
   const frac = Math.round((value - whole) * 1000) / 1000
-  if (frac < 0.001) return String(whole)
-  if (RCP_FRACTIONS[frac]) return (whole ? String(whole) : '') + RCP_FRACTIONS[frac]
-  const text = String(Math.round(value * 100) / 100)
+  if (value >= 0.001 && frac < 0.001) return String(whole)
+  if (!metric && RCP_FRACTIONS[frac]) return (whole ? String(whole) : '') + RCP_FRACTIONS[frac]
+  let text = String(value >= 1 ? Math.round(value * 100) / 100 : Number(value.toPrecision(2)))
+  if (/e/i.test(text)) text = value.toFixed(6).replace(/0+$/, '')
   return lang === 'de' ? text.replace('.', ',') : text
 }
 
 function rcpAmount(qty, unit, lang) {
   if (qty === undefined || qty === null) return ''
-  return unit ? `${rcpFormat(qty, lang)} ${unit}` : rcpFormat(qty, lang)
+  const text = rcpFormat(qty, lang, rcpMetric(unit))
+  return unit ? `${text} ${unit}` : text
 }
 
 function rcpMinutes(minutes, lang) {
@@ -5520,7 +5938,7 @@ function RecipeCard({ card, sessionId, display, lang }) {
     update({ ...local, have: haveSet.has(id) ? have.filter(x => x !== id) : [...have, id] })
   }
 
-  const rows = card.ingredients.map(ing => ({ ing, qty: rcpScaled(ing.qty, servings, card.servings) }))
+  const rows = card.ingredients.map(ing => ({ ing, qty: rcpScaled(ing.qty, servings, card.servings, ing.unit) }))
   const missing = rows.filter(r => !haveSet.has(r.ing.id))
   // Groups in order of first appearance; items without a group sit under no heading.
   const groups = []
@@ -5633,6 +6051,7 @@ Object.assign(STRINGS.en, {
   flashPractise: 'To practise',
   flashMore: '+{n} more',
   flashRounds: 'after {n} rounds',
+  flashHintIs: 'Hint: {x}',
   flashRound1: 'in one round',
   flashRestart: 'Start over',
   flashSend: 'Send result',
@@ -5658,6 +6077,7 @@ Object.assign(STRINGS.de, {
   flashPractise: 'Zum Üben',
   flashMore: '+{n} weitere',
   flashRounds: 'nach {n} Runden',
+  flashHintIs: 'Tipp: {x}',
   flashRound1: 'in einer Runde',
   flashRestart: 'Von vorn',
   flashSend: 'Ergebnis senden',
@@ -5781,18 +6201,27 @@ function FlashcardsCard({ card, sessionId, display, lang }) {
   const current = state.queue[0]
   const cur = card.cards[current]
 
-  // Keep the keyboard on the card after each answer so Space keeps flipping.
+  // Keep the keyboard on the card after each answer so Space keeps flipping. The key is the card's own identity
+  // (card + round), so the same card coming back in the next round gets the focus again; at the end the result does.
   const focusCard = useRef(false)
+  const resultRef = useRef(null)
+  const sendRef = useRef(null)
+  const cardKey = done ? 'done' : `${current}-${state.round}`
   useEffect(() => {
-    if (focusCard.current) cardRef.current?.focus()
+    if (focusCard.current) (done ? (sendRef.current || resultRef.current) : cardRef.current)?.focus()
     focusCard.current = false
-  }, [current])
+  }, [cardKey])
 
   const flip = () => {
     if (done) return
     const next = !flipped
     setFlipped(next)
-    setAnnounce(next ? `${t(lang, 'flashBack')}: ${cur.back}` : '')
+    setAnnounce(next ? `${t(lang, 'flashBack')}: ${cur.back}` : hintOpen && cur.hint ? t(lang, 'flashHintIs', { x: cur.hint }) : '')
+  }
+  const showHint = () => {
+    setHintOpen(true)
+    setAnnounce(t(lang, 'flashHintIs', { x: cur.hint }))
+    cardRef.current?.focus() // the button disappears; the keyboard stays on the card
   }
   const answer = knew => {
     if (!flipped || done) return
@@ -5844,7 +6273,7 @@ function FlashcardsCard({ card, sessionId, display, lang }) {
       children: jsxs('div', {
         ref: cardRef, className: 'huic-fc', role: 'button', tabIndex: 0,
         'data-flipped': flipped, 'aria-pressed': flipped,
-        'aria-label': `${t(lang, 'flashFront')}: ${cur.front}. ${t(lang, 'flashFlipHint')}`,
+        'aria-label': `${t(lang, 'flashFront')}: ${cur.front}. ${hintOpen && cur.hint ? `${t(lang, 'flashHintIs', { x: cur.hint })}. ` : ''}${t(lang, 'flashFlipHint')}`,
         onClick: flip, onKeyDown: onCardKey,
         children: [
           jsx(FlashFace, { kind: 'front', text: cur.front, hint: hintOpen ? cur.hint : null, lang, long }),
@@ -5861,7 +6290,7 @@ function FlashcardsCard({ card, sessionId, display, lang }) {
             jsx(Btn, { variant: 'primary', onClick: () => answer(true), children: `✓ ${t(lang, 'flashKnew')}` })
           ] })
         : jsxs(Fragment, { children: [
-            cur.hint && !hintOpen ? jsx(Btn, { variant: 'ghost', onClick: () => setHintOpen(true), children: t(lang, 'flashHint') }) : null,
+            cur.hint && !hintOpen ? jsx(Btn, { variant: 'ghost', onClick: showHint, children: t(lang, 'flashHint') }) : null,
             jsx(Btn, { variant: 'primary', onClick: flip, children: t(lang, 'flashFlip') })
           ] })
     }),
@@ -5870,7 +6299,7 @@ function FlashcardsCard({ card, sessionId, display, lang }) {
 
   const practise = [...again].sort((a, b) => a - b)
   const result = done ? [
-    jsxs('div', { className: 'huic-fc-score', children: [
+    jsxs('div', { className: 'huic-fc-score', ref: resultRef, tabIndex: -1, children: [
       jsx('span', { className: 'huic-fc-big', children: `${known.length} / ${n}` }),
       jsx('span', { className: 'huic-sub', children: `${t(lang, 'flashProgress', { n: known.length, total: n })}, ${t(lang, rounds > 1 ? 'flashRounds' : 'flashRound1', { n: rounds })}` })
     ] }),
@@ -5897,7 +6326,7 @@ function FlashcardsCard({ card, sessionId, display, lang }) {
     footer: done && ans.showActions ? jsx(Footer, {
       children: jsxs(Fragment, { children: [
         jsx(Btn, { variant: 'ghost', onClick: restart, children: t(lang, 'flashRestart') }),
-        jsx(Btn, { variant: 'primary', onClick: send, children: t(lang, 'flashSend') })
+        jsx(Btn, { ref: sendRef, variant: 'primary', onClick: send, children: t(lang, 'flashSend') })
       ] })
     }) : null,
     after: ans.status
@@ -5910,10 +6339,15 @@ REPLY_BUILDERS.flashcards = (card, answer, lang, data) => {
   data.known = ok(answer.known) ? answer.known : []
   data.again = ok(answer.again) ? answer.again : []
   data.rounds = Number.isInteger(answer.rounds) ? answer.rounds : 1
-  // The fronts too: indexes are 0-based, the text version counts from 1, so the model gets the cards by name.
-  if (data.again.length) data.practise = data.again.map(i => card.cards[i].front)
   let summary = t(lang, 'rFlash', { k: data.known.length, n })
   if (data.again.length) summary += t(lang, 'rFlashAgain', { a: data.again.length })
+  // The fronts too (indexes are 0-based, the text version counts from 1), but only while the whole reply
+  // stays under the cap; the indexes and rounds are always sent.
+  if (data.again.length) {
+    const practise = data.again.map(i => card.cards[i].front)
+    const withFronts = `✓ ${summary}\n${REPLY_TAG} ${JSON.stringify({ ...data, practise })}`
+    if ([...withFronts].length <= MAX_REPLY) data.practise = practise
+  }
   return { mark: '✓', summary }
 }
 CARD_COMPONENTS.flashcards = FlashcardsCard

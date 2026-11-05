@@ -10,15 +10,36 @@ const ACCENT_VARS = {
   red: 'var(--ui-red, var(--ui-accent))'
 }
 
+// Text on an accent fill only for engines without relative colours (see huicOnColor):
+// checked against the real Desktop presets, dark and light, each at least 4.8:1.
+const ON_ACCENT_FALLBACK = {
+  app: 'var(--dt-primary-foreground, #fff)',
+  blue: '#fff',
+  green: '#000',
+  orange: '#000',
+  purple: '#000',
+  red: 'var(--dt-primary-foreground, #fff)'
+}
+
+// Black or white text for a fill, whichever contrasts more. Y in xyz-d65 is the relative
+// luminance WCAG uses; at Y = 0.17913 both give the same ratio (√(1.05 · 0.05) − 0.05),
+// so the winner always clears 4.58:1. invert = the other one (hover fills move away from it).
+function huicOnColor(fill, invert) {
+  const k = invert ? `clamp(0, (y - 0.17913) * 100000, 1)` : `clamp(0, (0.17913 - y) * 100000, 1)`
+  return `color(from ${fill} xyz-d65 calc(${k} * 0.95047) ${k} calc(${k} * 1.08883) / 1)`
+}
+const HUIC_RELATIVE = '@supports (color: color(from red xyz-d65 x y z))'
+
 // Shared UI strings (fragments after 20-i18n.js may extend the tables).
 Object.assign(STRINGS.en, { copyResult: 'Copy result', copiedResult: 'Copied' })
 Object.assign(STRINGS.de, { copyResult: 'Ergebnis kopieren', copiedResult: 'Kopiert' })
 
-// Design tokens: 4/8 spacing, three radii, one easing, hairlines from the theme strokes.
+// Design tokens: --huic-accent-ink is accent-tinted text that stays readable on the light
+// presets (raw purple/orange text on white is under 3:1). 4/8 spacing, three radii, one easing, hairlines from the theme strokes.
 // Uppercase "eyebrow" labels echo the Desktop sidebar headings; accent rails mark state.
 const CARD_CSS = `
-.huic{--huic-accent:var(--ui-accent);--huic-pad:16px;--huic-line:var(--ui-stroke-tertiary);--huic-line-strong:var(--ui-stroke-secondary);--huic-on-accent:var(--dt-primary-foreground,#fff);--huic-mono:var(--font-mono,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);--huic-ease:cubic-bezier(.2,.8,.2,1);--huic-r:12px;--huic-r-md:8px;--huic-r-sm:6px;container-type:inline-size;box-sizing:border-box;width:100%;max-width:680px;margin:8px 0;border:1px solid var(--huic-line);border-radius:var(--huic-r);background:var(--ui-chat-surface-background,transparent);color:var(--ui-text-primary);font-size:13px;line-height:1.5;text-align:left;transition:border-color .4s var(--huic-ease)}
-@supports (color: oklch(from red l c h)){.huic{--huic-on-accent:oklch(from var(--huic-accent) clamp(0, (0.62 - l) * 1000, 1) 0 0)}}
+.huic{--huic-accent:var(--ui-accent);--huic-pad:16px;--huic-line:var(--ui-stroke-tertiary);--huic-line-strong:var(--ui-stroke-secondary);--huic-on-accent:var(--huic-on-fallback,var(--dt-primary-foreground,#fff));--huic-accent-hover:color-mix(in srgb,var(--huic-accent) 86%,var(--ui-text-primary));--huic-accent-ink:color-mix(in srgb,var(--huic-accent) 50%,var(--ui-text-primary));--huic-mono:var(--font-mono,ui-monospace,SFMono-Regular,Menlo,Consolas,monospace);--huic-ease:cubic-bezier(.2,.8,.2,1);--huic-r:12px;--huic-r-md:8px;--huic-r-sm:6px;container-type:inline-size;box-sizing:border-box;width:100%;max-width:680px;margin:8px 0;border:1px solid var(--huic-line);border-radius:var(--huic-r);background:var(--ui-chat-surface-background,transparent);color:var(--ui-text-primary);font-size:13px;line-height:1.5;text-align:left;transition:border-color .4s var(--huic-ease)}
+${HUIC_RELATIVE}{.huic{--huic-on-accent:${huicOnColor('var(--huic-accent)')};--huic-accent-hover:color-mix(in srgb,var(--huic-accent) 86%,${huicOnColor('var(--huic-accent)', true)})}}
 .huic>:first-child{border-top-left-radius:11px;border-top-right-radius:11px}
 .huic>:last-child{border-bottom-left-radius:11px;border-bottom-right-radius:11px}
 .huic *{box-sizing:border-box;overflow-wrap:anywhere}
@@ -31,6 +52,7 @@ const CARD_CSS = `
 .huic-eyebrow{margin:0;font-size:11px;line-height:16px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ui-text-tertiary);font-variant-numeric:tabular-nums}
 .huic-body{padding:12px var(--huic-pad) var(--huic-pad);display:flex;flex-direction:column;gap:12px}
 .huic-foot{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:flex-end;padding:12px var(--huic-pad);border-top:1px solid var(--huic-line)}
+.huic-foot-group{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-left:auto;max-width:100%}
 .huic-hint{margin-right:auto;color:var(--ui-text-tertiary);font-size:12px;line-height:16px;font-variant-numeric:tabular-nums}
 .huic-opt{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;padding:10px 12px;border-radius:var(--huic-r-md);border:1px solid var(--huic-line);background:transparent;color:inherit;cursor:pointer;font:inherit;transition:background .15s,border-color .15s,transform .08s}
 .huic-opt:hover:not([disabled]){background:var(--ui-row-hover-background,var(--ui-control-hover-background));border-color:var(--huic-line-strong)}
@@ -64,7 +86,7 @@ textarea.huic-input{min-height:72px;resize:vertical;line-height:1.5}
 .huic-err{color:var(--ui-red);font-size:12px;line-height:17px}
 .huic-row{display:flex;gap:8px;align-items:center}
 .huic-badge{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;font-size:11px;line-height:16px;font-weight:500;padding:1px 8px;border-radius:999px;background:var(--ui-bg-tertiary,var(--ui-bg-quaternary));color:var(--ui-text-secondary);white-space:nowrap}
-.huic-best{background:color-mix(in srgb,var(--huic-accent) 14%,transparent);color:var(--huic-accent)}
+.huic-best{background:color-mix(in srgb,var(--huic-accent) 14%,transparent);color:var(--huic-accent-ink)}
 .huic-progress{height:4px;border-radius:999px;background:var(--ui-bg-tertiary,var(--ui-bg-quaternary));overflow:hidden}
 .huic-progress>span{display:block;height:100%;border-radius:inherit;background:var(--huic-accent);transition:width .35s var(--huic-ease)}
 .huic-code{margin:0;font-family:var(--huic-mono);font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-word;padding:8px 10px;border-radius:var(--huic-r-md);background:var(--ui-inline-code-background,var(--ui-bg-quaternary));color:var(--ui-inline-code-foreground,inherit)}
@@ -72,6 +94,7 @@ textarea.huic-input{min-height:72px;resize:vertical;line-height:1.5}
 .huic .huic-answer:focus-visible{outline:2px solid var(--huic-accent);outline-offset:-2px}
 .huic-answer-mark{flex:none;display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--huic-accent);color:var(--huic-on-accent);font-size:11px;font-weight:700;line-height:1}
 .huic-answer-mark svg{width:12px;height:12px;display:block}
+.huic-answer-mark .huic-ico{stroke-width:2}
 .huic-answer-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
 .huic-answer-summary{color:var(--ui-text-primary);line-height:18px}
 .huic-answer>.huic-copy{flex:none}
@@ -95,7 +118,7 @@ textarea.huic-input{min-height:72px;resize:vertical;line-height:1.5}
 .huic-btn:hover:not([disabled]){background:var(--ui-bg-secondary,var(--ui-control-hover-background))}
 .huic-btn:active:not([disabled]){transform:translateY(1px)}
 .huic-btn-primary{background:var(--huic-accent);color:var(--huic-on-accent);box-shadow:none}
-.huic-btn-primary:hover:not([disabled]){background:color-mix(in srgb,var(--huic-accent) 86%,var(--ui-text-primary))}
+.huic-btn-primary:hover:not([disabled]){background:var(--huic-accent-hover)}
 .huic-btn-ghost{background:transparent;box-shadow:none;color:var(--ui-text-secondary)}
 .huic-btn-ghost:hover:not([disabled]){background:var(--ui-control-hover-background);color:var(--ui-text-primary)}
 .huic-btn-danger{background:color-mix(in srgb,var(--ui-red) 16%,transparent);color:var(--ui-red);box-shadow:none}
@@ -103,11 +126,11 @@ textarea.huic-input{min-height:72px;resize:vertical;line-height:1.5}
 .huic-btn-primary[disabled]{opacity:1;background:var(--ui-bg-quaternary);color:var(--ui-text-quaternary,var(--ui-text-tertiary))}
 @container (max-width: 440px){
   .huic-grid{grid-template-columns:1fr}
-  .huic-foot{justify-content:stretch}
-  .huic-foot>.huic-btn,.huic-foot>button{flex:1}
-  .huic-hint{flex-basis:100%}
+  .huic-hint{flex:1 1 9em;min-width:0}
   .huic .huic-copy-text{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 }
+/* one line-icon style for chrome (check, cross, pencil, question, picture) */
+.huic-ico{display:block;flex:none;width:1em;height:1em;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 /* code + key-values */
 .huic .huic-code-block{position:relative;min-width:0;border-radius:var(--huic-r-md);background:var(--ui-inline-code-background,var(--ui-bg-quaternary));box-shadow:inset 0 0 0 1px var(--ui-stroke-quaternary,transparent)}
 .huic .huic-code-block .huic-code{position:relative;padding:10px 44px 10px 12px;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;background:transparent;line-height:1.6}
@@ -123,7 +146,8 @@ textarea.huic-input{min-height:72px;resize:vertical;line-height:1.5}
 .huic .huic-kv-value{display:flex;align-items:center;gap:6px;min-width:0}
 .huic .huic-kv-value>span{min-width:0;flex:1}
 .huic .huic-kv-value>.huic-copy{flex:none}
-.huic .huic-kv-path{font-family:var(--huic-mono);font-size:12px}
+.huic .huic-kv-path{font-family:var(--huic-mono);font-size:12px;line-height:1.55;word-break:break-all;overflow-wrap:anywhere}
+.huic .huic-kv-value:has(.huic-kv-path){align-items:flex-start}
 @media (prefers-reduced-motion: reduce){.huic,.huic *,.huic *::before,.huic *::after{transition:none !important;animation:none !important}}
 `
 
@@ -166,10 +190,10 @@ function CardImage({ src }) {
 }
 
 function Shell({ card, display, title, subtitle, children, footer, after, labelId }) {
-  const accent = ACCENT_VARS[(display && display.accent) || 'app'] || ACCENT_VARS.app
+  const preset = display && Object.hasOwn(ACCENT_VARS, display.accent) ? display.accent : 'app'
   return jsxs('section', {
     className: cx('huic', display && display.compact && 'huic-compact'),
-    style: { '--huic-accent': accent },
+    style: { '--huic-accent': ACCENT_VARS[preset], '--huic-on-fallback': ON_ACCENT_FALLBACK[preset] },
     'aria-labelledby': title ? labelId : undefined,
     'aria-label': title ? undefined : card.type,
     'data-card-type': card.type,
@@ -201,6 +225,27 @@ function Footer({ hint, children }) {
 
 const CHECK_PATH = 'm3.5 8.5 3 3 6-7'
 
+// Line icons on a 16 px grid, drawn with currentColor (the same stroke as the copy and notice icons).
+const ICON_PATHS = {
+  check: [CHECK_PATH],
+  cross: ['m4.5 4.5 7 7M11.5 4.5l-7 7'],
+  pencil: ['M10.5 3.2 12.8 5.5 6 12.3l-3 .7.7-3z', 'M9.2 4.5l2.3 2.3'],
+  question: ['M6.3 6.2a1.8 1.8 0 1 1 2.6 1.6c-.6.3-.9.7-.9 1.3v.4', 'M8 11.6v.1'],
+  help: ['M8 1.75a6.25 6.25 0 1 0 0 12.5 6.25 6.25 0 0 0 0-12.5z', 'M6.5 6.4a1.55 1.55 0 1 1 2.2 1.4c-.45.22-.7.55-.7 1v.3', 'M8 11.1v.1'],
+  alert: ['M8 2.5 14 13H2z', 'M8 6.5v3', 'M8 11.2v.1'],
+  picture: ['M2.75 3.75h10.5v8.5H2.75z', 'm2.75 10.5 3-3 2.5 2.5 1.75-1.75 3.25 3', 'M10.25 6.25v.01'],
+  undo: ['M5.5 4.5 3 7l2.5 2.5', 'M3 7h6.5a3 3 0 0 1 0 6H7']
+}
+function Icon({ name, className }) {
+  return jsx('svg', {
+    className: cx('huic-ico', className), viewBox: '0 0 16 16', 'aria-hidden': true, focusable: 'false',
+    children: ICON_PATHS[name].map((d, i) => jsx('path', { d }, i))
+  })
+}
+
+// Reply marks drawn in the same line style as the check (no emoji next to line icons).
+const MARK_ICONS = { '✗': 'cross', '✎': 'pencil', '⚠': 'alert' }
+
 // The answered state reads like a receipt: accent rail, the mark, what was sent, and a copy action.
 function AnsweredBar({ lang, record, focus }) {
   const ref = useRef(null)
@@ -214,7 +259,7 @@ function AnsweredBar({ lang, record, focus }) {
         className: 'huic-answer-mark', 'aria-hidden': true,
         children: mark === '✓'
           ? jsx('svg', { viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: 2.2, children: jsx('path', { d: CHECK_PATH, strokeLinecap: 'round', strokeLinejoin: 'round' }) })
-          : mark
+          : MARK_ICONS[mark] ? jsx(Icon, { name: MARK_ICONS[mark] }) : mark
       }),
       jsxs('span', {
         className: 'huic-answer-text',
@@ -285,6 +330,8 @@ function CopyButton({ text, lang, label: idleLabel, doneLabel, showLabel }) {
   })
 }
 
+// Absolute paths are shown in full (wrapped, monospace): the exact target of a destructive
+// action must never be hidden behind an ellipsis.
 // Label/value pairs. The app's Markdown styles reach dl/dt/dd inside messages, so the
 // layout-critical properties are inline; each pair is one flex row (dl > div > dt + dd).
 const KV_ROW = { display: 'flex', gap: 12, justifyContent: 'space-between', alignItems: 'baseline', padding: '6px 0', borderTop: '1px solid var(--ui-stroke-tertiary)' }
@@ -299,8 +346,6 @@ function KeyValues({ rows, lang }) {
       const value = String(row.value ?? '')
       const stacked = [...value].length > 40
       const path = /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(value)
-      const chars = [...value]
-      const shown = path && chars.length > 40 ? chars.slice(0, 18).join('') + '…' + chars.slice(-21).join('') : value
       return jsxs('div', {
         className: stacked ? 'huic-kv-stacked' : undefined,
         style: { ...KV_ROW, ...(stacked ? { flexDirection: 'column', alignItems: 'stretch', gap: 2, padding: '8px 0' } : {}) },
@@ -311,7 +356,7 @@ function KeyValues({ rows, lang }) {
             children: path ? jsxs('span', {
               className: 'huic-kv-value',
               children: [
-                jsx('span', { className: 'huic-kv-path', title: value, 'aria-label': value, children: shown }),
+                jsx('span', { className: 'huic-kv-path', children: value }),
                 jsx(CopyButton, { text: value, lang })
               ]
             }) : value

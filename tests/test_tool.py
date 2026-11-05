@@ -194,7 +194,7 @@ def test_cards_command():
     assert "Types: plan, review, checklist, compare, form, confirm, steps" in handle_cards("")
     assert handle_cards("types").count("\n") == len(CARD_TYPES) - 1
     demo = handle_cards("demo compare")
-    assert "Which laptop?" in demo and "hui_present demo for compare" in demo
+    assert "Home internet: which plan?" in demo and "hui_present demo for compare" in demo
     on_desktop = handle_cards("demo compare", platform="desktop")
     assert on_desktop.startswith("Commands can't draw cards. Send")
     assert "Capabilities → Plugins" in handle_cards("", platform="desktop")

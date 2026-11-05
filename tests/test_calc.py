@@ -39,3 +39,18 @@ for(const e of JSON.parse(process.argv[1])) { const ast=parse(e,['x','y','x_1'])
 @pytest.mark.parametrize('expr, expected', [('2^3^2',512),('-2^2',-4),('if(0,1/0,5)',5),('1/0',None),('sqrt(-1)',None)])
 def test_expression_results(expr, expected):
     assert calc_eval(calc_parse(expr, []), {}) == expected
+
+@pytest.mark.parametrize('value, output, card, lang, expected', [
+    (2.675, {'format': 'currency'}, {'currency': 'EUR'}, 'en', '€2.68'),
+    (-2.675, {'format': 'currency'}, {'currency': 'EUR'}, 'de', '-2,68\u00a0€'),
+    (0.02675, {'format': 'percent'}, {}, 'en', '2.68 %'),
+    (1e308, {'format': 'percent'}, {}, 'en', '–'),
+    (1234.5, {'format': 'currency'}, {'currency': 'USD'}, 'en', 'US$1,234.50'),
+    (1234.5, {'format': 'currency'}, {'currency': 'GBP'}, 'de', '1.234,50\u00a0£'),
+])
+def test_calc_format_parity(value, output, card, lang, expected):
+    from hui_cards.fallback import calc_format
+    script = r'''const fs=require('fs'),vm=require('vm'); const s=fs.readFileSync('desktop/src/10-validate.js','utf8'); vm.runInThisContext(s.slice(s.indexOf('function calcParse('))); process.stdout.write(JSON.stringify(calcFormat(...JSON.parse(process.argv[1]))));'''
+    args = [value, output, card, lang]
+    result = subprocess.run(['node', '-e', script, json.dumps(args)], cwd=ROOT, text=True, capture_output=True, check=True)
+    assert calc_format(*args) == json.loads(result.stdout) == expected

@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict'
-import { beforeEach, test } from 'node:test'
+import { beforeEach, mock, test } from 'node:test'
 
 import { act, buttonByText, click, key, lastReply, makeStorage, mount, registerPlugin, resetHost, testHost, toolResult, type, host } from './dom.mjs'
 
 beforeEach(resetHost)
+
+// node:test's MockTimers prints an ExperimentalWarning; keep test output warning-free.
+const emitWarning = process.emitWarning
+process.emitWarning = (warning, ...rest) => (String(warning).includes('MockTimers') ? undefined : emitWarning.call(process, warning, ...rest))
 
 const choiceCard = {
   type: 'choice',
@@ -226,9 +230,15 @@ test('confirm: yes, no and change', async () => {
     risk: { level: 'high', text: 'Cannot be undone' },
     command: 'rm ~/logs/*.old'
   }
-  let m = await mount(toolResult(card))
-  assert.match(m.container.textContent, /High risk/)
-  await click(buttonByText(m.container, 'Yes, go ahead'))
+  let m
+  mock.timers.enable({ apis: ['setTimeout'] })
+  try {
+    m = await mount(toolResult(card))
+    assert.match(m.container.textContent, /High risk/)
+    await click(buttonByText(m.container, 'Yes, go ahead'))
+    assert.equal(testHost.submissions.length, 0, 'high risk: Yes waits out the undo window')
+    await act(async () => mock.timers.tick(4000))
+  } finally { mock.timers.reset() }
   assert.equal(lastReply().line1, '✓ Yes, go ahead: Delete old logs?')
   assert.equal(lastReply().json.decision, 'yes')
   await m.unmount()

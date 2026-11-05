@@ -16,29 +16,33 @@ Object.assign(STRINGS.de, {
 
 const QUIZ_CSS = `
 .huic[data-card-type="quiz"] h4[tabindex="-1"]:focus{outline:0}
-.huic[data-card-type="quiz"] .huic-qsegs{display:flex;gap:4px;margin:2px 0 4px}
-.huic[data-card-type="quiz"] .huic-qseg{flex:1 1 0;height:6px;border-radius:999px;background:var(--ui-bg-quaternary);transition:background .15s}
-.huic[data-card-type="quiz"] .huic-qseg-cur{background:color-mix(in srgb,var(--huic-accent) 55%,transparent);box-shadow:0 0 0 1.5px var(--ui-chat-surface-background,var(--ui-base,Canvas)),0 0 0 3px var(--ui-stroke-secondary)}
+.huic[data-card-type="quiz"] .huic-qsegs{display:flex;gap:4px;margin:2px 0 6px}
+.huic[data-card-type="quiz"] .huic-qseg{flex:1 1 0;height:4px;border-radius:999px;background:var(--huic-line-strong);transition:background .2s var(--huic-ease)}
+.huic[data-card-type="quiz"] .huic-qseg-cur{background:var(--huic-accent)}
 .huic[data-card-type="quiz"] .huic-qseg-ok{background:var(--ui-green,var(--huic-accent))}
 .huic[data-card-type="quiz"] .huic-qseg-bad{background:var(--ui-red,var(--ui-text-tertiary))}
 .huic[data-card-type="quiz"] .huic-opt-correct{border-color:var(--ui-green,var(--huic-accent));background:color-mix(in srgb,var(--ui-green,var(--huic-accent)) 14%,transparent)}
 .huic[data-card-type="quiz"] .huic-opt-wrong{border-color:var(--ui-red,var(--ui-text-tertiary));background:color-mix(in srgb,var(--ui-red,var(--ui-text-tertiary)) 12%,transparent)}
-.huic[data-card-type="quiz"] .huic-opt-correct .huic-num-state{background:var(--ui-green,var(--huic-accent));border-color:var(--ui-green,var(--huic-accent));color:var(--ui-chat-surface-background,var(--ui-base,Canvas))}
-.huic[data-card-type="quiz"] .huic-opt-wrong .huic-num-state{background:var(--ui-red,var(--ui-text-tertiary));border-color:var(--ui-red,var(--ui-text-tertiary));color:var(--ui-chat-surface-background,var(--ui-base,Canvas))}
+.huic[data-card-type="quiz"] .huic-num-state .huic-ico{width:11px;height:11px;stroke-width:2.2}
+.huic[data-card-type="quiz"] .huic-opt-correct .huic-num-state{background:var(--ui-green,var(--huic-accent));border-color:var(--ui-green,var(--huic-accent));color:${huicOnColor('var(--ui-green, var(--huic-accent))')}}
+.huic[data-card-type="quiz"] .huic-opt-wrong .huic-num-state{background:var(--ui-red,var(--ui-text-tertiary));border-color:var(--ui-red,var(--ui-text-tertiary));color:${huicOnColor('var(--ui-red, var(--ui-text-tertiary))')}}
 .huic[data-card-type="quiz"] .huic-quiz-done .huic-opt{cursor:default}
 .huic[data-card-type="quiz"] .huic-quiz-done .huic-opt:not(.huic-opt-correct):not(.huic-opt-wrong){opacity:.6}
 .huic[data-card-type="quiz"] .huic-quiz-done .huic-opt:not(.huic-opt-correct):not(.huic-opt-wrong):hover{background:transparent}
 .huic[data-card-type="quiz"] .huic-callout{display:flex;flex-direction:column;gap:2px;padding:9px 12px;border-radius:9px;background:var(--ui-bg-quaternary);border-left:3px solid var(--ui-text-tertiary)}
 .huic[data-card-type="quiz"] .huic-callout-ok{border-left-color:var(--ui-green,var(--huic-accent))}
 .huic[data-card-type="quiz"] .huic-callout-bad{border-left-color:var(--ui-red,var(--ui-text-tertiary))}
-.huic[data-card-type="quiz"] .huic-callout-ok b{color:var(--ui-green,var(--huic-accent))}
-.huic[data-card-type="quiz"] .huic-callout-bad b{color:var(--ui-red,var(--ui-text-primary))}
+.huic[data-card-type="quiz"] .huic-callout b{display:flex;align-items:center;gap:6px}
+.huic[data-card-type="quiz"] .huic-callout b .huic-ico{stroke-width:2}
+.huic[data-card-type="quiz"] .huic-callout-ok b .huic-ico{color:var(--ui-green,var(--huic-accent))}
+.huic[data-card-type="quiz"] .huic-callout-bad b .huic-ico{color:var(--ui-red,var(--ui-text-primary))}
 .huic[data-card-type="quiz"] .huic-callout p{margin:0;color:var(--ui-text-secondary)}
 .huic[data-card-type="quiz"] .huic-score{display:flex;align-items:baseline;gap:8px;margin:2px 0 0}
-.huic[data-card-type="quiz"] .huic-score-big{font-size:30px;font-weight:700;line-height:1.1;color:var(--huic-accent);font-variant-numeric:tabular-nums}
+.huic[data-card-type="quiz"] .huic-score-big{font-size:30px;font-weight:700;line-height:1.1;color:var(--huic-accent-ink);font-variant-numeric:tabular-nums}
 .huic[data-card-type="quiz"] .huic-review{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
 .huic[data-card-type="quiz"] .huic-review li{display:flex;gap:8px;align-items:flex-start;padding:7px 10px;border-radius:9px;border:1px solid var(--ui-stroke-tertiary)}
-.huic[data-card-type="quiz"] .huic-review-mark{flex:none;width:18px;text-align:center;font-weight:700}
+.huic[data-card-type="quiz"] .huic-review-mark{flex:none;display:grid;place-items:center;width:18px;height:20px;font-size:14px}
+.huic[data-card-type="quiz"] .huic-review-mark .huic-ico{stroke-width:2}
 .huic[data-card-type="quiz"] .huic-review-ok .huic-review-mark{color:var(--ui-green,var(--huic-accent))}
 .huic[data-card-type="quiz"] .huic-review-bad .huic-review-mark{color:var(--ui-red,var(--ui-text-primary))}
 `
@@ -130,7 +134,7 @@ function QuizCard({ card, sessionId, display, lang }) {
         children: card.questions.map((item, i) => jsxs('li', {
           className: isRight(i) ? 'huic-review-ok' : 'huic-review-bad',
           children: [
-            jsx('span', { className: 'huic-review-mark', 'aria-hidden': true, children: isRight(i) ? '✓' : '✗' }),
+            jsx('span', { className: 'huic-review-mark', 'aria-hidden': true, children: jsx(Icon, { name: isRight(i) ? 'check' : 'cross' }) }),
             jsxs('span', {
               className: 'huic-opt-text',
               children: [
@@ -162,7 +166,7 @@ function QuizCard({ card, sessionId, display, lang }) {
       done ? jsxs('div', {
         role: 'status', className: cx('huic-callout', isRight(index) ? 'huic-callout-ok' : 'huic-callout-bad'),
         children: [
-          jsx('b', { children: (isRight(index) ? '✓ ' : '✗ ') + t(lang, isRight(index) ? 'correct' : 'wrong') }),
+          jsxs('b', { children: [jsx(Icon, { name: isRight(index) ? 'check' : 'cross' }), t(lang, isRight(index) ? 'correct' : 'wrong')] }),
           q.explanation ? jsx('p', { children: q.explanation }) : null
         ]
       }) : null
@@ -180,7 +184,7 @@ function QuizCard({ card, sessionId, display, lang }) {
     }),
     footer: ans.showActions ? jsx(Footer, {
       hint: t(lang, hintKey, { keys: keyRange(q ? q.options.length : 0) }),
-      children: jsxs(Fragment, { children: [
+      children: jsxs('span', { className: 'huic-foot-group', children: [
         index > 0 ? jsx(Btn, { onClick: () => update({ index: index - 1 }), children: t(lang, 'back') }) : null,
         inResult
           ? jsx(Btn, { variant: 'primary', disabled: !allChecked, onClick: sendResult, children: t(lang, 'sendScore') })

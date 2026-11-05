@@ -453,24 +453,47 @@ def _decision(card, L):
     lines.append(L('Weights: ', 'Gewichte: ') + ', '.join(f"{_one(c['label'])} {_num(c['weight'], L)}" for c in criteria))
     return lines + [L('Reply with changed weights or a pick.', 'Antworte mit geänderten Gewichten oder deiner Wahl.')]
 
+def calc_format(value, output, card, lang):
+    """Format a finite calculator result using decimal half-away-from-zero."""
+    import math
+    from decimal import Decimal, ROUND_HALF_UP, localcontext
+
+    if value is None or not math.isfinite(value): return '–'
+    if value == 0: value = 0.0
+    fmt = output.get('format', 'number')
+    if fmt == 'percent': value *= 100.0
+    if not math.isfinite(value): return '–'
+    decimals = output.get('decimals', 0 if fmt == 'integer' else 2)
+    with localcontext() as ctx:
+        ctx.prec = 400
+        rounded = Decimal(str(value)).quantize(Decimal(1).scaleb(-decimals), rounding=ROUND_HALF_UP)
+    shown = f'{rounded:,.{decimals}f}'
+    de = str(lang or '').lower().startswith('de')
+    if de: shown = shown.replace(',', '\0').replace('.', ',').replace('\0', '.')
+    if fmt == 'currency':
+        code = card.get('currency', 'EUR')
+        symbol = ({'EUR': '€', 'USD': '$', 'GBP': '£', 'CAD': 'CA$', 'JPY': '¥', 'AUD': 'AU$'} if de else {'EUR': '€', 'USD': 'US$', 'GBP': '£', 'CAD': 'CA$', 'JPY': 'JP¥', 'AUD': 'A$'}).get(code, code)
+        if de: shown += '\u00a0' + symbol
+        else:
+            negative = shown.startswith('-')
+            shown = ('-' if negative else '') + symbol + ('\u00a0' if symbol == code else '') + (shown[1:] if negative else shown)
+    if fmt == 'percent': shown += ' %'
+    if output.get('unit'): shown += ' ' + _one(output['unit'])
+    return shown
+
+
 def _calc(card, L):
     from .calc_expr import calc_parse, calc_eval
     lines = _head(card, 'title', 'note'); values = {x['name']: x['default'] for x in card['inputs']}
     for item in card['inputs']:
         lines.append(f"{_one(item['label'])} ({item['name']}): {_with_unit(item['default'], item.get('unit'), L)}")
     for output in card['outputs']:
-        val = calc_eval(calc_parse(output['expr'], list(values)), values); fmt = output.get('format', 'number')
-        if val is None: shown = '–'
-        else:
-            if fmt == 'percent': val *= 100
-            decimals = output.get('decimals', 0 if fmt == 'integer' else 2)
-            shown = f'{val:,.{decimals}f}'
-            if L.de: shown = shown.replace(',', '\0').replace('.', ',').replace('\0', '.')
-            if fmt == 'percent': shown += ' %'
-            if fmt == 'currency': shown += ' ' + {'EUR':'€', 'USD':'$', 'GBP':'£'}.get(card.get('currency', 'EUR'), card.get('currency', 'EUR'))
-            if output.get('unit'): shown += ' ' + _one(output['unit'])
+        val = calc_eval(calc_parse(output['expr'], list(values)), values)
+        shown = calc_format(val, output, card, 'de' if L.de else 'en')
         lines.append(f"{_one(output['label'])}: {shown}")
-    return lines + [L('Reply with other values, e.g. "rate 4.5".', 'Antworte mit anderen Werten, z. B. "rate 4,5".')]
+    first = card['inputs'][0]
+    example = first['name'] + ' ' + _num(first['default'], L)
+    return lines + [L(f'Reply with other values, e.g. "{example}".', f'Antworte mit anderen Werten, z. B. "{example}".')]
 
 def _rank(card, L):
     lines = _head(card, 'title', 'prompt')

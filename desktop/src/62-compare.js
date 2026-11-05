@@ -1,5 +1,5 @@
-Object.assign(STRINGS.en, { compareSources: 'sources', compareChecked: 'Prices checked', compareNoSources: "From the model’s knowledge, no web sources", compareUndo: 'Undo', comparePending: 'Picked {title} · sending in {s} s', compareMore: '+{count} more', compareLess: 'Show less', compareBest: 'best', compareSwitch: 'Compare options', compareYourPick: 'Your pick' })
-Object.assign(STRINGS.de, { compareSources: 'Quellen', compareChecked: 'Preise geprüft', compareNoSources: 'Aus dem Wissen des Modells, ohne Webquellen', compareUndo: 'Rückgängig', comparePending: 'Gewählt: {title} · wird in {s} s gesendet', compareMore: '+{count} weitere', compareLess: 'Weniger anzeigen', compareBest: 'bester Wert', compareSwitch: 'Optionen vergleichen', compareYourPick: 'Deine Wahl' })
+Object.assign(STRINGS.en, { compareSources: 'sources', compareChecked: 'Prices checked', compareNoSources: "From the model’s knowledge, no web sources", compareUndo: 'Undo', comparePending: 'Picked {title} · sending in {s} s', compareMore: '+{count} more', compareLess: 'Show less', compareBest: 'best', compareBestOf: 'Best of {n}', compareSwitch: 'Compare options', compareYourPick: 'Your pick' })
+Object.assign(STRINGS.de, { compareSources: 'Quellen', compareChecked: 'Preise geprüft', compareNoSources: 'Aus dem Wissen des Modells, ohne Webquellen', compareUndo: 'Rückgängig', comparePending: 'Gewählt: {title} · wird in {s} s gesendet', compareMore: '+{count} weitere', compareLess: 'Weniger anzeigen', compareBest: 'bester Wert', compareBestOf: 'Bester von {n}', compareSwitch: 'Optionen vergleichen', compareYourPick: 'Deine Wahl' })
 
 // A real table: full-bleed hairline rows, a quiet tinted column for the recommendation,
 // a dot for the best value per row, small source chips. Narrow views switch columns.
@@ -25,6 +25,7 @@ const COMPARE_CSS = `
 .huic[data-card-type="compare"] .huic-compare-head .huic-img{margin-bottom:8px}
 .huic[data-card-type="compare"] .huic-compare-best{font-weight:600;color:var(--ui-text-primary)}
 .huic[data-card-type="compare"] .huic-compare-dot{display:inline-block;width:6px;height:6px;margin:0 7px 0 0;border-radius:50%;background:var(--huic-accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--huic-accent) 18%,transparent);font-size:0;line-height:0;vertical-align:middle;position:relative;top:-1px}
+.huic[data-card-type="compare"] .huic-compare-bestof{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .huic[data-card-type="compare"] .huic-compare-yes{color:var(--ui-green,var(--huic-accent));font-weight:600}
 .huic[data-card-type="compare"] .huic-compare-none{color:var(--ui-text-quaternary,var(--ui-text-tertiary))}
 .huic[data-card-type="compare"] .huic-compare-source{display:inline-flex;align-items:center;gap:3px;max-width:100%;margin:4px 4px 0 0;padding:0 7px;border:1px solid var(--huic-line);border-radius:999px;font-size:11px;line-height:18px;font-weight:400;color:var(--ui-text-tertiary);text-decoration:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;transition:color .15s,border-color .15s}
@@ -40,7 +41,7 @@ const COMPARE_CSS = `
 .huic[data-card-type="compare"] .huic-compare-more:hover{text-decoration:underline;text-underline-offset:2px}
 .huic[data-card-type="compare"] .is-actions .huic-btn{width:100%}
 .huic[data-card-type="compare"] .huic-compare-pick{display:inline-flex;align-items:center;gap:4px}
-.huic[data-card-type="compare"] .huic-compare-pick::before{content:"✓";font-weight:700}
+.huic[data-card-type="compare"] .huic-compare-pick .huic-ico{width:11px;height:11px;stroke-width:2.2}
 .huic[data-card-type="compare"] .huic-compare-switch{display:none;gap:2px;padding:2px;border-radius:var(--huic-r-md);background:var(--ui-bg-tertiary,var(--ui-bg-quaternary))}
 .huic[data-card-type="compare"] .huic-compare-switch button{flex:1 1 0;min-width:0;min-height:30px;padding:4px 8px;border:0;border-radius:var(--huic-r-sm);background:transparent;color:var(--ui-text-secondary);cursor:pointer;font:inherit;font-size:12.5px;line-height:16px;transition:background .15s,color .15s}
 .huic[data-card-type="compare"] .huic-compare-switch button:hover{color:var(--ui-text-primary)}
@@ -57,6 +58,9 @@ const COMPARE_CSS = `
  .huic[data-card-type="compare"] .huic-compare-table{grid-template-columns:minmax(84px,32%) minmax(0,1fr)}
  .huic[data-card-type="compare"] .huic-compare-cell[data-visible="false"]{display:none}
  .huic[data-card-type="compare"] .huic-compare-cell[data-visible="true"]{padding-right:var(--huic-pad)}
+ .huic[data-card-type="compare"] .huic-compare-dot{display:none}
+ .huic[data-card-type="compare"] .huic-compare-bestof{position:static;width:auto;height:auto;overflow:visible;clip:auto;display:inline-block;margin:0 0 2px;padding:0 7px;border-radius:999px;background:color-mix(in srgb,var(--huic-accent) 14%,transparent);color:var(--ui-text-primary);font-size:11px;font-weight:600;line-height:18px;letter-spacing:.01em}
+ .huic[data-card-type="compare"] .huic-compare-bestof::after{content:"";display:block}
 }
 `
 function compareValue(value) {
@@ -82,7 +86,7 @@ function CompareCard({ card, sessionId, display, lang }) {
   const pickRefs = useRef({})
   const undoRef = useRef(null)
   const returnTo = useRef(null)
-  const delay = typeof undoDelayMs === 'function' ? undoDelayMs() : 4000
+  const delay = typeof undoDelayMs === 'function' ? undoDelayMs(display) : 4000
   const undo = () => {
     if (!timer.current) return
     clearTimeout(timer.current); timer.current = null
@@ -101,11 +105,16 @@ function CompareCard({ card, sessionId, display, lang }) {
   }
   const pick = column => {
     if (timer.current) return
+    if (!delay) return void ans.submit({ selected: column.id })
     setPending(column)
     timer.current = setTimeout(() => { timer.current = null; setPending(null); ans.submit({ selected: column.id }) }, delay)
   }
   const picked = ans.answer?.selection?.selected
-  const cell = (column, i, content, extra = '', role = 'cell') => jsx('div', { role, className: cx('huic-compare-cell', column.best && 'huic-compare-recommended', extra), 'data-visible': i === selected ? 'true' : 'false', children: content }, column.id || i)
+  // The tinted wash marks the recommendation until there is a pick, then moves to the pick
+  // (the recommendation keeps only its badge).
+  const chosenId = pending ? pending.id : picked
+  const washed = column => (chosenId !== undefined ? chosenId === column.id : Boolean(column.best))
+  const cell = (column, i, content, extra = '', role = 'cell') => jsx('div', { role, className: cx('huic-compare-cell', washed(column) && 'huic-compare-recommended', extra), 'data-visible': i === selected ? 'true' : 'false', children: content }, column.id || i)
   const row = (label, contents, key, kind) => jsxs('div', { role: 'row', className: cx('huic-compare-row', kind && `is-${kind}`), children: [jsx('div', { role: label ? 'rowheader' : 'cell', className: 'huic-compare-cell huic-compare-label', children: label }), ...contents] }, key)
   const urls = new Set(card.columns.map(c => c.source?.url).concat((card.rows || []).flatMap(r => r.sources || [])).filter(Boolean))
   const head = c => jsxs('div', { className: 'huic-compare-head', children: [
@@ -113,7 +122,7 @@ function CompareCard({ card, sessionId, display, lang }) {
     jsx('strong', { className: 'huic-compare-name', children: c.title }),
     c.subtitle ? jsx('div', { className: 'huic-compare-subtitle', children: c.subtitle }) : null,
     jsxs('div', { className: 'huic-compare-tags', children: [
-      picked !== undefined && picked === c.id ? jsx('span', { className: 'huic-badge huic-best huic-compare-pick', children: t(lang, 'compareYourPick') }) : null,
+      picked !== undefined && picked === c.id ? jsxs('span', { className: 'huic-badge huic-best huic-compare-pick', children: [jsx(Icon, { name: 'check' }), t(lang, 'compareYourPick')] }) : null,
       c.best ? jsx('span', { className: 'huic-badge huic-best', children: '★ ' + t(lang, 'recommended') }) : null,
       c.badge ? jsx('span', { className: 'huic-badge', title: c.badge, children: c.badge }) : null,
       c.source ? jsx(CompareSource, { url: c.source.url, label: c.source.label }) : null
@@ -121,7 +130,10 @@ function CompareCard({ card, sessionId, display, lang }) {
   ] })
   const rows = [row('', card.columns.map((c, i) => cell(c, i, head(c), '', 'columnheader')), 'header', 'head')]
   for (const [ri, r] of (card.rows || []).entries()) rows.push(row(r.label, card.columns.map((c, i) => cell(c, i, jsxs(Fragment, { children: [
-    r.best === i ? jsx('span', { className: 'huic-compare-dot', 'aria-label': t(lang, 'compareBest'), children: '● ' }) : null,
+    // Wide: a dot beside the best value. Narrow (one column at a time) a dot means nothing,
+    // so it becomes a short "Best of 3"; screen readers always get that text.
+    r.best === i ? jsx('span', { className: 'huic-compare-dot', 'aria-hidden': true }) : null,
+    r.best === i ? jsx('span', { className: 'huic-compare-bestof', children: t(lang, 'compareBestOf', { n: card.columns.length }) }) : null,
     compareValue(r.values[i]),
     r.sources?.[i] ? jsx(CompareSource, { url: r.sources[i] }) : null
   ] }), r.best === i ? 'huic-compare-best' : '')), `row${ri}`))

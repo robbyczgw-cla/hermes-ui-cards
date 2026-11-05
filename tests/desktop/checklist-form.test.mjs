@@ -123,3 +123,27 @@ test('form date fields carry no fixed format hint (the native picker shows the l
     await m.unmount()
   }
 })
+
+test('form: Submit stays quiet until every required field has a value, clicking early still validates', async () => {
+  const m = await mount(toolResult({ type: 'form', title: 'Book', submitLabel: 'Book', fields: [
+    { name: 'name', label: 'Name', kind: 'text', required: true },
+    { name: 'guests', label: 'Guests', kind: 'number', required: true },
+    { name: 'note', label: 'Note', kind: 'text' }
+  ] }))
+  const submit = () => buttonByText(m.container, 'Book')
+  assert.ok(!submit().classList.contains('huic-btn-primary'), 'quiet while required fields are empty')
+  await click(submit())
+  assert.equal(testHost.submissions.length, 0)
+  assert.ok(m.container.querySelector('[aria-invalid="true"]'), 'early click marks what is missing')
+  await type(m.container.querySelector('input[aria-required="true"]'), 'Anna')
+  assert.ok(!submit().classList.contains('huic-btn-primary'))
+  await type(m.container.querySelectorAll('input[aria-required="true"]')[1], '4')
+  assert.ok(submit().classList.contains('huic-btn-primary'), 'primary once all required are filled')
+  await click(submit())
+  assert.deepEqual(lastReply().json.values, { name: 'Anna', guests: 4, note: null })
+  await m.unmount()
+
+  const optionalOnly = await mount(toolResult({ type: 'form', submitLabel: 'Book', fields: [{ name: 'note', label: 'Note', kind: 'text' }] }))
+  assert.ok(buttonByText(optionalOnly.container, 'Book').classList.contains('huic-btn-primary'), 'nothing required: primary from the start')
+  await optionalOnly.unmount()
+})

@@ -20,6 +20,7 @@ Object.assign(STRINGS.en, {
   flashPractise: 'To practise',
   flashMore: '+{n} more',
   flashRounds: 'after {n} rounds',
+  flashHintIs: 'Hint: {x}',
   flashRound1: 'in one round',
   flashRestart: 'Start over',
   flashSend: 'Send result',
@@ -45,6 +46,7 @@ Object.assign(STRINGS.de, {
   flashPractise: 'Zum Üben',
   flashMore: '+{n} weitere',
   flashRounds: 'nach {n} Runden',
+  flashHintIs: 'Tipp: {x}',
   flashRound1: 'in einer Runde',
   flashRestart: 'Von vorn',
   flashSend: 'Ergebnis senden',
@@ -168,18 +170,27 @@ function FlashcardsCard({ card, sessionId, display, lang }) {
   const current = state.queue[0]
   const cur = card.cards[current]
 
-  // Keep the keyboard on the card after each answer so Space keeps flipping.
+  // Keep the keyboard on the card after each answer so Space keeps flipping. The key is the card's own identity
+  // (card + round), so the same card coming back in the next round gets the focus again; at the end the result does.
   const focusCard = useRef(false)
+  const resultRef = useRef(null)
+  const sendRef = useRef(null)
+  const cardKey = done ? 'done' : `${current}-${state.round}`
   useEffect(() => {
-    if (focusCard.current) cardRef.current?.focus()
+    if (focusCard.current) (done ? (sendRef.current || resultRef.current) : cardRef.current)?.focus()
     focusCard.current = false
-  }, [current])
+  }, [cardKey])
 
   const flip = () => {
     if (done) return
     const next = !flipped
     setFlipped(next)
-    setAnnounce(next ? `${t(lang, 'flashBack')}: ${cur.back}` : '')
+    setAnnounce(next ? `${t(lang, 'flashBack')}: ${cur.back}` : hintOpen && cur.hint ? t(lang, 'flashHintIs', { x: cur.hint }) : '')
+  }
+  const showHint = () => {
+    setHintOpen(true)
+    setAnnounce(t(lang, 'flashHintIs', { x: cur.hint }))
+    cardRef.current?.focus() // the button disappears; the keyboard stays on the card
   }
   const answer = knew => {
     if (!flipped || done) return
@@ -231,7 +242,7 @@ function FlashcardsCard({ card, sessionId, display, lang }) {
       children: jsxs('div', {
         ref: cardRef, className: 'huic-fc', role: 'button', tabIndex: 0,
         'data-flipped': flipped, 'aria-pressed': flipped,
-        'aria-label': `${t(lang, 'flashFront')}: ${cur.front}. ${t(lang, 'flashFlipHint')}`,
+        'aria-label': `${t(lang, 'flashFront')}: ${cur.front}. ${hintOpen && cur.hint ? `${t(lang, 'flashHintIs', { x: cur.hint })}. ` : ''}${t(lang, 'flashFlipHint')}`,
         onClick: flip, onKeyDown: onCardKey,
         children: [
           jsx(FlashFace, { kind: 'front', text: cur.front, hint: hintOpen ? cur.hint : null, lang, long }),
@@ -248,7 +259,7 @@ function FlashcardsCard({ card, sessionId, display, lang }) {
             jsx(Btn, { variant: 'primary', onClick: () => answer(true), children: `✓ ${t(lang, 'flashKnew')}` })
           ] })
         : jsxs(Fragment, { children: [
-            cur.hint && !hintOpen ? jsx(Btn, { variant: 'ghost', onClick: () => setHintOpen(true), children: t(lang, 'flashHint') }) : null,
+            cur.hint && !hintOpen ? jsx(Btn, { variant: 'ghost', onClick: showHint, children: t(lang, 'flashHint') }) : null,
             jsx(Btn, { variant: 'primary', onClick: flip, children: t(lang, 'flashFlip') })
           ] })
     }),
@@ -257,7 +268,7 @@ function FlashcardsCard({ card, sessionId, display, lang }) {
 
   const practise = [...again].sort((a, b) => a - b)
   const result = done ? [
-    jsxs('div', { className: 'huic-fc-score', children: [
+    jsxs('div', { className: 'huic-fc-score', ref: resultRef, tabIndex: -1, children: [
       jsx('span', { className: 'huic-fc-big', children: `${known.length} / ${n}` }),
       jsx('span', { className: 'huic-sub', children: `${t(lang, 'flashProgress', { n: known.length, total: n })}, ${t(lang, rounds > 1 ? 'flashRounds' : 'flashRound1', { n: rounds })}` })
     ] }),
@@ -284,7 +295,7 @@ function FlashcardsCard({ card, sessionId, display, lang }) {
     footer: done && ans.showActions ? jsx(Footer, {
       children: jsxs(Fragment, { children: [
         jsx(Btn, { variant: 'ghost', onClick: restart, children: t(lang, 'flashRestart') }),
-        jsx(Btn, { variant: 'primary', onClick: send, children: t(lang, 'flashSend') })
+        jsx(Btn, { ref: sendRef, variant: 'primary', onClick: send, children: t(lang, 'flashSend') })
       ] })
     }) : null,
     after: ans.status
@@ -297,10 +308,15 @@ REPLY_BUILDERS.flashcards = (card, answer, lang, data) => {
   data.known = ok(answer.known) ? answer.known : []
   data.again = ok(answer.again) ? answer.again : []
   data.rounds = Number.isInteger(answer.rounds) ? answer.rounds : 1
-  // The fronts too: indexes are 0-based, the text version counts from 1, so the model gets the cards by name.
-  if (data.again.length) data.practise = data.again.map(i => card.cards[i].front)
   let summary = t(lang, 'rFlash', { k: data.known.length, n })
   if (data.again.length) summary += t(lang, 'rFlashAgain', { a: data.again.length })
+  // The fronts too (indexes are 0-based, the text version counts from 1), but only while the whole reply
+  // stays under the cap; the indexes and rounds are always sent.
+  if (data.again.length) {
+    const practise = data.again.map(i => card.cards[i].front)
+    const withFronts = `✓ ${summary}\n${REPLY_TAG} ${JSON.stringify({ ...data, practise })}`
+    if ([...withFronts].length <= MAX_REPLY) data.practise = practise
+  }
   return { mark: '✓', summary }
 }
 CARD_COMPONENTS.flashcards = FlashcardsCard

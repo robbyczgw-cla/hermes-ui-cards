@@ -16,7 +16,10 @@ Object.assign(STRINGS.en, {
   decPicked: 'Picked',
   decReset: 'Reset weights',
   rDecision: 'Decision: {a} ({as}) ahead of {b} ({bs})',
-  rDecisionPicked: 'Picked: {x} ({s})'
+  rDecisionPicked: 'Picked: {x} ({s})',
+  rDecisionTie: 'Tie: {a} and {b} ({s})',
+  rDecisionTieMore: 'Tie: {a}, {b} and {n} more ({s})',
+  rDecisionNone: 'No weights set'
 })
 Object.assign(STRINGS.de, {
   decCriteria: 'Was dir wichtig ist',
@@ -34,7 +37,10 @@ Object.assign(STRINGS.de, {
   decPicked: 'Gewählt',
   decReset: 'Gewichte zurücksetzen',
   rDecision: 'Entscheidung: {a} ({as}) vor {b} ({bs})',
-  rDecisionPicked: 'Gewählt: {x} ({s})'
+  rDecisionPicked: 'Gewählt: {x} ({s})',
+  rDecisionTie: 'Gleichauf: {a} und {b} ({s})',
+  rDecisionTieMore: 'Gleichauf: {a}, {b} und {n} weitere ({s})',
+  rDecisionNone: 'Keine Gewichte gesetzt'
 })
 
 const DECISION_CSS = `
@@ -58,7 +64,7 @@ const DECISION_CSS = `
 .huic[data-card-type="decision"] .huic-dec-opt[aria-pressed="true"]{border-color:var(--huic-accent);background:color-mix(in srgb,var(--huic-accent) 10%,transparent)}
 .huic[data-card-type="decision"] .huic-dec-lead{border-color:color-mix(in srgb,var(--huic-accent) 55%,var(--ui-stroke-tertiary))}
 .huic[data-card-type="decision"] .huic-dec-rank{grid-row:1/3;align-self:start;display:inline-grid;place-items:center;width:22px;height:22px;margin-top:1px;border-radius:50%;border:1px solid var(--ui-stroke-secondary);font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--ui-text-tertiary)}
-.huic[data-card-type="decision"] .huic-dec-lead .huic-dec-rank{background:var(--huic-accent);border-color:var(--huic-accent);color:var(--ui-chat-surface-background,var(--ui-base,Canvas))}
+.huic[data-card-type="decision"] .huic-dec-lead .huic-dec-rank{background:var(--huic-accent);border-color:var(--huic-accent);color:var(--huic-on-accent)}
 .huic[data-card-type="decision"] .huic-dec-name{display:flex;flex-wrap:wrap;align-items:center;gap:2px 8px;min-width:0;font-weight:600}
 .huic[data-card-type="decision"] .huic-dec-score{font-size:18px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums;text-align:right}
 .huic[data-card-type="decision"] .huic-dec-score small{font-size:11px;font-weight:500;color:var(--ui-text-tertiary)}
@@ -120,7 +126,7 @@ function DecisionCard({ card, sessionId, display, lang }) {
   const weights = sent ? decCleanWeights(card, sent.weights) : state.weights
   const picked = sent ? (sent.picked || null) : state.picked
   const { rows, total } = decRank(card, weights)
-  const tied = rows.length > 1 && rows[0].raw - rows[1].raw < 1e-9 && total > 0
+  const tied = rows.length > 1 && rows[0].score === rows[1].score && total > 0
   const changed = card.criteria.some(c => weights[c.id] !== c.weight)
 
   const update = next => {
@@ -257,7 +263,12 @@ REPLY_BUILDERS.decision = (card, answer, lang, data) => {
     const row = data.ranking.find(r => r.id === data.picked)
     return { mark: '✓', summary: t(lang, 'rDecisionPicked', { x: clip(row.label), s: sc(row) }) }
   }
+  // Honest line 1: no weights → no ranking; equal top scores → a tie, not an order the numbers don't support.
+  if (!Object.values(data.weights).some(w => w > 0)) return { mark: '✓', summary: t(lang, 'rDecisionNone') }
   const [a, b] = data.ranking
+  const tiedAtTop = data.ranking.filter(r => r.score === a.score)
+  if (tiedAtTop.length > 2) return { mark: '✓', summary: t(lang, 'rDecisionTieMore', { a: clip(a.label, 24), b: clip(b.label, 24), n: tiedAtTop.length - 2, s: sc(a) }) }
+  if (tiedAtTop.length === 2) return { mark: '✓', summary: t(lang, 'rDecisionTie', { a: clip(a.label, 30), b: clip(b.label, 30), s: sc(a) }) }
   return { mark: '✓', summary: t(lang, 'rDecision', { a: clip(a.label, 30), as: sc(a), b: clip(b.label, 30), bs: sc(b) }) }
 }
 CARD_COMPONENTS.decision = DecisionCard

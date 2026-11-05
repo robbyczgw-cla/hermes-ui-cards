@@ -11,7 +11,7 @@ def calc_parse(expr, names):
     pos = 0
     def skip():
         nonlocal pos
-        while pos < len(expr) and expr[pos].isspace(): pos += 1
+        while pos < len(expr) and expr[pos] in ' \t\n\r': pos += 1
     def parse(level=0, depth=0):
         nonlocal pos
         if depth > 32: raise _Error('maximum depth exceeded', pos)
@@ -37,7 +37,7 @@ def calc_parse(expr, names):
             pos += 1; node = parse(0, depth + 1); skip()
             if pos >= len(expr) or expr[pos] != ')': raise _Error('expected ")"', pos)
             pos += 1; return node
-        m = re.match(r'(?:\d+(?:\.\d*)?|\.\d+)', expr[pos:])
+        m = re.match(r'(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)', expr[pos:])
         if m:
             pos += len(m.group()); value = float(m.group())
             if not math.isfinite(value): raise _Error('invalid number', start)
@@ -69,25 +69,34 @@ def calc_parse(expr, names):
 
 def calc_eval(ast, values):
     def ev(n):
-        t=n[0]
-        if t == 'number': return n[1]
-        if t == 'name': return values[n[1]]
-        if t == 'unary': return -ev(n[1])
-        if t == 'binary':
-            a,b=ev(n[2]),ev(n[3]); op=n[1]
-            if op=='+': return a+b
-            if op=='-': return a-b
-            if op=='*': return a*b
-            if op=='/': return a/b
-            if op=='^': return math.pow(a,b)
-            return int({'<':lambda:a<b,'<=':lambda:a<=b,'>':lambda:a>b,'>=':lambda:a>=b,'==':lambda:a==b,'!=':lambda:a!=b}[op]())
-        name=n[1]; args=n[2]
-        if name=='if': return ev(args[1] if ev(args[0]) else args[2])
-        a=[ev(x) for x in args]
-        if name=='round':
-            factor=10**(a[1] if len(a)>1 else 0); return math.floor(a[0]*factor+0.5)/factor
-        return {'min':min,'max':max,'floor':math.floor,'ceil':math.ceil,'sqrt':math.sqrt,'abs':abs,'pow':math.pow,'log':math.log,'exp':math.exp}[name](*a)
-    try:
-        value=ev(ast)
-        return value if math.isfinite(value) else None
-    except (ArithmeticError, ValueError, OverflowError, KeyError, TypeError, IndexError): return None
+        t = n[0]
+        if t == 'number': value = float(n[1])
+        elif t == 'name': value = float(values[n[1]])
+        elif t == 'unary': value = -ev(n[1])
+        elif t == 'binary':
+            a, b, op = ev(n[2]), ev(n[3]), n[1]
+            if op == '+': value = a + b
+            elif op == '-': value = a - b
+            elif op == '*': value = a * b
+            elif op == '/': value = a / b
+            elif op == '^': value = math.pow(a, b)
+            else: value = float({'<': a < b, '<=': a <= b, '>': a > b, '>=': a >= b, '==': a == b, '!=': a != b}[op])
+        else:
+            name, args = n[1], n[2]
+            if name == 'if': value = ev(args[1] if ev(args[0]) else args[2])
+            else:
+                a = [ev(x) for x in args]
+                if name == 'round':
+                    digits = a[1] if len(a) > 1 else 0.0
+                    if digits < 0: raise ValueError('negative digits')
+                    factor = math.pow(10.0, min(digits, 12.0))
+                    scaled = a[0] * factor + 0.5
+                    if not math.isfinite(scaled): raise ValueError('invalid result')
+                    value = float(math.floor(scaled)) / factor
+                elif name in ('min', 'max'): value = (min if name == 'min' else max)(a)
+                else: value = {'floor': math.floor, 'ceil': math.ceil, 'sqrt': math.sqrt, 'abs': abs, 'pow': math.pow, 'log': math.log, 'exp': math.exp}[name](*a)
+        value = float(value)
+        if not math.isfinite(value): raise ValueError('invalid result')
+        return value
+    try: return ev(ast)
+    except (ArithmeticError, ValueError, KeyError, TypeError, IndexError): return None

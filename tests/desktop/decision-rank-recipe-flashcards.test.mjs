@@ -488,3 +488,158 @@ test('validator reads explicit undefined fields as absent', async () => {
   assert.deepEqual(out.errors, [])
   assert.equal('prompt' in out.card, false)
 })
+
+// ── round 4: honest replies, drag clean-up, scaling, focus, hints ────────────
+test('decision: ties and all-zero weights give an honest line 1 (en + de)', async t => {
+  const two = { ...decision, options: decision.options.slice(0, 2) }
+  const tie = await render(t, two)
+  await click(buttonByText(tie.container, 'Send weights'))
+  assert.equal(lastReply().line1, '✓ Tie: Alpha and Beta (6.0)')
+  resetHost()
+  const de = await render(t, { ...two, lang: 'de' })
+  await click(buttonByText(de.container, 'Gewichte senden'))
+  assert.equal(lastReply().line1, '✓ Gleichauf: Alpha und Beta (6,0)')
+  resetHost()
+  const zero = await render(t, { ...two, lang: 'de' })
+  await type(sliderFor(zero.container, 'Price'), '0')
+  await type(sliderFor(zero.container, 'Build quality'), '0')
+  await click(buttonByText(zero.container, 'Gewichte senden'))
+  assert.equal(lastReply().line1, '✓ Keine Gewichte gesetzt')
+  resetHost()
+  const none = await render(t, two)
+  await type(sliderFor(none.container, 'Price'), '0')
+  await type(sliderFor(none.container, 'Build quality'), '0')
+  await click(buttonByText(none.container, 'Send weights'))
+  assert.equal(lastReply().line1, '✓ No weights set')
+  resetHost()
+  const three = await render(t, decision) // all three options tie at 6.0 with equal weights
+  await click(buttonByText(three.container, 'Send weights'))
+  assert.equal(lastReply().line1, '✓ Tie: Alpha, Beta and 1 more (6.0)')
+})
+
+test('decision: text on accent fills uses the contrasting foreground token', async t => {
+  const { container } = await render(t, decision)
+  const all = [...container.querySelectorAll('style')].map(s => s.textContent).join('\n')
+  assert.match(all, /\.huic-dec-lead \.huic-dec-rank\{[^}]*color:var\(--huic-on-accent\)/)
+})
+
+test('rank: a drag ends when the pointer is released outside the grip, and leaves nothing behind', async t => {
+  const { container } = await render(t, rank)
+  const rows = [...container.querySelectorAll('.huic-rank-item')]
+  rows.forEach((row, i) => { row.getBoundingClientRect = () => ({ top: i * 50, height: 44, bottom: i * 50 + 44, left: 0, right: 100, width: 100 }) })
+  const grip = rows[0].querySelector('.huic-rank-grip')
+  grip.setPointerCapture = () => {}
+  const fire = (target, type, y) => act(async () => {
+    const ev = new window.MouseEvent(type, { bubbles: true, clientY: y, button: 0 })
+    Object.defineProperty(ev, 'pointerId', { value: 1 })
+    target.dispatchEvent(ev)
+  })
+  await fire(grip, 'pointerdown', 20)
+  await fire(grip, 'pointermove', 130)
+  assert.ok(container.querySelector('.huic-rank-drag'))
+  await fire(document.body, 'pointerup', 400) // released far outside the grip, on another element
+  assert.equal(container.querySelector('.huic-rank-drag'), null)
+  assert.equal(rows[0].style.transform, '')
+  // a further move does nothing: no listener is left
+  const before = rankLabels(container)
+  await fire(document.body, 'pointermove', 0)
+  assert.deepEqual(rankLabels(container), before)
+  // cancel ends a drag as well
+  const grip2 = container.querySelectorAll('.huic-rank-grip')[1]
+  grip2.setPointerCapture = () => {}
+  await fire(grip2, 'pointerdown', 70)
+  assert.ok(container.querySelector('.huic-rank-drag'))
+  await fire(document.body, 'pointercancel', 70)
+  assert.equal(container.querySelector('.huic-rank-drag'), null)
+})
+
+test('rank: unmounting during a drag removes the window listeners', async t => {
+  const added = new Set()
+  const realAdd = window.addEventListener.bind(window), realRemove = window.removeEventListener.bind(window)
+  window.addEventListener = (type, fn, ...rest) => { if (type.startsWith('pointer')) added.add(fn); return realAdd(type, fn, ...rest) }
+  window.removeEventListener = (type, fn, ...rest) => { if (type.startsWith('pointer')) added.delete(fn); return realRemove(type, fn, ...rest) }
+  t.after(() => { window.addEventListener = realAdd; window.removeEventListener = realRemove })
+  const mounted = await mount(toolResult(rank))
+  const grip = mounted.container.querySelector('.huic-rank-grip')
+  grip.setPointerCapture = () => {}
+  await act(async () => {
+    const ev = new window.MouseEvent('pointerdown', { bubbles: true, clientY: 20, button: 0 })
+    Object.defineProperty(ev, 'pointerId', { value: 1 })
+    grip.dispatchEvent(ev)
+  })
+  assert.ok(added.size > 0)
+  await mounted.unmount()
+  assert.equal(added.size, 0)
+})
+
+test('rank: the reorder affordances are the grip, Alt+arrows and the compact move buttons; position badge uses the accent foreground', async t => {
+  const { container } = await render(t, rank)
+  const all = [...container.querySelectorAll('style')].map(s => s.textContent).join('\n')
+  assert.match(all, /\[data-pos="1"\] \.huic-rank-pos\{[^}]*color:var\(--huic-on-accent\)/)
+  assert.match(all, /\.huic-rank-moves\{[^}]*opacity:0/)
+  await click(buttonByText(container, 'Send order'))
+  assert.equal(container.querySelector('.huic-rank-grip'), null, 'answered: no grip')
+  assert.equal(container.querySelector('.huic-rank-move'), null, 'answered: no move buttons')
+})
+
+test('recipe: scaling a small amount down never rounds it up; metric units stay decimal', async t => {
+  const { container } = await render(t, { type: 'recipe', title: 'Spice', servings: 2, ingredients: [
+    { item: 'saffron', qty: 0.1, unit: 'g' }, { item: 'milk', qty: 0.1, unit: 'l' }, { item: 'water', qty: 0.5, unit: 'g' }, { item: 'salt', qty: 3, unit: 'g' }
+  ] })
+  assert.deepEqual(qtys(container), ['0.1 g', '0.1 l', '0.5 g', '3 g'])
+  await click(stepper(container, '-'))
+  assert.deepEqual(qtys(container), ['0.05 g', '0.05 l', '0.25 g', '1.5 g'])
+  await click(stepper(container, '+'))
+  await click(stepper(container, '+'))
+  assert.deepEqual(qtys(container), ['0.15 g', '0.15 l', '0.75 g', '4.5 g'])
+})
+
+test('recipe: step minutes are flat text and the checked style is one style', async t => {
+  const { container } = await render(t, recipe)
+  const all = [...container.querySelectorAll('style')].map(s => s.textContent).join('\n')
+  const time = all.match(/\.huic-rcp-time\{([^}]*)\}/)[1]
+  assert.doesNotMatch(time, /background|border/)
+  await click(ingredientBox(container, 'flour'))
+  assert.ok(ingredientBox(container, 'flour').closest('.huic-rcp-have'))
+})
+
+test('flashcards: an oversized failed deck still sends indexes and rounds, fronts only when they fit', async t => {
+  const cards = Array.from({ length: 16 }, (_, i) => ({ front: `Q${i} ` + 'x'.repeat(290), back: `A${i}` }))
+  const { container } = await render(t, { type: 'flashcards', title: 'Big', cards })
+  for (let round = 0; round < 3; round++) {
+    for (let i = 0; i < 16; i++) {
+      await click(buttonByText(container, 'Show answer'))
+      await click(buttonByText(container, '↺ Again'))
+    }
+  }
+  await click(buttonByText(container, 'Send result'))
+  assert.equal(testHost.submissions.length, 1, 'the result is sent')
+  const reply = lastReply()
+  assert.deepEqual(reply.json.again, cards.map((_, i) => i))
+  assert.equal(reply.json.rounds, 3)
+  assert.equal('practise' in reply.json, false)
+})
+
+test('flashcards: focus follows a repeated single card into the next round and lands on Send result at the end', async t => {
+  const { container } = await render(t, { ...flash, cards: flash.cards.slice(0, 1) })
+  await click(buttonByText(container, 'Show answer'))
+  await again(container)
+  assert.match(container.textContent, /Round 2 of 3/)
+  assert.equal(document.activeElement, cardEl(container))
+  await click(buttonByText(container, 'Show answer'))
+  await again(container)
+  assert.equal(document.activeElement, cardEl(container))
+  await click(buttonByText(container, 'Show answer'))
+  await again(container)
+  assert.equal(document.activeElement, buttonByText(container, 'Send result'))
+})
+
+test('flashcards: a revealed hint is readable by screen readers and announced', async t => {
+  const { container } = await render(t, flash)
+  await click(buttonByText(container, 'Show answer'))
+  await knew(container)
+  await click(buttonByText(container, 'Show hint'))
+  assert.match(cardEl(container).getAttribute('aria-label'), /Hint: barks/)
+  assert.equal(container.querySelector('[role=status][aria-live=polite]').textContent, 'Hint: barks')
+  assert.equal(document.activeElement, cardEl(container), 'focus stays on the card when the hint button disappears')
+})

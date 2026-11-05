@@ -53,6 +53,7 @@ const FORM_CSS = `
 .huic[data-card-type="form"] .huic-form-status{display:flex;flex-wrap:wrap;column-gap:8px}
 .huic[data-card-type="form"] .huic-form-status>span+span::before{content:"·";margin-right:8px;color:var(--ui-text-quaternary,var(--ui-text-tertiary))}
 .huic[data-card-type="form"] .huic-form-status>.huic-err{color:var(--ui-red)}
+.huic[data-card-type="form"] .huic-form-submit{transition:background .25s var(--huic-ease),color .25s var(--huic-ease),box-shadow .25s var(--huic-ease)}
 @container (min-width:521px){
  .huic[data-card-type="form"] .huic-field{grid-template-columns:20px minmax(0,38%) minmax(0,1fr)}
  .huic[data-card-type="form"] .huic-form-marker{grid-row:auto}
@@ -339,10 +340,13 @@ function FormCard({ card, sessionId, display, lang }) {
             ] })
           ]
         }),
+        // Quiet until every required field has a value, then the primary action; clicking
+        // early still works (it marks what is missing).
         children: jsx('button', {
           type: 'submit',
           form: formId,
-          className: 'huic-btn huic-btn-primary',
+          className: cx('huic-btn huic-form-submit', requiredFilled === required.length && 'huic-btn-primary'),
+          'data-ready': requiredFilled === required.length ? 'true' : 'false',
           children: card.submitLabel || t(lang, 'submit')
         })
       })
