@@ -119,7 +119,10 @@ def _prune(directory: Path) -> None:
 def _write_card_file(card: dict, text: str) -> Path:
     directory = cards_dir()
     path = directory / f"{card['cardId']}.md"
-    body = text + "\n\n" + "<!-- hermes-ui-cards " + json.dumps(card, ensure_ascii=False) + " -->\n"
+    # Shown only when the Desktop can't draw the card (its Desktop half is off): say how to fix it.
+    hint = ("> This is an interactive HUI+ card. If you see this file instead of the card, turn on the "
+            "plugin's Desktop half: Capabilities → Plugins → HUI+ Cards → Desktop.\n\n")
+    body = hint + text + "\n\n" + "<!-- hermes-ui-cards " + json.dumps(card, ensure_ascii=False) + " -->\n"
     tmp = path.with_suffix(".tmp")
     tmp.write_text(body, encoding="utf-8")
     tmp.replace(path)
@@ -358,10 +361,12 @@ def answer_turn(session_id: str, user_message: str, history=None) -> str | None:
 
 
 DESKTOP_HINT = (
-    "[hermes-ui-cards] Before a multi-step job show your plan as a card the user can edit; when the user has "
-    "to judge many drafts, tick off a list, compare 2-4 options, fill in details or approve an action with "
-    "consequences, show an interactive card with the hui_present tool (through tool_call if it is deferred). "
-    "Plain answers and simple either-or questions stay text or clarify."
+    "[hermes-ui-cards] Before you delete, overwrite, send or buy anything, ask with a confirm card first "
+    "and wait. Before a multi-step job show your plan as a card the user can edit; when the user has to "
+    "judge many drafts, tick off a list, compare 2-4 options, fill in details, or wants numbers to play "
+    "with (a calc card reports the values back, a widget doesn't), use the hui_present tool (through "
+    "tool_call if it is deferred). Plain answers and simple either-or questions stay text or clarify. "
+    "Don't mention cards, tools or schemas to the user."
 )
 
 
@@ -437,10 +442,23 @@ def ensure_media_lines(response_text: str = "", session_id: str = "", **_kwargs)
     tags = take_pending(session_id)
     if not tags or not isinstance(response_text, str):
         return None
-    missing = [t for t in tags if not _has_media_line(response_text, t.split(":", 1)[1].strip('"'))]
-    if not missing:
-        return None
-    return response_text.rstrip() + "\n\n" + "\n".join(missing)
+    text = response_text
+    for tag in tags:
+        path = tag.split(":", 1)[1].strip('"')
+        name = Path(path).name
+        # The model sometimes retypes the path with a typo: a MEDIA line for this card's file name
+        # that points elsewhere would show as a dead attachment next to the card. Point it here.
+        def fix(m, path=path, name=name, tag=tag):
+            value = m.group(0)[len("MEDIA:"):].strip('"')
+            return tag if Path(value).name == name and value != path else m.group(0)
+        text = MEDIA_ANY_RE.sub(fix, text)
+    missing = [t for t in tags if not _has_media_line(text, t.split(":", 1)[1].strip('"'))]
+    if missing:
+        text = text.rstrip() + "\n\n" + "\n".join(missing)
+    return text if text != response_text else None
+
+
+MEDIA_ANY_RE = re.compile(r'MEDIA:(?:"[^"\n]+"|[^\s"]+)')
 
 
 def _has_media_line(text: str, path: str) -> bool:

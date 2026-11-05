@@ -104,6 +104,18 @@ ones; rewrite those with a comment.
 
 ## Rules
 
+- Never delete, overwrite, send or buy before the user said yes: show a `confirm` (one action) or a
+  `plan` (several steps) first and wait for the answer, even when the request sounds clear.
+- Don't talk about cards, tools or schemas ("let me load the schema"): just show the card with one
+  normal sentence.
+- `review`: start items undecided (`defaultDecision` left out) when the user wants to check them; set a
+  default only when they asked you to pre-sort. Use `confirm` or `plan`, not `review`, for deleting files.
+- `plan`: a step the user should opt into is `optional: true, off: true`.
+- `calc` is for numbers the user wants to play with: it reports the chosen values back, an HTML widget
+  doesn't.
+- If you correct a value that is on a card already shown, say that the card's value is outdated or show
+  an updated card; when the user changes the requirements of an open checklist, keep the items they
+  already ticked as `checked: true` in the new one if their answer told you which.
 - One card per call; keep labels short (the card has little space in a split view).
 - Write the card in the user's language and set `lang` (`"de"`, `"en"`) so the buttons match.
 - An invalid card comes back as an error listing each bad field: fix those fields and call again.

@@ -87,10 +87,11 @@ Details that make it dependable:
   lock the card once they have checked (its buttons wait for that first check). This is eventual, not
   exactly-once: two clients that answer before either has synced can both send; the backend keeps the
   first answer and tells the model about the second.
-- **Undo before it counts.** A pick on `compare`, Run on `plan` and Yes on a medium- or high-risk
-  `confirm` wait 4 seconds (Settings: 0, 4 or 8) and can be undone.
-- **A card is not an approval bypass.** A Yes on a card is your message to the model. When Hermes then
-  runs a command that needs its approval, Hermes still asks.
+- **Undo before it counts.** A pick on `compare`, Run on `plan`, Apply on `review` and Yes on a medium-
+  or high-risk `confirm` wait 4 seconds (Settings: 0, 4 or 8) and can be undone.
+- **A card is not an approval bypass.** A Yes on a card is your message to the model. Hermes' own
+  approval settings still apply to whatever it then runs (with the default *Smart* approval mode, Hermes
+  may approve routine commands itself, so the card is often the only question you see).
 - **Work in progress is kept.** Checklist ticks, form input and drafts survive reopening the chat.
 - **Stale answers are flagged.** If you answer a card after writing other messages, the model is told
   to check that the answer still fits and to ask again before acting on a stale confirm (a warning to
@@ -129,12 +130,12 @@ screen; the other settings affect cards created afterwards.
 
 | Setting | Default | Meaning |
 |---|---|---|
-| Interactive cards | on | Off: Desktop also gets the text version |
+| Interactive cards | on | Off: new cards in Desktop come as text too |
 | Compact cards | off | Less padding, for narrow split views |
 | Accent colour | app | Your theme's accent, or blue, green, orange, purple, red |
-| Undo time (seconds) | 4 | 0, 4 or 8 seconds before a pick, Run or risky Yes is sent |
+| Undo time (seconds) | 4 | 0, 4 or 8 seconds before a pick, Run, Apply or risky Yes is sent |
 | Card types | all | The types Hermes may use; an empty list means all (the tool description follows after a Hermes restart) |
-| API server card format | auto | `hui` blocks for the Hermes UI+ app when its plugin is enabled |
+| Cards for the Hermes UI+ app | auto | Native cards for the Hermes UI+ app over the API server when its plugin is enabled |
 
 Commands: `/cards` (status), `/cards types`, `/cards demo <type>` (the text version of a demo card).
 In Desktop, the command palette has *HUI+ Cards: show an example card*.

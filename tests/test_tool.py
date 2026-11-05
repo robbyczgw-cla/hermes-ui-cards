@@ -44,7 +44,9 @@ def test_desktop_returns_media_card_and_writes_markdown_copy(isolated):
     path = Path(out["media"][len("MEDIA:"):])
     assert path.parent == isolated / "plugin-data" / "hermes-ui-cards" / "cards"
     text = path.read_text(encoding="utf-8")
-    assert text.startswith("Where to?\n1. Lisbon\n2. Berlin\n")
+    assert text.startswith("> This is an interactive HUI+ card.")  # says how to fix a missing Desktop half
+    assert "Capabilities → Plugins → HUI+ Cards → Desktop" in text
+    assert "\n\nWhere to?\n1. Lisbon\n2. Berlin\n" in text
     assert out["media"] in out["next"]
     assert "error" not in out  # Desktop treats a result with `error` as a failed call
 
@@ -154,7 +156,7 @@ def test_turn_start_hint_only_on_desktop(monkeypatch):
     assert tool.on_turn_start(session_id="b", platform="") == {"context": tool.DESKTOP_HINT}
     tool.configure(lambda key, default: False if key == "enabled" else default)
     assert tool.on_turn_start(session_id="a", platform="desktop") is None
-    assert len(tool.DESKTOP_HINT) < 400
+    assert len(tool.DESKTOP_HINT) < 600  # sent on every Desktop turn: keep it short
 
 
 def test_first_sentence_fits_the_tool_search_listing():
@@ -350,3 +352,21 @@ def test_history_proof_follows_the_bridge_selected_tool():
                {"role": "tool", "tool_call_id": "b2", "content": persisted}]
     assert tool.history_shows_card(history, cid)
     assert not tool.history_shows_card([history[0], {**history[1], "content": "see " + persisted}], cid)
+
+
+def test_mistyped_media_line_is_pointed_at_the_card_file():
+    out = run({"card": CHOICE}, "desktop", session_id="typo")
+    tag = out["media"]
+    path = tag[len("MEDIA:"):]
+    wrong = path.replace("hermes-ui-cards", "hermes-union")
+    reply = f"Pick one:\nMEDIA:{wrong}"
+    fixed = tool.ensure_media_lines(response_text=reply, session_id="typo")
+    assert wrong not in fixed, "the dead attachment is gone"
+    assert fixed.count(tag) == 1, "exactly one correct MEDIA line"
+
+
+def test_other_media_lines_are_left_alone():
+    out = run({"card": CHOICE}, "desktop", session_id="other-media")
+    reply = "Here is the chart:\nMEDIA:/tmp/chart.png"
+    fixed = tool.ensure_media_lines(response_text=reply, session_id="other-media")
+    assert "MEDIA:/tmp/chart.png" in fixed and fixed.endswith(out["media"])

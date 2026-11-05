@@ -15,17 +15,11 @@ provides_hooks:
   - post_compaction
 requires_env: []
 config_schema:
-  api_server_format:
-    type: str
-    choices: [auto, text, hui]
-    default: auto
-    label: API server card format
-    description: "auto sends HUI+ blocks when hermes-ui-plus is enabled; text always uses plain text."
   enabled:
     type: bool
     default: true
     label: Interactive cards
-    description: Off = Hermes Desktop also gets the plain-text version of each card.
+    description: Off = new cards in Hermes Desktop come as plain text too (cards already on screen stay interactive).
   compact:
     type: bool
     default: false
@@ -42,9 +36,15 @@ config_schema:
     choices: ["0", "4", "8"]
     default: "4"
     label: Undo time (seconds)
-    description: "How long a compare pick waits before it is sent, so you can undo it. 0 = send at once."
+    description: "How long a compare pick, a plan's Run, a review's Apply and a medium/high-risk Yes wait before they are sent, so you can undo them. 0 = send at once."
   card_types:
     type: list
     default: [plan, review, checklist, compare, form, confirm, steps, decision, calc, rank, choice, schedule, recipe, flashcards, rating, slider, quiz]
     label: Card types
     description: "Card types Hermes may show. Remove a name to turn that type off; an empty list means all. hui_present refuses turned-off types at once; the tool description follows after a Hermes restart."
+  api_server_format:
+    type: str
+    choices: [auto, text, hui]
+    default: auto
+    label: Cards for the Hermes UI+ app
+    description: "For chats through Hermes' API server. auto = native cards for the Hermes UI+ mobile/web app when its hermes-ui-plus plugin is enabled, otherwise text; hui = always; text = never."
