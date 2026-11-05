@@ -154,7 +154,7 @@ test('schedule: chips with numbers skip unavailable slots; digit and Enter work;
   await key(chips[0], '2')
   assert.equal(chips[2].getAttribute('aria-checked'), 'true')
   await key(chips[2], 'Enter')
-  assert.equal(lastReply().line1, '✓ Works for me: Fri 13 Nov, 10:00')
+  assert.equal(lastReply().line1, '✓ Works for me: Fri 13 Nov, 10:00 · Vienna time')
 })
 
 test('schedule: German zone label and day headings', async t => {

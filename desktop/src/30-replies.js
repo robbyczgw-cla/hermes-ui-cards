@@ -177,6 +177,9 @@ function buildReply(card, answer, lang) {
         })
         const texts = picked.map(s => (s.label ? `${formatSlot(s, card, L)} (${s.label})` : formatSlot(s, card, L)))
         summary = t(L, picked.length > 1 ? 'rSlots' : 'rSlot', { x: texts.join('; ') })
+        // The card heading names its zone ("Athens time"); the answer must not lose it.
+        const zone = card.timezone && validTimeZone(card.timezone) ? zoneLabel(card.timezone, L) : ''
+        if (zone && zone !== 'UTC') summary += ` · ${zone}`
       }
       break
     }

@@ -137,7 +137,7 @@ test('schedule: day groups, unavailable slots disabled, arrows skip them, exact 
   assert.equal(radios[2].getAttribute('aria-checked'), 'true')
   await key(radios[2], 'ArrowUp')
   await click(buttonByText(m.container, 'Send'))
-  assertReply(result, '✓ Works for me: Thu 12 Nov, 14:00–15:00 (Afternoon)', {
+  assertReply(result, '✓ Works for me: Thu 12 Nov, 14:00–15:00 (Afternoon) · Vienna time', {
     selected: [{ id: 's1', start: '2026-11-12T14:00', end: '2026-11-12T15:00', label: 'Afternoon' }]
   })
   assert.ok([...radios].every(r => r.disabled))
@@ -158,7 +158,7 @@ test('schedule: multiple slots use checkboxes and can be toggled', async t => {
   assert.equal(boxes[0].getAttribute('aria-checked'), 'false')
   await click(boxes[0])
   await click(buttonByText(container, 'Send'))
-  assertReply(result, '✓ These work for me: Thu 12 Nov, 14:00–15:00 (Afternoon); Fri 13 Nov, 10:00', {
+  assertReply(result, '✓ These work for me: Thu 12 Nov, 14:00–15:00 (Afternoon); Fri 13 Nov, 10:00 · Vienna time', {
     selected: [
       { id: 's1', start: '2026-11-12T14:00', end: '2026-11-12T15:00', label: 'Afternoon' },
       { id: 's3', start: '2026-11-13T10:00' }

@@ -69,7 +69,7 @@ the card (they are saved as a draft) and send nothing:
 | confirm | `decision: "yes" \| "no" \| "change"`, `change?: string` | `✓ Yes, go ahead: <title>` · `✗ No, don't: <title>` · `✎ Change: <text>` / `✓ Ja, mach das: …` · `✗ Nein, lieber nicht: …` · `✎ Ändern: …` |
 | rating | `value`, `scale`, `comment?` | `✓ Rated 4 of 5` / `✓ Bewertung: 4 von 5` |
 | slider | `value`, `unit?` | `✓ Chose: 300 €` / `✓ Gewählt: 300 €` |
-| schedule | `selected: [{id, start, end?, label?}]` or `none: true` | `✓ Works for me: Thu 12 Nov, 14:00–15:00` · `✗ None of these times work for me` / `✓ Passt mir: …` · `✗ Keiner der Termine passt mir` |
+| schedule | `selected: [{id, start, end?, label?}]` or `none: true` | `✓ Works for me: Thu 12 Nov, 14:00–15:00` (with `timezone`: `… · Vienna time`) · `✗ None of these times work for me` / `✓ Passt mir: …` · `✗ Keiner der Termine passt mir` |
 | steps | `completed: true, steps: n` or `stuck: stepNumber, title, note?` (up to 300 code points) | `✓ Done with all 5 steps` · `⚠ Stuck at step 3: <title>` / `✓ Alle 5 Schritte erledigt` · `⚠ Komme bei Schritt 3 nicht weiter: <title>` |
 | quiz | `score`, `total`, `answers: [{q, chosen, correct}]` | `✓ Quiz: 4 of 5 correct` / `✓ Quiz: 4 von 5 richtig` |
 
