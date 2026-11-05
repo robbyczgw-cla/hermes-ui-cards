@@ -1,12 +1,12 @@
 Object.assign(STRINGS.en, {
   stepsMap: 'Guide steps', stepsWhatHappened: 'What happened?', stepsOptional: 'Optional',
   stepsNotePlaceholder: 'Tell Hermes where you got stuck',
-  stepsSentDone: 'Sent: {label}', stepsSentStuck: 'Sent: stuck at step {n}'
+  stepsSentStuck: 'Sent: stuck at step {n}'
 })
 Object.assign(STRINGS.de, {
   stepsMap: 'Schritte der Anleitung', stepsWhatHappened: 'Was ist passiert?', stepsOptional: 'Optional',
   stepsNotePlaceholder: 'Sag Hermes, wo du festhängst',
-  stepsSentDone: 'Gesendet: {label}', stepsSentStuck: 'Gesendet: komme bei Schritt {n} nicht weiter'
+  stepsSentStuck: 'Gesendet: komme bei Schritt {n} nicht weiter'
 })
 
 // A calm guide: one connected track (the progress bar is its line), the current step as
@@ -90,19 +90,16 @@ function StepsCard({ card, sessionId, display, lang }) {
   const step = card.steps[index]
   const progressText = t(lang, 'stepOf', { n: index + 1, total: card.steps.length })
   const canNavigate = ans.showActions || ans.answered
-  // Answered: what was sent stays in the footer as the receipt (Done, or Stuck with the note).
+  // Answered and stuck: the footer keeps the note that was sent (the answer bar only names the step).
+  // Done needs nothing extra; the answer bar below already says it.
   const sentAs = ans.answer?.selection
-  const sentReceipt = !ans.answered || !sentAs ? null : sentAs.stuck
-    ? jsxs('span', { className: 'huic-steps-sent is-stuck', children: [
+  const sentReceipt = !ans.answered || !sentAs?.stuck ? null
+    : jsxs('span', { className: 'huic-steps-sent is-stuck', children: [
         jsx('i', { 'aria-hidden': true, children: jsx(Icon, { name: 'question' }) }),
         jsxs('span', { className: 'huic-steps-sent-text', children: [
           jsx('b', { children: t(lang, 'stepsSentStuck', { n: sentAs.stuck }) }),
           sentAs.note ? jsx('q', { children: sentAs.note }) : null
         ] })
-      ] })
-    : jsxs('span', { className: 'huic-steps-sent', children: [
-        jsx('i', { 'aria-hidden': true, children: jsx(Icon, { name: 'check' }) }),
-        jsx('b', { children: t(lang, 'stepsSentDone', { label: card.finishLabel || t(lang, 'finish') }) })
       ] })
   return jsx('div', { onKeyDown: navigate, 'data-many': card.steps.length > 8 ? '' : undefined, className: 'huic-steps-frame', children: jsx(Shell, {
     card, display, labelId, title: card.title,

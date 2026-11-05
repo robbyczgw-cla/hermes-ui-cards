@@ -231,11 +231,12 @@ test('confirm: Change opens a labelled box in place of the buttons', async t => 
   assert.ok(buttonByText(container, 'Send change').disabled)
 })
 
-test('steps: the answered footer keeps what was sent as the receipt (Done, or Stuck with the note)', async t => {
+test('steps: Done shows once in the answer bar; Stuck keeps the note in the footer', async t => {
   const done = await render(t, { ...steps, finishLabel: 'All set' })
   for (let i = 0; i < 5; i++) await click(buttonByText(done.container, 'Next'))
   await click(buttonByText(done.container, 'All set'))
-  assert.equal(done.container.querySelector('.huic-foot .huic-steps-sent').textContent, 'Sent: All set')
+  assert.ok(done.container.querySelector('.huic-steps-sent') === null, 'no second receipt next to the answer bar')
+  assert.equal(done.container.querySelector('.huic-answer-summary').textContent, 'Done with all 6 steps')
   assert.ok(buttonByText(done.container, 'Back'), 'browsing back still works')
 
   const stuck = await render(t, { ...steps, title: 'Stuck card' })
