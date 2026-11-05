@@ -1,8 +1,8 @@
 # HUI+ Cards for Hermes
 
 Hermes answers with cards you act on, right in the Hermes Desktop chat: edit its plan before it
-runs, compare options, tick off a list, fill in a form, approve a risky step. Each click is sent
-back as your next message, and Hermes continues from there.
+runs, compare options, tick off a list, fill in a form, approve a risky step. When you submit a card,
+your answer goes back as your next message and Hermes continues from there.
 
 ![A compare card in Hermes Desktop: three laptops side by side with sourced prices, the best value per row marked, and the answered state "Your answer: Picked: MacBook Pro 14"](assets/hero.jpg)
 
@@ -27,9 +27,10 @@ produces).
    Once it is listed in the plugin catalog, `hermes plugins install hermes-ui-cards --enable` works
    too. Or use the install link: `hermes://plugin/install?repo=robbyczgw-cla/hermes-ui-cards&enable=1`.
 
-2. **Turn on the Desktop half.** Desktop plugins are opt-in. In Hermes Desktop (or the Hermes Webapp)
-   open **Capabilities → Plugins**, find *HUI+ Cards* and switch on its **Desktop** half. Without it,
-   each card shows up as a small Markdown file attachment instead of a card.
+2. **Check that the Desktop half is on.** Desktop plugins are opt-in: after a CLI install, open
+   **Capabilities → Plugins** in Hermes Desktop (or the Hermes Webapp), find *HUI+ Cards* and switch on
+   its **Desktop** half. (Installing through the link above or the Desktop's own install dialog turns
+   it on for you.) Without it, each card shows up as a small Markdown file attachment instead of a card.
 
    With a remote backend the Desktop half is not copied from the server: install it from Git in the
    Desktop's plugin dialog with the Desktop target checked.
@@ -65,10 +66,12 @@ right tool; the plugin's skill tells the model so. Most replies are still plain 
 ## How it works
 
 1. Hermes calls the `hui_present` tool with one card. The tool checks it against
-   [one schema](hui_cards/cards.schema.json); a wrong field comes back as an error that names it, and
-   the model fixes it.
+   [one schema](hui_cards/cards.schema.json): a missing or broken field is rejected with an error that
+   names it, so the model can fix it; small slips (an unknown field, `"true"` for `true`) are accepted
+   with a warning.
 2. On Desktop the tool result carries the card, and the plugin's Desktop half draws it in the chat.
-3. A click sends one message into the same chat, as if you had typed it:
+3. Submitting the card (Send, Done, Choose, Run, Apply, Yes/No) sends one message into the same chat,
+   as if you had typed it. Ticking, typing and navigating inside a card send nothing:
 
    ```
    ✓ Picked: MacBook Pro 14 (M6)
@@ -79,17 +82,21 @@ right tool; the plugin's skill tells the model so. Most replies are still plain 
 
 Details that make it dependable:
 
-- **Nothing is sent twice.** An answered card shows a receipt and locks. Answers are also kept by the
-  plugin's backend, so a card answered in the Webapp is locked in the Desktop app and on a second
-  computer too.
+- **Answered cards lock.** An answered card shows a receipt and locks in that window. The plugin's
+  backend records answers too, so the Webapp, the Desktop app and a second computer on the same Hermes
+  lock the card once they have checked (its buttons wait for that first check). This is eventual, not
+  exactly-once: two clients that answer before either has synced can both send; the backend keeps the
+  first answer and tells the model about the second.
 - **Undo before it counts.** A pick on `compare`, Run on `plan` and Yes on a medium- or high-risk
   `confirm` wait 4 seconds (Settings: 0, 4 or 8) and can be undone.
 - **A card is not an approval bypass.** A Yes on a card is your message to the model. When Hermes then
   runs a command that needs its approval, Hermes still asks.
 - **Work in progress is kept.** Checklist ticks, form input and drafts survive reopening the chat.
 - **Stale answers are flagged.** If you answer a card after writing other messages, the model is told
-  to check that the answer still fits; a confirm then needs a fresh Yes.
-- **The card is shown even if the model forgets.** If the reply lacks the card's line, the plugin adds it.
+  to check that the answer still fits and to ask again before acting on a stale confirm (a warning to
+  the model, not an enforced lock).
+- **The card is shown even if the model forgets.** If the reply lacks the card's line, the plugin adds
+  it (for cards of that chat from the last 30 minutes).
 - **Plugin tools are found.** Hermes hides plugin tools behind its tool search by default; on Desktop
   the plugin adds a one-line hint so the model knows cards exist.
 
@@ -99,8 +106,9 @@ Details that make it dependable:
 |---|---|
 | Hermes Desktop, Hermes Webapp | Interactive cards |
 | CLI, TUI, Telegram, Discord, other messaging, web dashboard chat | A plain-text version with numbered options; you answer by typing |
-| Hermes API server with the [Hermes UI+](https://github.com/robbyczgw-cla/hermes-ui-plus) app | 12 of the 17 types as the app's native cards (the rest as text) |
+| Hermes API server with the [Hermes UI+](https://github.com/robbyczgw-cla/hermes-ui-plus) app | The app's own cards for the supported variants of 12 types ([details](hui_cards/hui_blocks.py)); plan, review, compare, recipe and flashcards always as text. Answers use the app's reply format; the Desktop's undo and receipts don't carry over |
 | Desktop with the Desktop half switched off | The text version as a Markdown attachment |
+| Desktop with *Interactive cards* switched off | The text version, for cards created after the switch |
 
 The text version of a confirm card:
 
@@ -116,7 +124,8 @@ Reply yes, no, or what to change.
 
 ## Settings
 
-**Settings → Plugins → hermes-ui-cards.** Changes apply to cards already on screen.
+**Settings → Plugins → hermes-ui-cards.** Compact, accent colour and undo time apply to cards already on
+screen; the other settings affect cards created afterwards.
 
 | Setting | Default | Meaning |
 |---|---|---|
@@ -124,7 +133,7 @@ Reply yes, no, or what to change.
 | Compact cards | off | Less padding, for narrow split views |
 | Accent colour | app | Your theme's accent, or blue, green, orange, purple, red |
 | Undo time (seconds) | 4 | 0, 4 or 8 seconds before a pick, Run or risky Yes is sent |
-| Card types | all | The types Hermes may use (applies to the tool description after a restart) |
+| Card types | all | The types Hermes may use; an empty list means all (the tool description follows after a Hermes restart) |
 | API server card format | auto | `hui` blocks for the Hermes UI+ app when its plugin is enabled |
 
 Commands: `/cards` (status), `/cards types`, `/cards demo <type>` (the text version of a demo card).
@@ -132,23 +141,33 @@ In Desktop, the command palette has *HUI+ Cards: show an example card*.
 
 ## Limits
 
-- Cards render in Hermes Desktop and the Hermes Webapp only; everything else gets text.
-- One card per tool call.
-- Two clients answering the same card within the same second can both send; the backend keeps the
-  first answer and tells the model about the second.
+- Interactive cards render in Hermes Desktop and the Hermes Webapp (and, for some types, in the Hermes
+  UI+ app); everything else gets text.
+- One card per tool call; a card is at most 24,000 bytes, an answer at most 4,000 characters (the
+  [protocol](docs/protocol.md) lists the field limits).
+- Answer synchronization between devices is eventual (see above), and it follows the backend the window
+  is connected to: in a split view with chats of different profiles or backends, cards of the inactive
+  one are not synchronized.
+- Tested against Hermes 0.22.7; 0.22.6 is the first version with the APIs the plugin needs, but it was
+  not run here.
 - With `plugins.isolation: host`, Desktop detection and the backend routes are untested.
 - Card images are loaded from the `https` URLs the model puts on the card (it is told to use only URLs
   it got from a tool or from you).
 
 ## Privacy and what the plugin stores
 
-The plugin sends nothing to third parties, has no telemetry and reads no secrets. Exact inventory:
+No telemetry or usage reporting, no credentials read or stored, no shell commands run by the plugin.
+Card answers and temporary card context go through Hermes to its configured model provider like any
+other message; images on cards are fetched by your Desktop directly from their hosts. What is stored
+and sent:
 
 **On the Hermes host**, per profile, in `<HERMES_HOME>/plugin-data/hermes-ui-cards/`:
-- `answers.db` (SQLite): for each card shown on Desktop, its id, type and chat, and each answer: the
-  mark, line 1 (up to 300 characters) and the answer data, including free text you typed into the
-  card (form values, comments, notes). The 2,000 most recently used cards are kept; there is no
-  time-based expiry and deleting a chat does not delete its entries.
+- `answers.db` (SQLite): for each card shown on Desktop, its id, type, the chat that showed it, verified
+  branches and when it was shown; each answer (up to 8 chats per card): the mark, line 1 (up to 300
+  characters) and the answer data, including free text you typed into the card (form values, comments,
+  notes), up to 20,000 bytes; and the compaction links Hermes reports (up to 5,000). The 2,000 most
+  recently shown or answered cards are kept; reading doesn't refresh that, there is no time-based
+  expiry, and deleting a chat does not delete its entries.
 - `cards/<id>.md`: the text version of each Desktop card plus the card itself (for a confirm card,
   also its action and command). The newest 500 are kept.
 
@@ -161,8 +180,13 @@ duplicate. On Desktop turns, a one-line hint that cards exist. Hermes does not s
 knows the chat and card ids; `GET /settings` returns the display settings. After each recorded answer
 the plugin broadcasts an empty `answers.changed` event so open windows check again.
 
-**On your computer**, in the Desktop's plugin storage: drafts (up to 300) and receipts (up to 5,000),
-separated by connection, profile and chat; nothing expires by time.
+**Reads outside its own data:** the active profile's Hermes configuration (its own settings and whether
+the Hermes UI+ plugin is enabled) through Hermes' public config API, and non-secret session context
+(platform, session id).
+
+**On your computer**, in the Desktop's plugin storage: drafts (up to 300, including text never sent)
+and receipts (up to 5,000), keyed by the active connection, profile and chat; the caps are shared by all
+profiles of that Desktop; nothing expires by time.
 
 **Network requests from the Desktop half** go only to the backend you are connected to, plus card
 images, which your Desktop loads directly from the image host (that host sees your IP address).
@@ -182,8 +206,9 @@ hermes plugins validate .
 ```
 
 - `hui_cards/cards.schema.json` is the single source of card shapes: the Python validator reads it,
-  `scripts/build.py` embeds it in the Desktop half (whose validator gives identical results, checked
-  on every fixture and by a seeded fuzz test) and generates `desktop/cards.d.ts`.
+  `scripts/build.py` embeds it in the Desktop half (whose validator gives identical results on every
+  test fixture) and generates `desktop/cards.d.ts`. The `calc` expression parser and evaluator also
+  have a seeded parity test over generated expressions.
 - `desktop/src/*.js` are the Desktop sources; `desktop/plugin.js` is generated.
 - `calc` formulas are parsed by a small expression parser in both languages; nothing is evaluated
   with `eval`.
