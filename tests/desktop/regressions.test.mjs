@@ -10,6 +10,18 @@ const { createRoot } = await import('react-dom/client')
 const resultCard = raw => JSON.parse(toolResult(raw)).card
 const cp = s => [...s].length
 
+test('schedule answers keep the card zone: UTC too, and whole even when the summary is clipped', () => {
+  const utc = resultCard({ type: 'schedule', timezone: 'UTC', slots: [{ id: 's1', start: '2026-11-12T14:00' }] })
+  assert.equal(mod.buildReply(utc, { selected: ['s1'] }, 'en').summary, 'Works for me: Thu 12 Nov, 14:00 · UTC')
+  const slots = Array.from({ length: 20 }, (_, i) => ({ id: `s${i}`, start: '2026-11-12T14:00', end: '2026-11-12T15:00', label: 'L'.repeat(80) }))
+  const big = resultCard({ type: 'schedule', multiple: true, timezone: 'Europe/Vienna', slots })
+  const reply = mod.buildReply(big, { selected: slots.map(s => s.id) }, 'en')
+  assert.ok(reply.summary.endsWith(' · Vienna time'), reply.summary.slice(-40))
+  assert.ok(reply.summary.includes('…'), 'the slot list was shortened, not the zone')
+  assert.equal(reply.fits, true)
+  assert.ok(cp(reply.text) <= 4000)
+})
+
 test('maximum-size replies preserve JSON, or are explicitly rejected when the payload cannot fit', () => {
   const items = Array.from({ length: 50 }, (_, i) => ({ id: `i${i}`, text: `${i}`.padEnd(300, 'x') }))
   const fields = Array.from({ length: 12 }, (_, i) => ({ name: `f${i}`, label: 'L'.repeat(80), kind: 'textarea', maxLength: 2000 }))

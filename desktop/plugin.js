@@ -730,6 +730,7 @@ function buildReply(card, answer, lang) {
   const L = lang || cardLang(card)
   let mark = '✓'
   let summary = ''
+  let tail = '' // kept whole when the summary has to be shortened (the schedule's zone)
   const data = { card: card.cardId, type: card.type }
 
   switch (card.type) {
@@ -823,9 +824,9 @@ function buildReply(card, answer, lang) {
         })
         const texts = picked.map(s => (s.label ? `${formatSlot(s, card, L)} (${s.label})` : formatSlot(s, card, L)))
         summary = t(L, picked.length > 1 ? 'rSlots' : 'rSlot', { x: texts.join('; ') })
-        // The card heading names its zone ("Athens time"); the answer must not lose it.
+        // The card heading names its zone ("Athens time", "UTC"); the answer must not lose it.
         const zone = card.timezone && validTimeZone(card.timezone) ? zoneLabel(card.timezone, L) : ''
-        if (zone && zone !== 'UTC') summary += ` · ${zone}`
+        if (zone) tail = ` · ${zone}`
       }
       break
     }
@@ -864,7 +865,7 @@ function buildReply(card, answer, lang) {
     }
   }
 
-  let reply = fitReply(mark, summary, data)
+  let reply = fitReply(mark, summary, data, tail)
   if (card.type === 'checklist' && !reply.fits) {
     delete data.done
     delete data.open
@@ -876,10 +877,11 @@ function buildReply(card, answer, lang) {
 }
 
 // Preserve the machine payload; only the human-readable summary may be shortened.
-function fitReply(mark, summary, data) {
+function fitReply(mark, summary, data, tail = '') {
   const suffix = `\n${REPLY_TAG} ${JSON.stringify(data)}`
   const available = MAX_REPLY - [...`${mark} ${suffix}`].length
-  summary = clip(summary, Math.max(0, available))
+  const room = available - [...tail].length
+  summary = room > 0 ? clip(summary, room) + tail : clip(summary + tail, Math.max(0, available))
   const text = `${mark} ${summary}${suffix}`
   return { mark, summary, data, text, fits: [...text].length <= MAX_REPLY }
 }
