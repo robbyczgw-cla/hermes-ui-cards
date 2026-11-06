@@ -73,10 +73,16 @@ Most replies are still plain text.
 
    ```
    ✓ Picked: MacBook Pro 14 (M6)
+
+   --- Attached Context ---
+
    [hui-card] {"card":"laptops-3f9a1c2b7e","type":"compare","selected":"c1","label":"MacBook Pro 14 (M6)"}
    ```
 
-   Line 1 is for you, line 2 is for the model. The full format is in [docs/protocol.md](docs/protocol.md).
+   Line 1 is for you, the `[hui-card]` line is for the model. It follows Hermes' own attached-context
+   line, so the chat bubble shows the whole message while the reply is being written and collapses to
+   line 1 once the reply is done (and after reopening the chat). The full format is in
+   [docs/protocol.md](docs/protocol.md).
 
 Details that make it dependable:
 
@@ -98,7 +104,8 @@ Details that make it dependable:
 - **The card is shown even if the model forgets.** If the reply lacks the card's line, the plugin adds
   it (for cards of that chat from the last 30 minutes).
 - **Plugin tools are found.** Hermes hides plugin tools behind its tool search by default; on Desktop
-  the plugin adds a one-line hint so the model knows cards exist.
+  the plugin adds a one-line hint so the model knows cards exist. Hermes keeps it with that message,
+  so it is added again only when none of the last 20 messages carries it (or its text changed).
 
 ## Fallback and other surfaces
 
@@ -176,9 +183,11 @@ and sent:
 - `cards/<id>.md`: the text version of each Desktop card plus the card itself (for a confirm card,
   also its action and command). The newest 500 are kept.
 
-**To the model provider**, as temporary context in the turn that answers a card: the card's type,
-title and id, for a confirm card its action and command, and notes when the answer is stale or a
-duplicate. On Desktop turns, a one-line hint that cards exist. Hermes does not store this context.
+**To the model provider**, as context added to the turn that answers a card: the card's type, title
+and id, for a confirm card its action and command, and notes when the answer is stale or a duplicate.
+On Desktop, a one-line hint that cards exist (on the first turn, then when no message of the last 20
+carries it). Hermes stores this context with the user message in its session database and sends it
+again with that message in later turns, like the message itself.
 
 **Backend routes** (read-only, under `/api/plugins/hermes-ui-cards/`, behind Hermes' own sign-in):
 `GET /answers` returns the answers of one chat's cards to any client signed in to that backend that

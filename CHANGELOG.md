@@ -9,7 +9,11 @@ First version.
 - 17 card types: plan, review, checklist, compare, form, confirm, steps, decision, calc, rank, choice,
   schedule, recipe, flashcards, rating, slider, quiz.
 - Hermes Desktop and the Hermes Webapp draw the cards inline in the chat; submitting a card sends one
-  message to that chat (a readable line plus a `[hui-card]` JSON line for the model).
+  message to that chat (a readable line plus a `[hui-card]` JSON line for the model, after Hermes'
+  `--- Attached Context ---` line: the chat bubble collapses to the readable line once the reply is
+  done).
+- The Desktop hint that cards exist is added when none of the last 20 user messages carries it (or its
+  text changed), not on every turn: Hermes stores hook context with each message and resends it.
 - Answered cards show a receipt and lock; a small plugin backend records answers, so other windows and
   devices on the same Hermes lock the card once they have checked (eventual, not exactly-once).
 - Undo window (0/4/8 s) for compare picks, plan Run, review Apply and medium/high-risk confirms, with a

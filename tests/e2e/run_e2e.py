@@ -124,7 +124,8 @@ class Backend:
 
 
 def sent_ids(sent: dict) -> list:
-    return json.loads(sent["text"].split("\n")[1][len("[hui-card] "):])["done_ids"]
+    tagged = next(line for line in sent["text"].split("\n") if line.startswith("[hui-card] "))
+    return json.loads(tagged[len("[hui-card] "):])["done_ids"]
 
 
 def main() -> None:
@@ -189,6 +190,19 @@ def main() -> None:
         if want not in reaction:
             fail(f"follow-up reply: {reaction!r}")
         ok(f"follow-up: Hermes answered {reaction!r}")
+        if "\n\n--- Attached Context ---\n\n[hui-card] " not in sent["text"]:
+            fail(f"click: the JSON is not after the attached-context line: {sent['text']!r:.200}")
+        ok("click: the JSON follows an --- Attached Context --- line (the bubble shows line 1 once stored)")
+        hint = "[hermes-ui-cards] Before you delete, overwrite, send or buy anything"
+        # The follow-up turn's main request: the longest one ending with the card message (Hermes'
+        # auxiliary calls, such as title generation, send only the latest message).
+        answer_turn = max((e for e in log if "[hui-card]" in str(e["messages"][-1].get("content"))),
+                          key=lambda e: len(e["messages"]))
+        copies = sum(str(m.get("content")).count(hint) for m in answer_turn["messages"] if m.get("role") == "user")
+        if copies != 1:
+            users = [str(m.get("content"))[:160] for m in answer_turn["messages"] if m.get("role") == "user"]
+            fail(f"desktop hint: {copies} copies in the answer turn's request (Hermes replays hook context): {users!r}")
+        ok("desktop hint: once in the answer turn's request (replayed with the first turn, not repeated)")
         changed = [e for e in backend.plugin_events if e.get("type") == "plugin.hermes-ui-cards.answers.changed"]
         if not changed or changed[-1].get("payload") not in ({}, None):
             fail(f"no empty answers.changed event (plugin events: {backend.plugin_events!r:.400})")

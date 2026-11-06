@@ -55,6 +55,9 @@ The answer arrives as the user's next message:
 
 ```
 ✓ Chose: Spa
+
+--- Attached Context ---
+
 [hui-card] {"card":"trip-style-3f9a1c","type":"choice","selected":["o3"],"labels":["Spa"]}
 ```
 

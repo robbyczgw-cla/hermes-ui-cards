@@ -44,14 +44,23 @@ the card (they are saved as a draft) and send nothing:
 
 ```
 ✓ Chose: Spa
+
+--- Attached Context ---
+
 [hui-card] {"card":"trip-style-3f9a1c","type":"choice","selected":["o3"],"labels":["Spa"]}
 ```
 
 - **Line 1** is for people: a mark (`✓` answer, `✗` declined, `✎` change request, `⚠` stuck),
   then a short summary in the card's language (English or German chrome: `card.lang`, else the
   browser/OS language of the Desktop).
-- **Line 2** is for the model: `[hui-card] ` followed by compact JSON with `card` (the cardId),
-  `type`, and the answer fields below. The model reads this line, not line 1.
+- **The `[hui-card]` line** is for the model: `[hui-card] ` followed by compact JSON with `card` (the
+  cardId), `type`, and the answer fields below, `@` written as `\u0040` (Hermes would otherwise read
+  `@file:`/`@url:` in a label or typed text as a reference to expand). The model acts on the JSON.
+- Between them, Hermes' own `--- Attached Context ---` line (what Hermes puts in front of the files an
+  `@file:` reference attaches). Hermes Desktop and the Webapp show a stored user message only up to
+  that line: the bubble shows the whole message while the reply is being written and collapses to
+  line 1 once the reply is done, and after reopening the chat. The model always gets the whole
+  message. Messages of older versions (the JSON directly on line 2) are still read.
 
 | Type | Answer fields | Line 1 (English / German) |
 |---|---|---|
@@ -73,7 +82,8 @@ the card (they are saved as a draft) and send nothing:
 | steps | `completed: true, steps: n` or `stuck: stepNumber, title, note?` (up to 300 code points) | `✓ Done with all 5 steps` · `⚠ Stuck at step 3: <title>` / `✓ Alle 5 Schritte erledigt` · `⚠ Komme bei Schritt 3 nicht weiter: <title>` |
 | quiz | `score`, `total`, `answers: [{q, chosen, correct}]` | `✓ Quiz: 4 of 5 correct` / `✓ Quiz: 4 von 5 richtig` |
 
-A message is capped at 4000 Unicode code points, including JSON escaping. Only the
+A message is capped at 4000 Unicode code points, including the attached-context line and JSON
+escaping. Only the
 human-readable first line may be shortened; machine-readable values are never truncated.
 Checklist replies include both item IDs and the corresponding texts in card order. If
 the complete reply would exceed the cap, the reply omits `done` and `open` and instead
@@ -166,7 +176,8 @@ result for exactly that card id (also through Hermes' `tool_call` bridge). Answe
 chat that showed the card, from verified branches of it, and across compaction continuations that
 Hermes reports through `post_compaction`. Storage errors fail closed (no memory), never another profile.
 
-**Context for the model.** In the turn that answers a card, the hook adds temporary context: which card,
+**Context for the model.** In the turn that answers a card, the hook adds context (Hermes keeps it with
+the user message, its `api_content`, and sends it again in later turns): which card,
 for a confirm card its exact action and command and what the decision means, a note when the card was
 already answered (quoting the first answer), and, when it can count them, how many other messages the
 user wrote after the card (the model is told to check the answer still fits and to ask again before

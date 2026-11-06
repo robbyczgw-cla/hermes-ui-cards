@@ -48,7 +48,7 @@ test('maximum-size replies preserve JSON, or are explicitly rejected when the pa
   for (const [raw, answer] of cases) {
     const card = resultCard(raw)
     const reply = mod.buildReply(card, answer, 'en')
-    const parsed = JSON.parse(reply.text.split('\n')[1].slice('[hui-card] '.length))
+    const parsed = JSON.parse(reply.text.split('\n').at(-1).slice('[hui-card] '.length))
     assert.deepEqual(parsed, reply.data, card.type)
     assert.equal(reply.fits, cp(reply.text) <= 4000, card.type)
     if (card.type === 'form') {
@@ -394,3 +394,16 @@ test('plan pending run follows a confirmed chat id move', withHostAtoms(async ()
 test('review pending apply follows a confirmed chat id move', withHostAtoms(async () => {
   await pendingIdMove({ type: 'review', title: 'Review', defaultDecision: 'keep', items: [{ title: 'One' }] }, c => click(buttonByText(c, 'Apply')), 'Apply')
 }))
+
+test('a reply puts its JSON after the attached-context line and escapes @ in it; line 1 stays as written', () => {
+  const card = mod.cardFromResult(toolResult({ type: 'choice', question: 'Q', allowOther: true, options: [{ label: '@file:secret.txt' }, { label: 'B' }] })).card
+  const reply = mod.buildReply(card, { selected: ['o1'], other: 'mail @url:https://x.example' }, 'en')
+  const lines = reply.text.split('\n')
+  assert.deepEqual(lines.slice(1, 4), ['', '--- Attached Context ---', ''])
+  assert.equal(lines.length, 5)
+  assert.ok(!lines[4].includes('@'), lines[4])
+  assert.deepEqual(JSON.parse(lines[4].slice('[hui-card] '.length)), reply.data)
+  assert.equal(reply.data.labels[0], '@file:secret.txt')
+  assert.match(lines[0], /^✓ Chose: @file:secret\.txt/)
+})
+

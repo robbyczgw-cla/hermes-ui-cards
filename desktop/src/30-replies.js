@@ -1,7 +1,10 @@
-// The message a card sends back (docs/protocol.md §2): line 1 for people, line 2
-// `[hui-card] {json}` for the model. Pure functions, unit-tested.
+// The message a card sends back (docs/protocol.md §2): line 1 for people, then `[hui-card] {json}`
+// for the model after Hermes' own "--- Attached Context ---" line. Hermes Desktop shows a stored user
+// message only up to that line, so the bubble collapses to line 1 once the reply is done.
+// Pure functions, unit-tested.
 
 const REPLY_TAG = '[hui-card]'
+const ATTACHED_MARKER = '--- Attached Context ---'
 const REPLY_BUILDERS = {}
 const MAX_REPLY = (SCHEMA.limits && SCHEMA.limits.maxReplyChars) || 4000
 const SUMMARY_ITEM_MAX = 60
@@ -236,8 +239,14 @@ function buildReply(card, answer, lang) {
 }
 
 // Preserve the machine payload; only the human-readable summary may be shortened.
+// `@` is escaped (still valid JSON): Hermes would read `@file:`/`@url:` in a label or typed text as a
+// reference to expand, and the bubble would show it as a chip.
+function replyJson(data) {
+  return JSON.stringify(data).replace(/@/g, '\\u0040')
+}
+
 function fitReply(mark, summary, data, tail = '') {
-  const suffix = `\n${REPLY_TAG} ${JSON.stringify(data)}`
+  const suffix = `\n\n${ATTACHED_MARKER}\n\n${REPLY_TAG} ${replyJson(data)}`
   const available = MAX_REPLY - [...`${mark} ${suffix}`].length
   const room = available - [...tail].length
   summary = room > 0 ? clip(summary, room) + tail : clip(summary + tail, Math.max(0, available))

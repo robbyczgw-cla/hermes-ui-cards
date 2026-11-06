@@ -119,6 +119,8 @@ export function resetHost() {
 export function lastReply() {
   const last = testHost.submissions.at(-1)
   if (!last) return null
-  const [line1, line2] = last.text.split('\n')
-  return { sessionId: last.sessionId, line1, json: JSON.parse(line2.replace(/^\[hui-card\] /, '')), text: last.text }
+  // Line 1, then "--- Attached Context ---" and the `[hui-card] {json}` line (docs/protocol.md §2).
+  const lines = last.text.split('\n')
+  const tagged = lines.find(l => l.startsWith('[hui-card] '))
+  return { sessionId: last.sessionId, line1: lines[0], json: JSON.parse(tagged.slice('[hui-card] '.length)), text: last.text }
 }

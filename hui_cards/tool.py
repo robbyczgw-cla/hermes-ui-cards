@@ -386,12 +386,38 @@ def desktop_hint() -> str:
     return DESKTOP_HINT + " Card types turned on in this install: " + ", ".join(types) + "."
 
 
+# Hermes keeps a turn's hook context with its user message and sends it again in every later turn
+# (the row's ``api_content``), so a hint added on every turn would pile up once per turn. It is added
+# only when none of the last HINT_EVERY earlier user rows carries exactly this hint as a paragraph of
+# its own: at most one copy per 20 turns, again after compaction or a rewind removed it, and again
+# when its text changed (card types restricted or restored: one hint is a prefix of the other, so a
+# substring test would miss that).
+HINT_EVERY = 20
+
+
+def _hint_in_recent_rows(history, hint: str) -> bool:
+    if not isinstance(history, list):
+        return False
+    rows = [m for m in history if isinstance(m, dict) and m.get("role") == "user"]
+    for row in rows[-HINT_EVERY - 1:]:
+        content = row.get("content")
+        # A list (multimodal) row carries hook context as a text part of its own.
+        texts = ([part.get("text", "") for part in content if isinstance(part, dict)]
+                 if isinstance(content, list) else [_message_text(row)])
+        if isinstance(row.get("api_content"), str):
+            texts.append(row["api_content"])
+        if any(part.strip() == hint for text in texts for part in text.split("\n\n")):
+            return True
+    return False
+
+
 def on_turn_start(session_id: str = "", platform: str = "", user_message: str = "",
                   conversation_history=None, **_kwargs):
     """pre_llm_call: forget MEDIA lines of a turn that never finished; on Desktop remind the model
     that cards exist (Hermes defers plugin tools behind tool_search, so the model would otherwise
     only see the tool's name); when the message answers a card, say which card and what it asked.
-    The context is ephemeral: it is not stored in the session."""
+    Hermes keeps this context with the user message (its ``api_content``) and sends it again in later
+    turns, so the hint is added only when no recent row carries it."""
     platform = str(platform or "").strip().lower()
     now = time.time()
     with _pending_lock:
@@ -410,7 +436,9 @@ def on_turn_start(session_id: str = "", platform: str = "", user_message: str = 
     if context:
         parts.append(context)
     if surface == "desktop" and bool(setting("enabled", True)):
-        parts.append(desktop_hint())
+        hint = desktop_hint()
+        if not _hint_in_recent_rows(conversation_history, hint):
+            parts.append(hint)
     return {"context": "\n\n".join(parts)} if parts else None
 
 
@@ -538,8 +566,9 @@ def _error(message: str, problems: list | None = None, warnings: list | None = N
 DESKTOP_NEXT = (
     "The card is ready. Reply with at most one short sentence, then this line on its own line: {tag}\n"
     "Do not repeat the card's content as text and do not ask the same question again. Then end your turn. "
-    "The user's answer arrives as their next message: line 1 is a short summary, line 2 is "
-    "'[hui-card] {{json}}' with \"card\": \"{card_id}\" and the answer. Act on line 2."
+    "The user's answer arrives as their next message: line 1 is a short summary; after an "
+    "'--- Attached Context ---' line comes '[hui-card] {{json}}' with \"card\": \"{card_id}\" and the "
+    "answer. Act on the JSON."
 )
 TEXT_NEXT = (
     "Interactive cards can't be shown on this surface. Send the text in `text` as your reply, unchanged "

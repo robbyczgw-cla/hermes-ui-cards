@@ -539,7 +539,7 @@ REPLY_BUILDERS.plan = (card, answer, lang, data) => {
   let summary = t(lang, on < data.steps.length ? 'rPlan' : on === 1 ? 'rPlanOne' : 'rPlanAll', { n: on, total: data.steps.length })
   if (skipped.length) summary += ` · ${t(lang, 'rPlanSkipped', { x: joinList(skipped) })}`
   if (data.steps.some((s, i) => s.id !== card.steps[i]?.id)) summary += ` · ${t(lang, 'rPlanReordered')}`
-  // A note is an instruction, so the person reading the chat should see it too (in full in line 2).
+  // A note is an instruction, so the person reading the chat should see it too (in full in the JSON).
   const noted = data.steps.filter(s => s.included && s.note)
   if (noted.length === 1) summary += ` · ${t(lang, 'rPlanNote', { x: clip(noted[0].title), note: clip(noted[0].note) })}`
   else if (noted.length > 1) summary += ` · ${t(lang, 'rPlanNotes', { n: noted.length })}`

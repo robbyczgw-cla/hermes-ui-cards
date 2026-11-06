@@ -168,7 +168,63 @@ def test_turn_start_hint_only_on_desktop(monkeypatch):
     assert tool.on_turn_start(session_id="b", platform="") == {"context": tool.DESKTOP_HINT}
     tool.configure(lambda key, default: False if key == "enabled" else default)
     assert tool.on_turn_start(session_id="a", platform="desktop") is None
-    assert len(tool.DESKTOP_HINT) < 600  # sent on every Desktop turn: keep it short
+    assert len(tool.DESKTOP_HINT) < 600  # replayed with its turn: keep it short
+
+
+def _rows(n, hint_at=None, hint=None, multimodal=False):
+    """n earlier user turns as Hermes hands them to pre_llm_call; the one at index hint_at was sent
+    with the hint (Hermes keeps that in the row's api_content, or in a text part for list content)."""
+    rows = []
+    for i in range(n):
+        row = {"role": "user", "content": f"message {i}"}
+        if i == hint_at:
+            if multimodal:
+                row["content"] = [{"type": "text", "text": f"message {i}"}, {"type": "text", "text": hint or tool.DESKTOP_HINT}]
+            else:
+                row["api_content"] = f"message {i}\n\n" + (hint or tool.DESKTOP_HINT)
+        rows += [row, {"role": "assistant", "content": f"reply {i}"}]
+    return rows
+
+
+def desktop_turn(history, message="next"):
+    out = tool.on_turn_start(session_id="h1", platform="desktop", user_message=message,
+                             conversation_history=history + [{"role": "user", "content": message}])
+    return (out or {}).get("context", "")
+
+
+def test_desktop_hint_is_not_repeated_while_a_recent_row_carries_it():
+    assert desktop_turn([]) == tool.DESKTOP_HINT, "first Desktop turn"
+    assert desktop_turn(_rows(3, hint_at=0)) == "", "Hermes replays it with that row"
+    assert desktop_turn(_rows(3, hint_at=1, multimodal=True)) == ""
+    assert desktop_turn(_rows(tool.HINT_EVERY, hint_at=0)) == "", "still within the window"
+    assert desktop_turn(_rows(tool.HINT_EVERY + 1, hint_at=0)) == tool.DESKTOP_HINT, "far back: again"
+    assert desktop_turn(_rows(5)) == tool.DESKTOP_HINT, "rows that carried it were compacted away"
+
+
+def test_desktop_hint_is_sent_again_when_its_text_changed_either_way():
+    restricted_reader = lambda key, default: ["choice", "confirm"] if key == "card_types" else default
+    tool.configure(restricted_reader)
+    restricted = tool.desktop_hint()
+    assert restricted != tool.DESKTOP_HINT and restricted.startswith(tool.DESKTOP_HINT)
+    # all types → restricted: the old full hint does not count for the new text
+    assert desktop_turn(_rows(3, hint_at=2)) == restricted
+    assert desktop_turn(_rows(3, hint_at=2, hint=restricted)) == ""
+    # restricted → all types again: the restricted hint contains the full one as a prefix, still new
+    tool.configure(None)
+    assert desktop_turn(_rows(3, hint_at=2, hint=restricted)) == tool.DESKTOP_HINT
+    assert desktop_turn(_rows(3, hint_at=2, multimodal=True, hint=restricted)) == tool.DESKTOP_HINT
+
+
+def test_hint_copies_stay_bounded_over_a_long_desktop_chat():
+    history, copies = [], 0
+    for i in range(100):
+        context = desktop_turn(history, f"turn {i}")
+        row = {"role": "user", "content": f"turn {i}"}
+        if context:
+            row["api_content"] = f"turn {i}\n\n{context}"  # what Hermes stores and replays
+            copies += tool.DESKTOP_HINT in context
+        history += [row, {"role": "assistant", "content": "ok"}]
+    assert copies == 5  # turns 0, 21, 42, 63, 84 (was 100)
 
 
 def test_first_sentence_fits_the_tool_search_listing():

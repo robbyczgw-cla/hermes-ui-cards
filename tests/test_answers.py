@@ -476,6 +476,25 @@ def test_parse_reply_rejects_hostile_messages(message):
     assert store.parse_reply(message) is None
 
 
+def test_parse_reply_reads_the_attached_context_form_and_the_old_one(events):
+    """A card reply puts its JSON after Hermes' "--- Attached Context ---" line (the bubble shows only
+    line 1 once stored); messages of older versions have it directly on line 2."""
+    out = show("s1")
+    cid = out["cardId"]
+    payload = {"card": cid, "type": "choice", "selected": ["o1"], "labels": ["Lisbon"], "other": "see @file:notes.md"}
+    msg = ("✓ Chose: Lisbon\n\n--- Attached Context ---\n\n[hui-card] "
+           + json.dumps(payload, ensure_ascii=False).replace("@", "\\u0040"))
+    reply = store.parse_reply(msg)
+    assert reply["mark"] == "✓" and reply["summary"] == "Chose: Lisbon"
+    assert reply["data"] == payload  # the escaped @ reads back
+    ctx = tool.on_turn_start(session_id="s1", platform="desktop", user_message=msg,
+                             conversation_history=history_with(out))["context"]
+    assert f'answers your choice card "Where to?" ({cid})' in ctx
+    assert store.lookup("s1", [cid])["answers"][cid]["summary"] == "Chose: Lisbon"
+    old = store.parse_reply("✗ None of these\n[hui-card] " + json.dumps({"card": "c-1", "type": "schedule"}))
+    assert old["mark"] == "✗" and old["summary"] == "None of these"
+
+
 def test_parse_reply_cleans_the_summary():
     msg = "✓ Chose:\u0000  Spa\x1b[31m   red\n[hui-card] " + json.dumps({"card": "c-1", "type": "choice"})
     reply = store.parse_reply(msg)

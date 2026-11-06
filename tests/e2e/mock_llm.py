@@ -6,7 +6,7 @@ agent loop, tool dispatch, hooks and persistence with deterministic answers:
 - a user message that asks for a packing list → call hui_present with a checklist
 - a hui_present tool result → reply in one sentence, deliberately WITHOUT the
   MEDIA line on Desktop (the plugin's hook must add it), with `text` elsewhere
-- a user message with a `[hui-card]` line → react to the answer it carries
+- a user message with a `[hui-card]` line (after its attached-context line) → react to the answer
 """
 from __future__ import annotations
 

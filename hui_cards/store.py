@@ -51,13 +51,16 @@ def _max_reply_chars() -> int:
         return 4000
 
 
-# The answer JSON (line 2) kept with the receipt. Desktop caps a reply at maxReplyChars code points;
+# The answer JSON kept with the receipt. Desktop caps a reply at maxReplyChars code points;
 # UTF-8 needs at most 4 bytes for one and re-encoding never grows it beyond that, so every reply a
 # card can send fits. Only a longer hand-made message loses its data (the receipt stays).
 MAX_DATA_BYTES = 4 * _max_reply_chars() + 4000
 MARKS = ("✓", "✗", "✎", "⚠")
 CARD_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 REPLY_RE = re.compile(r"^\[hui-card\] (\{.*\})\s*$", re.M)
+# The line Hermes puts in front of context attached to a user message (agent/context_references.py);
+# a card reply puts its JSON after it, so Hermes Desktop shows only line 1 of the stored message.
+_MARKER_LINES = {"--- Attached Context ---", "--- Context Warnings ---"}
 _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f-\x9f  ]+")
 
 ACCENTS = ["app", "blue", "green", "orange", "purple", "red"]
@@ -258,7 +261,8 @@ def _one_line(value, limit: int) -> str:
 def parse_reply(user_message) -> dict | None:
     """The answer a card message carries: ``{card, type, mark, summary, data}``, or None.
 
-    Line 2 (``[hui-card] {json}``) is the machine part; line 1 (``✓ summary``) the receipt.
+    The ``[hui-card] {json}`` line is the machine part (after an ``--- Attached Context ---`` line,
+    or directly on line 2 in messages of older versions); line 1 (``✓ summary``) the receipt.
     The message is user input: everything is checked, clipped and re-encoded."""
     if not isinstance(user_message, str) or len(user_message) > MAX_MESSAGE:
         return None
@@ -274,7 +278,8 @@ def parse_reply(user_message) -> dict | None:
     card_id = data.get("card")
     if not isinstance(card_id, str) or not CARD_ID_RE.match(card_id):
         return None
-    before = [ln.strip() for ln in user_message[:match.start()].split("\n") if ln.strip()]
+    before = [ln.strip() for ln in user_message[:match.start()].split("\n")
+              if ln.strip() and ln.strip() not in _MARKER_LINES]
     first = before[-1] if before else ""
     mark = next((m for m in MARKS if first.startswith(m)), "")
     summary = _one_line(first[len(mark):] if mark else first, MAX_SUMMARY)
