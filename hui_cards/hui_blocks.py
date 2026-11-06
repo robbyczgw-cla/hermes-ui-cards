@@ -55,16 +55,20 @@ def to_hui_node(card: dict) -> dict | None:
             return None
         node.update(_pick(card, ('title',)))
         node['fields'] = [_pick(f, ('name', 'label', 'kind', 'placeholder', 'min', 'max', 'step', 'options', 'default')) for f in fields]
-        node['submit'] = {'label': card.get('submitLabel', 'Submit')}
+        default_label = 'Absenden' if str(card.get('lang') or '').lower().startswith('de') else 'Submit'
+        node['submit'] = {'label': card.get('submitLabel', default_label)}
     elif t == 'confirm':
         if card.get('allowChange', True):
             return None
-        parts = [card['action'], card.get('reason'), (str(card['risk'].get('level', '')) + ': ' + card['risk']['text']) if card.get('risk') else None, card.get('command'), card.get('details')]
+        risk = card.get('risk') or {}
+        risk_text = ': '.join(str(risk[k]) for k in ('level', 'text') if risk.get(k))
+        details = '\n'.join(f"{detail['label']}: {detail['value']}" for detail in card.get('details', []))
+        parts = [card['action'], card.get('reason'), risk_text, card.get('command'), details]
         node.update(_pick(card, ('title', 'confirmLabel', 'cancelLabel')))
         node['text'] = '\n\n'.join(p for p in parts if isinstance(p, str) and p)
     elif t == 'steps':
         node['type'] = 'guide'
-        node['title'] = card['title']
+        node['title'] = card.get('title') or ('Schritte' if str(card.get('lang') or '').lower().startswith('de') else 'Steps')
         node['steps'] = []
         for s in card['steps']:
             body = '\n\n'.join(x for x in (s.get('body'), s.get('command')) if x) or s['title']

@@ -109,3 +109,43 @@ def test_form_unanswered_toggle_falls_back_but_defaults_map():
     assert for_default_true is not None, errors
     for_default_true['cardId'] = 'toggle-test'
     assert to_hui_node(for_default_true)['fields'][0]['default'] is True
+
+
+@pytest.mark.parametrize('raw', [
+    {'type': 'steps', 'steps': [{'title': 'One'}, {'title': 'Two'}]},
+    {'type': 'confirm', 'title': 'Proceed?', 'action': 'Do it',
+     'risk': {'level': 'high'}, 'allowChange': False},
+])
+def test_minimal_api_cards_have_native_or_text_output(raw, monkeypatch):
+    monkeypatch.setattr(tool, '_settings_reader', lambda k, d: 'hui' if k == 'api_server_format' else d)
+    result = json.loads(tool.present({'card': raw}, surface='api_server'))
+    assert result['text']
+    if 'hui' in result:
+        node = json.loads(result['hui'][7:-4])
+        if raw['type'] == 'steps':
+            assert node['title']
+        else:
+            assert 'high' in node['text']
+
+
+def test_native_confirm_preserves_details():
+    raw = {'type': 'confirm', 'title': 'Proceed?', 'action': 'Delete old files',
+           'allowChange': False, 'details': [
+               {'label': 'Target', 'value': '/srv/project/cache'},
+               {'label': 'Preserve', 'value': '/srv/project/archive'}]}
+    normalized, errors, _ = validate_card(raw)
+    assert normalized is not None, errors
+    normalized['cardId'] = 'confirm-test'
+    node = to_hui_node(normalized)
+    assert node is None or ('Target: /srv/project/cache' in node['text'] and
+                            'Preserve: /srv/project/archive' in node['text'])
+
+
+def test_native_form_localizes_default_submit_label():
+    raw = {'type': 'form', 'lang': 'de', 'fields': [{'name': 'Name', 'label': 'Name', 'kind': 'text'}]}
+    normalized, errors, _ = validate_card(raw)
+    assert normalized is not None, errors
+    normalized['cardId'] = 'form-test'
+    assert to_hui_node(normalized)['submit']['label'] == 'Absenden'
+    normalized['submitLabel'] = 'Weiter'
+    assert to_hui_node(normalized)['submit']['label'] == 'Weiter'

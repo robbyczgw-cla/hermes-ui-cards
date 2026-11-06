@@ -280,7 +280,7 @@ function ChoiceCard({ card, sessionId, display, lang }) {
           'aria-label': t(lang, 'other'),
           onChange: e => setOther(limitText(e.target.value, 300)),
           onKeyDown: e => {
-            if (e.key === 'Enter') {
+            if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.nativeEvent.keyCode !== 229) {
               e.preventDefault()
               send()
             }

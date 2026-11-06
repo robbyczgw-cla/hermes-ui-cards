@@ -60,7 +60,7 @@ the card (they are saved as a draft) and send nothing:
 | decision | `weights`, `ranking: [{id, label, score}]`, `picked?` | `✓ Top pick: A (8.4), ahead of B (7.9)` · `✓ Chose: A (8.4)` / `✓ Vorn: A (8,4), vor B (7,9)` · `✓ Gewählt: …` |
 | calc | `inputs: {name: value}`, `outputs: [{label, value}]` | `✓ Monthly rate: €1,234.56` / `✓ Monatliche Rate: 1.234,56 €` |
 | rank | `order: [id]`, `labels: [label]` | `✓ My order: 1. A, 2. B, 3. C` / `✓ Meine Reihenfolge: 1. A, 2. B, 3. C` |
-| recipe | `servings`, `missing: [{id, item, qty?, unit?}]`, `have: [id]` | `✓ Shopping list for 6 servings: …` / `✓ Einkaufsliste für 6 Portionen: …` |
+| recipe | `servings`, `missing: [{id, item, qty?, unit?}]`, `have: [id]` (compact alternatives below) | `✓ Shopping list for 6 servings: …` / `✓ Einkaufsliste für 6 Portionen: …` |
 | flashcards | `known: [index]`, `again: [index]` (0-based), `rounds`, `practise?: [front]` (fronts of the again cards) | `✓ Flashcards: 8 of 10 known` / `✓ Karteikarten: 8 von 10 gewusst` |
 | choice | `selected: [optionId]`, `labels: [label]`, `other?: string` | `✓ Chose: A, B` / `✓ Gewählt: A, B` |
 | checklist | `done_ids: [itemId]`, `open_ids: [itemId]`, `done: [text]`, `open: [text]` | `✓ Checked off 3 of 5. Still open: X, Y` / `✓ 3 von 5 abgehakt. Noch offen: X, Y` |
@@ -78,8 +78,20 @@ human-readable first line may be shortened; machine-readable values are never tr
 Checklist replies include both item IDs and the corresponding texts in card order. If
 the complete reply would exceed the cap, the reply omits `done` and `open` and instead
 includes `done_count` and `open_count` alongside `done_ids` and `open_ids`. The model
-can look up those IDs in the tool result. If another answer exceeds the cap, the card
-asks the user to shorten it or select fewer items before sending. Text fields accept at
+can look up those IDs in the tool result.
+
+For a large recipe reply, `missing` may instead contain `{id, qty?}` objects, with
+`item` and `unit` omitted. Look up each ID in the original recipe card in the tool
+result to recover its name and unit; `qty`, when present, is the scaled quantity for
+the selected `servings`. `have` remains an array of ingredient IDs. A more compact
+form replaces `missing` and `have` with `missing_indexes`, whose entries are either a
+zero-based ingredient index or `[index, scaledQty]`; all other ingredient indexes are
+items the user has. `index_base: 0` and `ingredient_source` describe this encoding.
+The original card is needed to recover ingredient details; if it is no longer available
+in the conversation, these compact replies alone do not contain those details.
+
+If another answer exceeds the cap, the card asks the user to shorten it or select
+fewer items before sending. Text fields accept at
 most 300 code points, email 200, textarea 1000, Other 300, and Change and rating comment
 1000 each; a smaller card-specified field limit still applies.
 

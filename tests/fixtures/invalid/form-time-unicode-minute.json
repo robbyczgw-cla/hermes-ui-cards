@@ -1,0 +1,11 @@
+{
+  "type": "form",
+  "fields": [
+    {
+      "name": "time",
+      "label": "Time",
+      "kind": "time",
+      "default": "12:3٤"
+    }
+  ]
+}

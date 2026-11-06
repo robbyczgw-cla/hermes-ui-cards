@@ -374,6 +374,28 @@ def test_new_card_fallbacks():
     assert 'house' not in render_text(validate_card(DEMOS['flashcards'])[0])
 
 
+def test_decision_half_tenth_matches_desktop_and_leader():
+    raw = {'type': 'decision', 'title': 'Pick', 'criteria': [
+        {'id': 'a', 'label': 'A', 'weight': 1}, {'id': 'b', 'label': 'B', 'weight': 3}],
+        'options': [
+            {'label': 'Half', 'scores': {'a': 0, 'b': 3}},
+            {'label': 'Lower', 'scores': {'a': 9, 'b': 0}}]}
+    result = text(raw)
+    assert '1. Half: 2.3' in result
+    assert '2. Lower: 2.3' in result
+    assert '★' not in result
+    assert '1. Half: 2,3' in text({**raw, 'lang': 'de'})
+
+    raw['criteria'] += [{'id': 'c', 'label': 'C', 'weight': 10},
+                        {'id': 'd', 'label': 'D', 'weight': 6}]
+    raw['options'] = [
+        {'label': 'Half', 'scores': {'a': 0, 'b': 3, 'c': 0, 'd': 6}},
+        {'label': 'Lower', 'scores': {'a': 2, 'b': 0, 'c': 3, 'd': 2}}]
+    result = text(raw)
+    assert '1. Half: 2.3 ★' in result
+    assert '2. Lower: 2.2' in result
+
+
 def test_calc_fallback_formats_defaults():
     from hui_cards.schema import validate_card
     card, errors, _ = validate_card({'type':'calc', 'title':'Total', 'inputs':[{'name':'x','label':'Amount','default':1234.56}], 'outputs':[{'label':'Total','expr':'x','format':'currency','decimals':2}]})

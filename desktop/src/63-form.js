@@ -71,11 +71,19 @@ const FORM_CSS = `
 
 const TEXT_MAX = { text: 300, email: 200, textarea: 1000 }
 
+function validFormTemporal(kind, value) {
+  if (kind !== 'date' && kind !== 'time') return true
+  const input = document.createElement('input')
+  input.type = kind
+  input.value = value
+  return input.value !== ''
+}
+
 function initialFormValues(card) {
   const out = {}
   for (const f of card.fields) {
     if (f.kind === 'toggle') out[f.name] = f.default === undefined ? null : f.default
-    else if (f.default !== undefined && f.default !== null) out[f.name] = String(f.default)
+    else if (f.default !== undefined && f.default !== null) out[f.name] = (validFormTemporal(f.kind, String(f.default)) ? String(f.default) : '')
     else out[f.name] = ''
   }
   return out
@@ -85,6 +93,7 @@ function checkField(field, raw, lang) {
   if (field.kind === 'toggle') return field.required && typeof raw !== 'boolean' ? t(lang, 'errRequired') : null
   const value = String(raw ?? '').trim()
   if (!value) return field.required ? t(lang, 'errRequired') : null
+  if (!validFormTemporal(field.kind, value)) return t(lang, 'errRequired')
   if (field.kind === 'number') {
     const n = Number(value.replace(',', '.'))
     if (!Number.isFinite(n)) return t(lang, 'errNumber')
@@ -255,7 +264,7 @@ function FormCard({ card, sessionId, display, lang }) {
   }
   const hasErrors = Object.keys(errors).length > 0
   const required = card.fields.filter(f => f.required)
-  const filled = f => f.kind === 'toggle' ? typeof values[f.name] === 'boolean' : String(values[f.name] ?? '').trim() !== ''
+  const filled = f => f.kind === 'toggle' ? typeof values[f.name] === 'boolean' : String(values[f.name] ?? '').trim() !== '' && validFormTemporal(f.kind, String(values[f.name]))
   const requiredFilled = required.filter(filled).length
   const shownError = f => oversizeFields.has(f.name) ? t(lang, 'shortenField') : tried ? errors[f.name] : null
   const fieldState = f => shownError(f) ? 'error' : filled(f) && !errors[f.name] ? 'done' : 'idle'

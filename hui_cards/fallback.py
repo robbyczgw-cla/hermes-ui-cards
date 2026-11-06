@@ -481,11 +481,13 @@ def _review(card, L):
 def _decision(card, L):
     lines = _head(card, 'title', 'note'); criteria = card['criteria']; total = sum(c['weight'] for c in criteria)
     scores = [sum(c['weight'] * option['scores'][c['id']] for c in criteria) / total if total else None for option in card['options']]
-    shown = [round(s, 1) if s is not None else None for s in scores]
+    # Scores are nonnegative; match Desktop's Math.round(score * 10) / 10.
+    import math
+    shown = [math.floor(s * 10 + 0.5) / 10 if s is not None else None for s in scores]
     top = max((s for s in shown if s is not None), default=None)
     lead = shown.count(top) == 1 and top is not None  # a tie gets no star
     for i, option in enumerate(card['options'], 1):
-        score = scores[i - 1]
+        score = shown[i - 1]
         lines.append(f"{i}. {_one(option['label'])}: " + (f'{score:.1f}'.replace('.', ',') if L.de and score is not None else f'{score:.1f}' if score is not None else '–') + (' ★' if lead and shown[i - 1] == top else ''))
     lines.append('')
     lines.append(L('Weights: ', 'Gewichte: ') + ', '.join(f"{_one(c['label'])} {_num(c['weight'], L)}" for c in criteria))

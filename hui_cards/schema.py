@@ -303,7 +303,7 @@ def _rule(name, card, ctx):
                 elif d not in [x["value"] for x in item["options"]]: ctx.errors.append(f"{p}.default: must be one of the options")
             if item["kind"] == "toggle" and d not in (0, 1): ctx.errors.append(f"{p}.default: must be 0 or 1 for kind toggle")
     elif name == "minMaxPicks":
-        n = len(card.get("options", []))
+        n = len(card.get("options", [])) + (1 if card.get("allowOther") else 0)
         lo, hi = card.get("min"), card.get("max")
         if not card.get("multiple") and (lo is not None or hi is not None):
             ctx.warnings.append("card.min/max: only used with multiple: true, ignored")
@@ -363,6 +363,14 @@ def _rule(name, card, ctx):
                 ctx.errors.append(f"{p}.default: must be one of the options")
             elif kind not in ("toggle", "number", "select") and not isinstance(d, str):
                 ctx.errors.append(f"{p}.default: must be text for kind {kind}")
+            elif kind == "date":
+                try:
+                    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", d): raise ValueError()
+                    datetime.fromisoformat(d)
+                except ValueError:
+                    ctx.errors.append(f"{p}.default: must be a valid date for kind date")
+            elif kind == "time" and not re.fullmatch(r"(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,3})?)?", d, flags=re.ASCII):
+                ctx.errors.append(f"{p}.default: must be a valid time for kind time")
     elif name == "sliderRange":
         lo, hi = card.get("min"), card.get("max")
         if lo is None or hi is None:

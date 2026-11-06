@@ -2,6 +2,7 @@
 // "Again" cards come back in the next round (3 rounds at most); a result screen sends the outcome.
 
 Object.assign(STRINGS.en, {
+  flashInvalid: 'This saved result cannot be displayed.',
   flashFront: 'Front',
   flashBack: 'Back',
   flashFlip: 'Show answer',
@@ -28,6 +29,7 @@ Object.assign(STRINGS.en, {
   rFlashAgain: ', {a} to practise'
 })
 Object.assign(STRINGS.de, {
+  flashInvalid: 'Dieses gespeicherte Ergebnis kann nicht angezeigt werden.',
   flashFront: 'Vorne',
   flashBack: 'Hinten',
   flashFlip: 'Antwort zeigen',
@@ -157,7 +159,11 @@ function FlashFace({ kind, text, hint, lang, long }) {
 function FlashcardsCard({ card, sessionId, display, lang }) {
   const labelId = useId()
   const ans = useCardAnswer(card, sessionId, lang)
-  const sent = ans.answer && ans.answer.data
+  const rawSent = ans.answer && ans.answer.data
+  const all = rawSent && Array.isArray(rawSent.known) && Array.isArray(rawSent.again) ? [...rawSent.known, ...rawSent.again] : []
+  const validSent = rawSent && Array.isArray(rawSent.known) && Array.isArray(rawSent.again) && all.length === card.cards.length && new Set(all).size === all.length && all.every(i => Number.isInteger(i) && i >= 0 && i < card.cards.length) && Number.isInteger(rawSent.rounds) && rawSent.rounds >= 1 && rawSent.rounds <= FLASH_ROUNDS
+  const sent = validSent ? rawSent : null
+  const invalidSent = Boolean(rawSent && !validSent)
   const [state, setState] = useState(() => flashCleanState(card, ans.draft))
   const [flipped, setFlipped] = useState(false)
   const [hintOpen, setHintOpen] = useState(false)
@@ -165,7 +171,7 @@ function FlashcardsCard({ card, sessionId, display, lang }) {
   const cardRef = useRef(null)
   const n = card.cards.length
 
-  const done = Boolean(sent) || state.queue.length === 0
+  const done = Boolean(sent) || invalidSent || state.queue.length === 0
   const known = sent ? sent.known : state.known
   const again = sent ? sent.again : state.again
   const rounds = sent ? sent.rounds : state.round
@@ -244,7 +250,7 @@ function FlashcardsCard({ card, sessionId, display, lang }) {
       children: jsxs('div', {
         ref: cardRef, className: 'huic-fc', role: 'button', tabIndex: 0,
         'data-flipped': flipped, 'aria-pressed': flipped,
-        'aria-label': `${t(lang, 'flashFront')}: ${cur.front}. ${hintOpen && cur.hint ? `${t(lang, 'flashHintIs', { x: cur.hint })}. ` : ''}${t(lang, 'flashFlipHint')}`,
+        'aria-label': flipped ? `${t(lang, 'flashBack')}: ${cur.back}. ${t(lang, 'flashFlipHint')}` : `${t(lang, 'flashFront')}: ${cur.front}. ${hintOpen && cur.hint ? `${t(lang, 'flashHintIs', { x: cur.hint })}. ` : ''}${t(lang, 'flashFlipHint')}`,
         onClick: flip, onKeyDown: onCardKey,
         children: [
           jsx(FlashFace, { kind: 'front', text: cur.front, hint: hintOpen ? cur.hint : null, lang, long }),
@@ -293,7 +299,7 @@ function FlashcardsCard({ card, sessionId, display, lang }) {
 
   return jsx(Shell, {
     card, display, labelId, title: card.title,
-    children: jsxs(Fragment, { children: [jsx('style', { children: FLASH_CSS }), ...(done ? result : study)] }),
+    children: jsxs(Fragment, { children: [jsx('style', { children: FLASH_CSS }), ...(invalidSent ? [jsx('p', { role: 'status', children: t(lang, 'flashInvalid') })] : done ? result : study)] }),
     footer: done && ans.showActions ? jsx(Footer, {
       children: jsxs(Fragment, { children: [
         jsx(Btn, { variant: 'ghost', onClick: restart, children: t(lang, 'flashRestart') }),

@@ -243,7 +243,7 @@ const vc_validateCard = (() => {
       }
     }
     else if (name === 'minMaxPicks') {
-      const n = (card.options || []).length, lo = card.min, hi = card.max
+      const n = (card.options || []).length + (card.allowOther ? 1 : 0), lo = card.min, hi = card.max
       if (!card.multiple && (lo != null || hi != null)) { ctx.warnings.push('card.min/max: only used with multiple: true, ignored'); delete card.min; delete card.max; return }
       if (lo != null && lo > n) ctx.errors.push(`card.min: ${lo} is more than the ${n} options`)
       if (hi != null && hi > n) card.max = n
@@ -277,6 +277,8 @@ const vc_validateCard = (() => {
         else if (k === 'number' && typeof d !== 'number') ctx.errors.push(`${p}.default: must be a number for kind number`)
         else if (k === 'select' && !(f.options || []).includes(d)) ctx.errors.push(`${p}.default: must be one of the options`)
         else if (!['toggle', 'number', 'select'].includes(k) && typeof d !== 'string') ctx.errors.push(`${p}.default: must be text for kind ${k}`)
+        else if (k === 'date' && (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !datetime(`${d}T00:00`))) ctx.errors.push(`${p}.default: must be a valid date for kind date`)
+        else if (k === 'time' && !/^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,3})?)?$/.test(d)) ctx.errors.push(`${p}.default: must be a valid time for kind time`)
       }
     } else if (name === 'planOffOptional') {
       for (const [i, step] of card.steps.entries()) if (step.off && !step.optional) ctx.errors.push(`card.steps[${i}].off: only allowed when optional is true`)

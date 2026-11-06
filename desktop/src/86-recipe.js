@@ -152,7 +152,8 @@ function rcpCleanDraft(card, draft, sent) {
   const source = sent || draft || {}
   const servings = Number.isInteger(source.servings) && source.servings >= 1 && source.servings <= 50 ? source.servings : card.servings
   const ids = new Set(card.ingredients.map(i => i.id))
-  const have = Array.isArray(source.have) ? source.have.filter(id => ids.has(id)) : []
+  const missingIndexes = Array.isArray(source.missing_indexes) ? new Set(source.missing_indexes.map(entry => Array.isArray(entry) ? entry[0] : entry)) : null
+  const have = Array.isArray(source.have) ? source.have.filter(id => ids.has(id)) : missingIndexes ? card.ingredients.filter((_, index) => !missingIndexes.has(index)).map(i => i.id) : []
   return { servings, have: [...new Set(have)] }
 }
 
@@ -264,6 +265,24 @@ REPLY_BUILDERS.recipe = (card, answer, lang, data) => {
   const parts = data.missing.slice(0, shown).map(m => clip([rcpAmount(m.qty, m.unit, lang), m.item].filter(Boolean).join(' '), 40))
   const sep = parts.some(p => /,\s/.test(p)) ? '; ' : ', '
   if (data.missing.length > shown) parts.push(t(lang, 'rShoppingMore', { n: data.missing.length - shown }))
-  return { mark: '✓', summary: t(lang, 'rShopping', { servings, x: parts.join(sep) }) }
+  const summary = t(lang, 'rShopping', { servings, x: parts.join(sep) })
+  // Names and units are available in the original card, keyed by ingredient ID.
+  // Omit repeated text only when it would make the machine payload too large.
+  if ([...JSON.stringify(data)].length > MAX_REPLY - 400) {
+    data.missing = data.missing.map(({ id, qty }) => qty === undefined ? { id } : { id, qty })
+    data.ingredient_source = 'Original recipe card identified by card; look up ingredients by id'
+    if ([...JSON.stringify(data)].length > MAX_REPLY - 400) {
+      const missing = new Map(data.missing.map(m => [m.id, m]))
+      data.missing_indexes = card.ingredients.flatMap((ingredient, index) => {
+        const item = missing.get(ingredient.id)
+        return item ? [item.qty === undefined ? index : [index, item.qty]] : []
+      })
+      delete data.missing
+      delete data.have
+      data.index_base = 0
+      data.ingredient_source = 'Original recipe card identified by card; missing_indexes contains zero-based ingredient indexes or [index, scaled quantity]'
+    }
+  }
+  return { mark: '✓', summary }
 }
 CARD_COMPONENTS.recipe = RecipeCard

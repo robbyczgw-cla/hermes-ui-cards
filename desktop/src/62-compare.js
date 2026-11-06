@@ -80,7 +80,9 @@ function CompareCard({ card, sessionId, display, lang }) {
   const ans = useCardAnswer(card, sessionId, lang)
   const submitRef = useRef(ans.submit)
   submitRef.current = ans.submit
-  const [selected, setSelected] = useState(() => Math.max(0, card.columns.findIndex(c => c.best)))
+  const picked = ans.answer?.selection?.selected ?? ans.answer?.data?.selected
+  const [selected, setSelected] = useState(() => Math.max(0, card.columns.findIndex(c => c.id === picked || (picked == null && c.best))))
+  useEffect(() => { if (picked != null) { const index = card.columns.findIndex(c => c.id === picked); if (index >= 0) setSelected(index) } }, [picked])
   const [expanded, setExpanded] = useState({})
   const [pending, setPending] = useState(null)
   const timer = useRef(null)
@@ -111,7 +113,6 @@ function CompareCard({ card, sessionId, display, lang }) {
     setPending(column)
     timer.current = setTimeout(() => { timer.current = null; setPending(null); submitRef.current({ selected: column.id }) }, delay)
   }
-  const picked = ans.answer?.selection?.selected
   // The tinted wash marks the recommendation until there is a pick, then moves to the pick
   // (the recommendation keeps only its badge).
   const chosenId = pending ? pending.id : picked

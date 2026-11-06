@@ -34,7 +34,7 @@ function nextDayKey(key) {
 function scheduleDays(card, lang) {
   const groups = new Map()
   for (const slot of card.slots) {
-    const key = slotDay(slot.start, card)
+    const key = Number.isNaN(slotDate(slot.start).getTime()) ? String(slot.start) : slotDay(slot.start, card)
     if (!groups.has(key)) groups.set(key, [])
     groups.get(key).push(slot)
   }

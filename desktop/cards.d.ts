@@ -234,9 +234,9 @@ export interface ChoiceCard extends CardCommon {
   }>
   /** Allow several picks. */
   multiple?: boolean
-  /** Fewest picks (multiple only). */
+  /** Fewest picks (multiple only; seven requires Other). */
   min?: number
-  /** Most picks (multiple only). */
+  /** Most picks (multiple only; seven requires Other). */
   max?: number
   /** Add a free-text "Other" field. */
   allowOther?: boolean

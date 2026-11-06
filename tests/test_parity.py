@@ -59,6 +59,21 @@ def test_validator_parity(path, js_results):
         assert card is None, "Warning-only accepted cards belong in valid/"
 
 
+@pytest.mark.parametrize("part", ["hour", "minute", "second", "fraction"])
+def test_time_defaults_reject_non_ascii_digits(part, js_results):
+    path = ROOT / "tests" / "fixtures" / "invalid" / f"form-time-unicode-{part}.json"
+    card, errors, warnings = validate_card(json.loads(path.read_text(encoding="utf-8")))
+    assert card is None and errors
+    assert ordered_json(js_results[str(path)]) == ordered_json(dict(card=card, errors=errors, warnings=warnings))
+
+
+def test_seven_picks_with_other_parity(js_results):
+    path = ROOT / "tests" / "fixtures" / "valid" / "choice-seven-with-other.json"
+    card, errors, warnings = validate_card(json.loads(path.read_text(encoding="utf-8")))
+    assert not errors and card["min"] == card["max"] == 7
+    assert ordered_json(js_results[str(path)]) == ordered_json(dict(card=card, errors=errors, warnings=warnings))
+
+
 def test_fixture_coverage():
     assert len(FIXTURES) >= 45
     for ctype in CARD_TYPES:

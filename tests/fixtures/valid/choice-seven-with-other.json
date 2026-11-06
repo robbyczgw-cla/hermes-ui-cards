@@ -1,0 +1,28 @@
+{
+  "type": "choice",
+  "question": "Pick seven",
+  "multiple": true,
+  "allowOther": true,
+  "min": 7,
+  "max": 7,
+  "options": [
+    {
+      "label": "Option 1"
+    },
+    {
+      "label": "Option 2"
+    },
+    {
+      "label": "Option 3"
+    },
+    {
+      "label": "Option 4"
+    },
+    {
+      "label": "Option 5"
+    },
+    {
+      "label": "Option 6"
+    }
+  ]
+}
