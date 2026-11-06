@@ -176,7 +176,12 @@ function buildReply(card, answer, lang) {
           if (s.label) out.label = s.label
           return out
         })
-        const texts = picked.map(s => (s.label ? `${formatSlot(s, card, L)} (${s.label})` : formatSlot(s, card, L)))
+        // A label that only repeats the time ("20:30–21:30") adds nothing: "Fri 6 Nov, 20:30–21:30".
+        const bare = v => oneLine(v).replace(/[\s\u2013\u2014-]+/g, '').toLowerCase()
+        const texts = picked.map(s => {
+          const when = formatSlot(s, card, L)
+          return s.label && !bare(when).includes(bare(s.label)) ? `${when} (${s.label})` : when
+        })
         summary = t(L, picked.length > 1 ? 'rSlots' : 'rSlot', { x: texts.join('; ') })
         // The card heading names its zone ("Athens time", "UTC"); the answer must not lose it.
         const zone = card.timezone && validTimeZone(card.timezone) ? zoneLabel(card.timezone, L) : ''

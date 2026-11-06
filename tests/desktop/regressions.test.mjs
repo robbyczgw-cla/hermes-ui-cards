@@ -10,6 +10,12 @@ const { createRoot } = await import('react-dom/client')
 const resultCard = raw => JSON.parse(toolResult(raw)).card
 const cp = s => [...s].length
 
+test('schedule answers drop a slot label that only repeats the time', () => {
+  const card = resultCard({ type: 'schedule', slots: [{ id: 's1', start: '2026-11-06T20:30', end: '2026-11-06T21:30', label: '20:30 - 21:30' }, { id: 's2', start: '2026-11-06T18:30', label: 'After grooming' }] })
+  assert.equal(mod.buildReply(card, { selected: ['s1'] }, 'en').summary, 'Works for me: Fri 6 Nov, 20:30–21:30')
+  assert.equal(mod.buildReply(card, { selected: ['s2'] }, 'en').summary, 'Works for me: Fri 6 Nov, 18:30 (After grooming)')
+})
+
 test('schedule answers keep the card zone: UTC too, and whole even when the summary is clipped', () => {
   const utc = resultCard({ type: 'schedule', timezone: 'UTC', slots: [{ id: 's1', start: '2026-11-12T14:00' }] })
   assert.equal(mod.buildReply(utc, { selected: ['s1'] }, 'en').summary, 'Works for me: Thu 12 Nov, 14:00 · UTC')
