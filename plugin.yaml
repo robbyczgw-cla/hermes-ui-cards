@@ -1,7 +1,7 @@
 name: hermes-ui-cards
 version: 0.1.0
 manifest_version: 2
-description: Interactive answer cards in Hermes Desktop — choices, checklists, comparisons, forms and confirmations the user answers with a click
+description: Interactive answer cards in Hermes Desktop and the Hermes Webapp, with text elsewhere.
 author: robbyczgw-cla
 license: MIT
 homepage: https://github.com/robbyczgw-cla/hermes-ui-cards

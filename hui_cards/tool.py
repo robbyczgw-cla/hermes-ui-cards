@@ -117,12 +117,21 @@ def _prune(directory: Path) -> None:
 
 
 def _write_card_file(card: dict, text: str) -> Path:
+    from html import escape
+
     directory = cards_dir()
     path = directory / f"{card['cardId']}.md"
     # Shown only when the Desktop can't draw the card (its Desktop half is off): say how to fix it.
     hint = ("> This is an interactive HUI+ card. If you see this file instead of the card, turn on the "
             "plugin's Desktop half: Capabilities → Plugins → HUI+ Cards → Desktop.\n\n")
-    body = hint + text + "\n\n" + "<!-- hermes-ui-cards " + json.dumps(card, ensure_ascii=False) + " -->\n"
+    # The fallback is plain text. Escape Markdown syntax and preserve its lines and indentation
+    # in previews without changing the text delivered to CLI or messaging surfaces.
+    lines = []
+    for line in text.split('\n'):
+        indent = len(line) - len(line.lstrip(' '))
+        content = re.sub(r'([\\`*_{}\[\]#+\-.!|~])', r'\\\1', escape(line[indent:]))
+        lines.append(('&nbsp;' * indent + content + '  ') if line else '')
+    body = hint + '\n'.join(lines) + "\n\n" + "<!-- hermes-ui-cards " + json.dumps(card, ensure_ascii=False) + " -->\n"
     tmp = path.with_suffix(".tmp")
     tmp.write_text(body, encoding="utf-8")
     tmp.replace(path)

@@ -46,7 +46,7 @@ def test_desktop_returns_media_card_and_writes_markdown_copy(isolated):
     text = path.read_text(encoding="utf-8")
     assert text.startswith("> This is an interactive HUI+ card.")  # says how to fix a missing Desktop half
     assert "Capabilities → Plugins → HUI+ Cards → Desktop" in text
-    assert "\n\nWhere to?\n\n1. Lisbon\n2. Berlin\n" in text
+    assert "\n\nWhere to?  \n\n1\\. Lisbon  \n2\\. Berlin  \n" in text
     assert out["media"] in out["next"]
     assert "error" not in out  # Desktop treats a result with `error` as a failed call
 
@@ -56,8 +56,20 @@ def test_text_surfaces_get_plain_text_and_no_file(isolated):
         out = run({"card": CHOICE}, surface)
         assert "media" not in out and "card" not in out
         assert out["text"].endswith("Reply with a number (1–2).")
+        assert "1. Lisbon\n2. Berlin" in out["text"]
         assert out["surface"] == (surface or "text")
     assert not (isolated / "plugin-data").exists()
+
+
+def test_markdown_preview_preserves_compare_lines_and_literal_markers():
+    card = {'type': 'compare', 'title': 'Trips', 'columns': [
+        {'title': 'Prague', 'subtitle': 'Old town', 'pros': ['Cheap eats'], 'cons': ['Long trip']},
+        {'title': 'Vienna', 'subtitle': 'Museums'}]}
+    result = run({'card': card}, 'desktop')
+    content = Path(result['media'][len('MEDIA:'):]).read_text(encoding='utf-8')
+    assert '1\\. Prague  \n&nbsp;&nbsp;&nbsp;Old town  \n' in content
+    assert '&nbsp;&nbsp;&nbsp;\\+ Cheap eats  \n&nbsp;&nbsp;&nbsp;– Long trip  \n' in content
+    assert tool.read_card_file(result['cardId']) == result['card']
 
 
 def test_cards_switched_off_gives_text_on_desktop_too():
