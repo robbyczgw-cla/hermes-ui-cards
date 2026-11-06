@@ -67,7 +67,7 @@ ${HUIC_RELATIVE}{
 .huic[data-card-type="confirm"] .huic-confirm-receipt.is-change{background:color-mix(in srgb,var(--huic-accent) 14%,transparent)}
 .huic[data-card-type="confirm"] .huic-confirm-receipt.is-change>span:first-child{--fill:var(--huic-accent)}
 .huic[data-card-type="confirm"] .huic-confirm-receipt .huic-ico{width:12px;height:12px;stroke-width:2}
-.huic[data-card-type="confirm"] .huic-confirm-edit{display:flex;flex-direction:column;gap:8px;padding:12px var(--huic-pad);border-top:1px solid var(--huic-line);background:color-mix(in srgb,var(--huic-accent) 5%,transparent);box-shadow:inset 3px 0 0 var(--huic-accent);animation:huic-fade .2s var(--huic-ease) both}
+.huic[data-card-type="confirm"] .huic-confirm-edit{scroll-margin:16px 0 120px;display:flex;flex-direction:column;gap:8px;padding:12px var(--huic-pad);border-top:1px solid var(--huic-line);background:color-mix(in srgb,var(--huic-accent) 5%,transparent);box-shadow:inset 3px 0 0 var(--huic-accent);animation:huic-fade .2s var(--huic-ease) both}
 .huic[data-card-type="confirm"] .huic-confirm-edit .huic-label{display:flex;align-items:center;gap:6px}
 .huic[data-card-type="confirm"] .huic-confirm-edit .huic-label .huic-ico{color:var(--huic-accent);font-size:14px}
 .huic[data-card-type="confirm"] .huic-confirm-edit textarea{min-height:76px;background:var(--ui-chat-surface-background,var(--ui-base))}
@@ -104,7 +104,7 @@ function ConfirmCard({ card, sessionId, display, lang }) {
   const wasPending = useRef(false)
 
   useEffect(() => {
-    if (changing && changeRef.current) changeRef.current.focus()
+    if (changing && changeRef.current) { changeRef.current.focus({ preventScroll: true }); revealInView(changeRef.current.closest('.huic-confirm-edit')) }
     else if (wasChanging.current) changeButtonRef.current?.focus()
     wasChanging.current = changing
   }, [changing])

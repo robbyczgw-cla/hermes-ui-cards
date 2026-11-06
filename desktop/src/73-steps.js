@@ -31,7 +31,7 @@ const STEPS_CSS = `
 .huic[data-card-type="steps"] .huic-steps-nav{display:flex;gap:8px;align-items:center;margin-left:auto}
 .huic[data-card-type="steps"] .huic-steps-next::after{content:"→";transition:transform .15s var(--huic-ease)}
 .huic[data-card-type="steps"] .huic-steps-next:hover::after{transform:translateX(2px)}
-.huic[data-card-type="steps"] .huic-steps-report{padding:12px var(--huic-pad);border-top:1px solid var(--huic-line);background:color-mix(in srgb,var(--ui-orange,var(--huic-accent)) 5%,transparent);box-shadow:inset 3px 0 0 var(--ui-orange,var(--huic-accent));display:flex;flex-direction:column;gap:8px;animation:huic-fade .2s var(--huic-ease) both}
+.huic[data-card-type="steps"] .huic-steps-report{scroll-margin:16px 0 120px;padding:12px var(--huic-pad);border-top:1px solid var(--huic-line);background:color-mix(in srgb,var(--ui-orange,var(--huic-accent)) 5%,transparent);box-shadow:inset 3px 0 0 var(--ui-orange,var(--huic-accent));display:flex;flex-direction:column;gap:8px;animation:huic-fade .2s var(--huic-ease) both}
 .huic[data-card-type="steps"] .huic-steps-report-actions{display:flex;justify-content:flex-end;gap:8px}
 .huic[data-card-type="steps"] .huic-steps-sent{display:flex;align-items:center;gap:8px;min-width:0;margin-right:auto;padding:3px 12px 3px 3px;border-radius:999px;background:color-mix(in srgb,var(--huic-accent) 12%,transparent);font-size:12.5px;line-height:18px;animation:huic-pop .3s var(--huic-ease) both}
 .huic[data-card-type="steps"] .huic-steps-sent>i{flex:none;display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--huic-accent);color:var(--huic-on-accent);font-size:12px}
@@ -67,7 +67,7 @@ function StepsCard({ card, sessionId, display, lang }) {
     previous.current = index
   }, [index])
   useEffect(() => {
-    if (reporting) noteRef.current?.focus()
+    if (reporting && noteRef.current) { noteRef.current.focus({ preventScroll: true }); revealInView(noteRef.current.closest('.huic-steps-report')) }
     else if (wasReporting.current) stuckRef.current?.focus()
     wasReporting.current = reporting
   }, [reporting])

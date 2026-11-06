@@ -1760,6 +1760,14 @@ function AnsweredBar({ lang, record, focus }) {
 
 // The undo window counts down where people can see it. Screen readers hear the start value once
 // (the bar is a polite live region; a per-second update would interrupt them every second).
+// An editor that opens inside a card (Change…, I'm stuck) must be fully on screen, its send button
+// included, and not under the host's composer. scroll-margin-bottom (CSS) keeps that room.
+function revealInView(el) {
+  if (!el || typeof el.scrollIntoView !== 'function') return
+  const still = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+  el.scrollIntoView({ block: 'nearest', behavior: still ? 'auto' : 'smooth' })
+}
+
 function Countdown({ ms, say }) {
   const total = Math.max(1, Math.round(ms / 1000))
   // Mounted when the undo window opens, so this deadline matches the send timer. The shown value is
@@ -3160,7 +3168,7 @@ ${HUIC_RELATIVE}{
 .huic[data-card-type="confirm"] .huic-confirm-receipt.is-change{background:color-mix(in srgb,var(--huic-accent) 14%,transparent)}
 .huic[data-card-type="confirm"] .huic-confirm-receipt.is-change>span:first-child{--fill:var(--huic-accent)}
 .huic[data-card-type="confirm"] .huic-confirm-receipt .huic-ico{width:12px;height:12px;stroke-width:2}
-.huic[data-card-type="confirm"] .huic-confirm-edit{display:flex;flex-direction:column;gap:8px;padding:12px var(--huic-pad);border-top:1px solid var(--huic-line);background:color-mix(in srgb,var(--huic-accent) 5%,transparent);box-shadow:inset 3px 0 0 var(--huic-accent);animation:huic-fade .2s var(--huic-ease) both}
+.huic[data-card-type="confirm"] .huic-confirm-edit{scroll-margin:16px 0 120px;display:flex;flex-direction:column;gap:8px;padding:12px var(--huic-pad);border-top:1px solid var(--huic-line);background:color-mix(in srgb,var(--huic-accent) 5%,transparent);box-shadow:inset 3px 0 0 var(--huic-accent);animation:huic-fade .2s var(--huic-ease) both}
 .huic[data-card-type="confirm"] .huic-confirm-edit .huic-label{display:flex;align-items:center;gap:6px}
 .huic[data-card-type="confirm"] .huic-confirm-edit .huic-label .huic-ico{color:var(--huic-accent);font-size:14px}
 .huic[data-card-type="confirm"] .huic-confirm-edit textarea{min-height:76px;background:var(--ui-chat-surface-background,var(--ui-base))}
@@ -3197,7 +3205,7 @@ function ConfirmCard({ card, sessionId, display, lang }) {
   const wasPending = useRef(false)
 
   useEffect(() => {
-    if (changing && changeRef.current) changeRef.current.focus()
+    if (changing && changeRef.current) { changeRef.current.focus({ preventScroll: true }); revealInView(changeRef.current.closest('.huic-confirm-edit')) }
     else if (wasChanging.current) changeButtonRef.current?.focus()
     wasChanging.current = changing
   }, [changing])
@@ -3834,7 +3842,7 @@ const STEPS_CSS = `
 .huic[data-card-type="steps"] .huic-steps-nav{display:flex;gap:8px;align-items:center;margin-left:auto}
 .huic[data-card-type="steps"] .huic-steps-next::after{content:"→";transition:transform .15s var(--huic-ease)}
 .huic[data-card-type="steps"] .huic-steps-next:hover::after{transform:translateX(2px)}
-.huic[data-card-type="steps"] .huic-steps-report{padding:12px var(--huic-pad);border-top:1px solid var(--huic-line);background:color-mix(in srgb,var(--ui-orange,var(--huic-accent)) 5%,transparent);box-shadow:inset 3px 0 0 var(--ui-orange,var(--huic-accent));display:flex;flex-direction:column;gap:8px;animation:huic-fade .2s var(--huic-ease) both}
+.huic[data-card-type="steps"] .huic-steps-report{scroll-margin:16px 0 120px;padding:12px var(--huic-pad);border-top:1px solid var(--huic-line);background:color-mix(in srgb,var(--ui-orange,var(--huic-accent)) 5%,transparent);box-shadow:inset 3px 0 0 var(--ui-orange,var(--huic-accent));display:flex;flex-direction:column;gap:8px;animation:huic-fade .2s var(--huic-ease) both}
 .huic[data-card-type="steps"] .huic-steps-report-actions{display:flex;justify-content:flex-end;gap:8px}
 .huic[data-card-type="steps"] .huic-steps-sent{display:flex;align-items:center;gap:8px;min-width:0;margin-right:auto;padding:3px 12px 3px 3px;border-radius:999px;background:color-mix(in srgb,var(--huic-accent) 12%,transparent);font-size:12.5px;line-height:18px;animation:huic-pop .3s var(--huic-ease) both}
 .huic[data-card-type="steps"] .huic-steps-sent>i{flex:none;display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--huic-accent);color:var(--huic-on-accent);font-size:12px}
@@ -3870,7 +3878,7 @@ function StepsCard({ card, sessionId, display, lang }) {
     previous.current = index
   }, [index])
   useEffect(() => {
-    if (reporting) noteRef.current?.focus()
+    if (reporting && noteRef.current) { noteRef.current.focus({ preventScroll: true }); revealInView(noteRef.current.closest('.huic-steps-report')) }
     else if (wasReporting.current) stuckRef.current?.focus()
     wasReporting.current = reporting
   }, [reporting])

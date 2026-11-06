@@ -180,6 +180,20 @@ test('steps: completion leaves all content and navigation readable, inactive car
   assert.ok((inactive.container.querySelector('.huic-foot')) === (null))
 })
 
+test('opening Change… or Stuck brings the whole editor into view (send button included)', async t => {
+  const calls = []
+  const original = window.HTMLElement.prototype.scrollIntoView
+  window.HTMLElement.prototype.scrollIntoView = function (opts) { calls.push({ cls: this.className, block: opts && opts.block }) }
+  t.after(() => { window.HTMLElement.prototype.scrollIntoView = original })
+  const { container } = await render(t, { ...confirm, title: 'Reveal' })
+  await click(buttonByText(container, 'Change…'))
+  assert.ok(calls.some(c => c.cls.includes('huic-confirm-edit') && c.block === 'nearest'), JSON.stringify(calls))
+  const s = await render(t, { ...steps, title: 'Reveal steps' })
+  await click(buttonByText(s.container, 'Next'))
+  await click(buttonByText(s.container, 'Stuck here'))
+  assert.ok(calls.some(c => c.cls.includes('huic-steps-report') && c.block === 'nearest'), JSON.stringify(calls))
+})
+
 test('undo window: the visible countdown moves, screen readers hear the start value once', async t => {
   mock.timers.enable({ apis: ['setTimeout', 'Date'] })
   t.after(() => mock.timers.reset())

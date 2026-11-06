@@ -303,6 +303,14 @@ function AnsweredBar({ lang, record, focus }) {
 
 // The undo window counts down where people can see it. Screen readers hear the start value once
 // (the bar is a polite live region; a per-second update would interrupt them every second).
+// An editor that opens inside a card (Change…, I'm stuck) must be fully on screen, its send button
+// included, and not under the host's composer. scroll-margin-bottom (CSS) keeps that room.
+function revealInView(el) {
+  if (!el || typeof el.scrollIntoView !== 'function') return
+  const still = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+  el.scrollIntoView({ block: 'nearest', behavior: still ? 'auto' : 'smooth' })
+}
+
 function Countdown({ ms, say }) {
   const total = Math.max(1, Math.round(ms / 1000))
   // Mounted when the undo window opens, so this deadline matches the send timer. The shown value is

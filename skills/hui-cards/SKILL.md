@@ -61,6 +61,7 @@ Read the `[hui-card]` line, act on it, and don't show the same card again. `✗`
 (confirm: No — do not run it), `✎` a change request (do what the text says, then show a new confirm
 if it still needs approval), `⚠` stuck at a step (help with that step, the note says what happened).
 On text surfaces the user types a number or words: map them to the options you sent.
+After a card answer, reply in 1–2 sentences unless the user asks for more; don't repeat card content.
 
 ## Chains: one card leads to the next
 
@@ -118,6 +119,11 @@ ones; rewrite those with a comment.
 - If you correct a value that is on a card already shown, say that the card's value is outdated or show
   an updated card; when the user changes the requirements of an open checklist, keep the items they
   already ticked as `checked: true` in the new one if their answer told you which.
-- One card per call; keep labels short (the card has little space in a split view).
+- One card per call; keep labels to about 5 words or fewer (space is limited in a split view).
+- `choice` and `compare`: prefer 2–4 options. `compare`: use at most 3–4 rows; add pros or cons
+  only when they add to the rows, with at most 2 short points of each per option.
+- `checklist`: keep items short; add notes only when needed.
+- Don't repeat card content in prose before or after the card.
+- `confirm`: make risk text match the action's actual effect, e.g. a local file write vs. a real send.
 - Write the card in the user's language and set `lang` (`"de"`, `"en"`) so the buttons match.
 - An invalid card comes back as an error listing each bad field: fix those fields and call again.
