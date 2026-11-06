@@ -23,3 +23,5 @@ First version.
   and the TypeScript types; `calc` formulas use a small parser in both languages, no `eval`.
 - Settings: cards on/off, compact, accent colour, undo time, card types, API server format; compact,
   accent and undo time apply to cards already on screen. `/cards` command and a command-palette demo.
+- Answer lines read like a person wrote them and use the card's own words (review keep/drop labels,
+  a quoted plan note, the schedule's time zone, plural kitchen units in recipes).

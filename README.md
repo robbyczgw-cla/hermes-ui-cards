@@ -1,8 +1,7 @@
 # HUI+ Cards for Hermes
 
-Hermes answers with cards you act on, right in the Hermes Desktop chat: edit its plan before it
-runs, compare options, tick off a list, fill in a form, approve a risky step. When you submit a card,
-your answer goes back as your next message and Hermes continues from there.
+Hermes answers with cards you act on in its chat (edit a plan, compare options, tick off a list, fill in
+a form, approve a risky step), and when you submit one, your answer goes back as your next message.
 
 ![A compare card in Hermes Desktop: three laptops side by side with sourced prices, the best value per row marked, and the answered state "Your answer: Picked: MacBook Pro 14"](assets/hero.jpg)
 
@@ -11,7 +10,7 @@ your answer goes back as your next message and Hermes continues from there.
   <img src="assets/confirm.jpg" alt="A confirm card: the exact command, what stays, a high-risk warning, and the buttons Change, Keep it and Delete" width="49%">
 </p>
 
-Demo video (83 s): *link added with the release.*
+<!-- DEMO VIDEO LINK -->
 
 ## Install
 
@@ -40,28 +39,27 @@ produces).
 
 ## Cards
 
-17 card types. The first seven are the ones that matter most.
+17 card types. Use the built-in `clarify` picker for a single plain question with a few simple options.
 
 | Card | What you do | What Hermes gets |
 |---|---|---|
-| `plan` | Switch off optional steps, reorder, add a note per step, then Run | The steps to run, in your order, with notes |
-| `review` | Keep or drop many drafts at once (replies, files, edits), comment on any | Which to keep, drop or leave open, plus comments |
 | `checklist` | Tick items off; ticks are saved as you go | Done and open items |
 | `compare` | Read 2–4 options side by side, pick one | Your pick |
 | `form` | Fill in fields with required ones and checks | The values |
-| `confirm` | Read one action with its reason, risk and exact command; Yes, No or Change | Your decision, or what to change |
 | `steps` | Follow a walkthrough with Back and Next; say when you're done or stuck | Done, or where you got stuck and why |
+| `confirm` | Read one action with its reason, risk and exact command; Yes, No or Change | Your decision, or what to change |
+| `plan` | Switch off optional steps, reorder, add a note per step, then Run | The steps to run, in your order, with notes |
+| `review` | Keep or drop many drafts at once, comment on any | Which to keep, drop or leave open, plus comments |
 | `decision` | Weigh criteria with sliders; the ranking updates live | Your weights and the ranking, or a pick |
 | `calc` | Change inputs; results update live (loan, budget, split a bill) | Inputs and results |
 | `rank` | Put items in order (drag or Alt+↑/↓) | The order |
-| `choice` | Pick one or several options with a picture or short text each | Your picks |
+| `choice` | Pick several options, or options with a picture or short text each | Your picks |
 | `schedule` | Pick a time slot, or "none of these" | The slot |
 | `recipe` | Scale servings, tick what you have | A shopping list for what's missing |
 | `flashcards` | Flip cards, mark known or again | What you knew and what to practise |
 | `rating`, `slider`, `quiz` | Rate, set one number, answer practice questions | The rating, the number, your score |
 
-For a single plain question with a few simple options, Hermes' built-in `clarify` picker is the
-right tool; the plugin's skill tells the model so. Most replies are still plain text.
+Most replies are still plain text.
 
 ## How it works
 
@@ -88,7 +86,8 @@ Details that make it dependable:
   exactly-once: two clients that answer before either has synced can both send; the backend keeps the
   first answer and tells the model about the second.
 - **Undo before it counts.** A pick on `compare`, Run on `plan`, Apply on `review` and Yes on a medium-
-  or high-risk `confirm` wait 4 seconds (Settings: 0, 4 or 8) and can be undone.
+  or high-risk `confirm` wait 4 seconds (Settings: 0, 4 or 8) and can be undone. The countdown ticks
+  down on screen; screen readers hear the starting value once.
 - **A card is not an approval bypass.** A Yes on a card is your message to the model. Hermes' own
   approval settings still apply to whatever it then runs (with the default *Smart* approval mode, Hermes
   may approve routine commands itself, so the card is often the only question you see).
@@ -101,7 +100,7 @@ Details that make it dependable:
 - **Plugin tools are found.** Hermes hides plugin tools behind its tool search by default; on Desktop
   the plugin adds a one-line hint so the model knows cards exist.
 
-## Other surfaces
+## Fallback and other surfaces
 
 | Where | What you get |
 |---|---|
@@ -111,18 +110,21 @@ Details that make it dependable:
 | Desktop with the Desktop half switched off | The text version as a Markdown attachment |
 | Desktop with *Interactive cards* switched off | The text version, for cards created after the switch |
 
-The text version of a confirm card:
+The text version of the checklist demo:
 
 ```
-Delete old log files?
+Before the release
 
-Action: Delete 14 log files older than 30 days in ~/logs
-Why: They use 2.3 GB and nothing reads them
-Medium risk: Deleted files can't be restored
-Command:
-  find ~/logs -name '*.log' -mtime +30 -delete
+Code
+☐ 1. Bump the version
+☐ 2. Update the changelog
+☑ 3. Run the full test suite
 
-Reply yes, no, or what to change.
+Comms
+☐ 4. Write the announcement
+☐ 5. Tell support about the changes
+
+Reply with the numbers you have done, e.g. 1, 4.
 ```
 
 ## Settings
@@ -136,8 +138,8 @@ screen; the other settings affect cards created afterwards.
 | Compact cards | off | Less padding, for narrow split views |
 | Accent colour | app | Your theme's accent, or blue, green, orange, purple, red |
 | Undo time (seconds) | 4 | 0, 4 or 8 seconds before a pick, Run, Apply or risky Yes is sent |
-| Card types | all | The types Hermes may use; an empty list means all (the tool description follows after a Hermes restart) |
-| Cards for the Hermes UI+ app | auto | Native cards for the Hermes UI+ app over the API server when its plugin is enabled |
+| Card types | all 17 | The types Hermes may use; disabled types are refused immediately; an empty list means all (the tool description follows after a Hermes restart) |
+| Cards for the Hermes UI+ app | auto | API server format: auto uses native cards when the app plugin is enabled; `hui` always requests them; `text` uses text |
 
 Commands: `/cards` (status), `/cards types`, `/cards demo <type>` (the text version of a demo card).
 In Desktop, the command palette has *HUI+ Cards: show an example card*.
