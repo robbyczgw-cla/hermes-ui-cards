@@ -5,10 +5,7 @@ a form, approve a risky step), and when you submit one, your answer goes back as
 
 ![A compare card in Hermes Desktop: three laptops side by side with sourced prices, the best value per row marked, and the answered state "Your answer: Picked: MacBook Pro 14"](assets/hero.jpg)
 
-<p>
-  <img src="assets/plan-demo.gif" alt="A plan card: an optional risky step is switched off, Run starts a 4 second undo window, then the plan is sent" width="49%">
-  <img src="assets/confirm.jpg" alt="A confirm card: the exact command, what stays, a high-risk warning, and the buttons Change, Keep it and Delete" width="49%">
-</p>
+![A confirm card in the Hermes Webapp asks before sending three invitations; after Send 3 invitations it shows Approved, and after a marked wait cut Hermes reports the three local receipts](assets/confirm-demo.gif)
 
 <!-- DEMO VIDEO LINK -->
 
@@ -60,6 +57,33 @@ produces).
 | `rating`, `slider`, `quiz` | Rate, set one number, answer practice questions | The rating, the number, your score |
 
 Most replies are still plain text.
+
+The built-in example cards as the Hermes Webapp draws them (`/cards demo <type>` shows the text version).
+Click a card for the full image.
+
+**Decide**
+
+| `compare` | `decision` | `calc` | `rank` |
+|---|---|---|---|
+| [![The compare example card](assets/cards/compare.jpg)](assets/cards/compare.jpg) | [![The decision example card](assets/cards/decision.jpg)](assets/cards/decision.jpg) | [![The calc example card](assets/cards/calc.jpg)](assets/cards/calc.jpg) | [![The rank example card](assets/cards/rank.jpg)](assets/cards/rank.jpg) |
+| `choice` | `schedule` |  |  |
+| [![The choice example card](assets/cards/choice.jpg)](assets/cards/choice.jpg) | [![The schedule example card](assets/cards/schedule.jpg)](assets/cards/schedule.jpg) |  |  |
+
+**Do**
+
+| `checklist` | `form` | `steps` | `confirm` |
+|---|---|---|---|
+| [![The checklist example card](assets/cards/checklist.jpg)](assets/cards/checklist.jpg) | [![The form example card](assets/cards/form.jpg)](assets/cards/form.jpg) | [![The steps example card](assets/cards/steps.jpg)](assets/cards/steps.jpg) | [![The confirm example card](assets/cards/confirm.jpg)](assets/cards/confirm.jpg) |
+| `plan` | `review` | `recipe` |  |
+| [![The plan example card](assets/cards/plan.jpg)](assets/cards/plan.jpg) | [![The review example card](assets/cards/review.jpg)](assets/cards/review.jpg) | [![The recipe example card](assets/cards/recipe.jpg)](assets/cards/recipe.jpg) |  |
+
+**Learn & rate**
+
+| `flashcards` | `rating` | `slider` | `quiz` |
+|---|---|---|---|
+| [![The flashcards example card](assets/cards/flashcards.jpg)](assets/cards/flashcards.jpg) | [![The rating example card](assets/cards/rating.jpg)](assets/cards/rating.jpg) | [![The slider example card](assets/cards/slider.jpg)](assets/cards/slider.jpg) | [![The quiz example card](assets/cards/quiz.jpg)](assets/cards/quiz.jpg) |
+
+Dark theme: [plan](assets/cards/plan-dark.jpg) · [review](assets/cards/review-dark.jpg) · [checklist](assets/cards/checklist-dark.jpg) · [compare](assets/cards/compare-dark.jpg) · [confirm](assets/cards/confirm-dark.jpg) · [form](assets/cards/form-dark.jpg).
 
 ## How it works
 
