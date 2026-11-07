@@ -66,9 +66,33 @@ function useCardIdentity(sessionId) {
   return seen.current.generation
 }
 
+// The first time this window draws a card that has no answer and no work in progress here, it is
+// new: its top is brought into view once it has settled (useArrivalReveal). Marked during render,
+// before the reveal effect runs; a card seen before (chat switched back, re-render) is never marked.
+const seenCards = new Set()
+function useArrivalMark(parsed, chatId) {
+  useState(() => {
+    if (!parsed || !chatId) return null
+    const { cardId } = parsed.card
+    if (seenCards.has(cardId)) return null
+    seenCards.add(cardId)
+    const record = readCard(cardKey(chatId, cardId))
+    if (record.answer || record.draft) return null
+    markArrival(cardId, () => {
+      const key = cardKey(chatId, cardId)
+      if (readCard(key).answer) return 'closed' // answered meanwhile, here or on another device
+      return isSyncing(key) ? 'wait' : 'open'
+    })
+    return null
+  })
+}
+
 function CardView({ result, sessionId, fallback }) {
   const parsed = useMemo(() => cardFromResult(result), [result])
   const chatId = typeof sessionId === 'string' && sessionId ? sessionId : null
+  useArrivalMark(parsed, chatId)
+  const hostRef = useRef(null)
+  useArrivalReveal(hostRef, parsed ? parsed.card.cardId : null)
   const generation = useCardIdentity(chatId)
   const display = useLiveDisplay(parsed ? parsed.display : null)
   const Component = parsed && CARD_COMPONENTS[parsed.card.type]
@@ -80,16 +104,22 @@ function CardView({ result, sessionId, fallback }) {
   })
   if (!Component) return fallback ?? null
   const lang = cardLang(parsed.card)
-  return jsx(
-    Component,
-    {
-      card: parsed.card,
-      display,
-      sessionId: chatId,
-      lang
-    },
-    // Not keyed by the chat id: a new chat's id changes from its runtime id to its stored id while
-    // the card is on screen, and remounting then would drop what the user just did.
-    `${parsed.card.cardId}\u0000${generation}`
-  )
+  // A wrapper without a box of its own (display: contents), so the arrival reveal can find the card.
+  return jsx('div', {
+    ref: hostRef,
+    className: 'huic-host',
+    style: { display: 'contents' },
+    children: jsx(
+      Component,
+      {
+        card: parsed.card,
+        display,
+        sessionId: chatId,
+        lang
+      },
+      // Not keyed by the chat id: a new chat's id changes from its runtime id to its stored id while
+      // the card is on screen, and remounting then would drop what the user just did.
+      `${parsed.card.cardId}\u0000${generation}`
+    )
+  })
 }

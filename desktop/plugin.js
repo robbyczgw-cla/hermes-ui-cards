@@ -1597,6 +1597,8 @@ textarea.huic-input{min-height:72px;resize:vertical;line-height:1.5}
 }
 /* keyboard hints help only with a keyboard: gone on touch screens and in narrow views */
 @media (hover: none) and (pointer: coarse){.huic .huic-keys,.huic .huic-keys-sep{display:none}}
+/* and only while the keyboard is in the card: elsewhere the host's composer gets the keys */
+.huic:not(:focus-within) .huic-keys,.huic:not(:focus-within) .huic-keys-sep{display:none}
 /* one line-icon style for chrome (check, cross, pencil, question, picture) */
 .huic-ico{display:block;flex:none;width:1em;height:1em;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 /* code + key-values */
@@ -1773,6 +1775,119 @@ function revealInView(el) {
   if (!el || typeof el.scrollIntoView !== 'function') return
   const still = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
   el.scrollIntoView({ block: 'nearest', behavior: still ? 'auto' : 'smooth' })
+}
+
+// A new card arrives at the end of the chat, and the host follows that end: a card taller than the
+// view (or with its top under the host's sticky prompt) then shows only its last part, title and
+// first items out of sight. Once such a card has stood still for a moment, bring its top into view,
+// once. Only for cards CardView marked as new and still open (markArrival), only while the view is
+// still at the chat's end (the user hasn't scrolled away) and only if the card is the last thing in
+// the chat; any wheel, touch, click or scroll key from the user in the meantime cancels it.
+const REVEAL_SETTLE_MS = 300 // unchanged size and place for this long: the host is done moving it
+const REVEAL_POLL_MS = 100
+const REVEAL_GIVE_UP_MS = 5000
+const REVEAL_AT_END_PX = 120 // the view counts as following the chat's end within this distance
+const REVEAL_LAST_PX = 260 // room below the card for the reply's own row (time, actions)
+const REVEAL_MARGIN_PX = 12
+const SCROLL_KEYS = new Set(['PageUp', 'PageDown', 'Home', 'End', 'ArrowUp', 'ArrowDown', ' '])
+const arrivals = new Map() // cardId → () => 'open' | 'closed' | 'wait'
+
+function markArrival(cardId, state) { arrivals.set(cardId, state) }
+
+function scrollParent(el) {
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const overflow = getComputedStyle(p).overflowY
+    if ((overflow === 'auto' || overflow === 'scroll' || overflow === 'overlay') && p.scrollHeight > p.clientHeight) return p
+  }
+  return null
+}
+
+// How far the host's sticky prompt (or any sticky or fixed bar) covers the top of the view: probe
+// the view's top band for layers above the card that stay in place.
+const COVER_PROBE_PX = 200
+function coveredTop(el, scroller, viewTop) {
+  if (typeof document.elementsFromPoint !== 'function') return 0
+  const box = el.getBoundingClientRect()
+  const x = box.left + Math.min(40, box.width / 2)
+  let cover = 0
+  for (let y = viewTop + 2; y < viewTop + COVER_PROBE_PX; y += 16) {
+    for (const hit of document.elementsFromPoint(x, y)) {
+      if (el.contains(hit) || hit.contains(el)) continue
+      for (let n = hit; n && n !== scroller && n !== document.body; n = n.parentElement) {
+        const position = getComputedStyle(n).position
+        if (position === 'sticky' || position === 'fixed') {
+          cover = Math.max(cover, n.getBoundingClientRect().bottom - viewTop)
+          break
+        }
+      }
+    }
+  }
+  return Math.min(cover, COVER_PROBE_PX)
+}
+
+function revealArrival(el) {
+  if (typeof el.scrollIntoView !== 'function') return false
+  const scroller = scrollParent(el)
+  const page = document.scrollingElement || document.documentElement
+  const view = scroller ? scroller.getBoundingClientRect() : { top: 0, bottom: window.innerHeight }
+  const box = scroller || page
+  if (box.scrollHeight - box.scrollTop - box.clientHeight > REVEAL_AT_END_PX) return false // scrolled away
+  const rect = el.getBoundingClientRect()
+  if (view.bottom - rect.bottom > REVEAL_LAST_PX) return false // more of the chat follows the card
+  const cover = coveredTop(el, scroller, view.top)
+  if (rect.top >= view.top + cover || rect.bottom <= view.top + cover) return false // top in view already
+  const still = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  el.style.scrollMarginTop = `${Math.round(cover) + REVEAL_MARGIN_PX}px`
+  el.scrollIntoView({ block: 'start', behavior: still ? 'auto' : 'smooth' })
+  return true
+}
+
+// hostRef: CardView's wrapper around the card (every card type, Shell or not, draws a section.huic).
+function useArrivalReveal(hostRef, cardId) {
+  useEffect(() => {
+    const state = cardId ? arrivals.get(cardId) : null
+    const el = state && hostRef.current ? hostRef.current.querySelector('section.huic') : null
+    if (!el) return
+    let timer = null
+    let last = null
+    let since = 0
+    const started = Date.now()
+    const finish = () => {
+      arrivals.delete(cardId)
+      stop()
+    }
+    const onKey = event => {
+      const tag = event.target && event.target.tagName
+      if (SCROLL_KEYS.has(event.key) && tag !== 'INPUT' && tag !== 'TEXTAREA' && !(event.target && event.target.isContentEditable)) finish()
+    }
+    const listeners = [['wheel', finish], ['touchmove', finish], ['pointerdown', finish], ['keydown', onKey]]
+    for (const [type, fn] of listeners) window.addEventListener(type, fn, { capture: true, passive: true })
+    function stop() {
+      clearTimeout(timer)
+      for (const [type, fn] of listeners) window.removeEventListener(type, fn, { capture: true })
+    }
+    const tick = () => {
+      if (!el.isConnected || Date.now() - started > REVEAL_GIVE_UP_MS) return finish()
+      const open = state()
+      if (open === 'closed') return finish()
+      const rect = el.getBoundingClientRect()
+      const now = Date.now()
+      const where = `${Math.round(rect.top)}:${Math.round(rect.height)}`
+      if (where !== last) {
+        last = where
+        since = now
+      } else if (open === 'open' && now - since >= REVEAL_SETTLE_MS) {
+        finish()
+        revealArrival(el)
+        return
+      }
+      timer = setTimeout(tick, REVEAL_POLL_MS)
+    }
+    timer = setTimeout(tick, REVEAL_POLL_MS)
+    // Unmounted before it settled (StrictMode's test unmount, a quick chat switch): the next mount
+    // of the same card picks the mark up again.
+    return stop
+  }, [cardId])
 }
 
 function Countdown({ ms, say }) {
@@ -4265,9 +4380,33 @@ function useCardIdentity(sessionId) {
   return seen.current.generation
 }
 
+// The first time this window draws a card that has no answer and no work in progress here, it is
+// new: its top is brought into view once it has settled (useArrivalReveal). Marked during render,
+// before the reveal effect runs; a card seen before (chat switched back, re-render) is never marked.
+const seenCards = new Set()
+function useArrivalMark(parsed, chatId) {
+  useState(() => {
+    if (!parsed || !chatId) return null
+    const { cardId } = parsed.card
+    if (seenCards.has(cardId)) return null
+    seenCards.add(cardId)
+    const record = readCard(cardKey(chatId, cardId))
+    if (record.answer || record.draft) return null
+    markArrival(cardId, () => {
+      const key = cardKey(chatId, cardId)
+      if (readCard(key).answer) return 'closed' // answered meanwhile, here or on another device
+      return isSyncing(key) ? 'wait' : 'open'
+    })
+    return null
+  })
+}
+
 function CardView({ result, sessionId, fallback }) {
   const parsed = useMemo(() => cardFromResult(result), [result])
   const chatId = typeof sessionId === 'string' && sessionId ? sessionId : null
+  useArrivalMark(parsed, chatId)
+  const hostRef = useRef(null)
+  useArrivalReveal(hostRef, parsed ? parsed.card.cardId : null)
   const generation = useCardIdentity(chatId)
   const display = useLiveDisplay(parsed ? parsed.display : null)
   const Component = parsed && CARD_COMPONENTS[parsed.card.type]
@@ -4279,18 +4418,24 @@ function CardView({ result, sessionId, fallback }) {
   })
   if (!Component) return fallback ?? null
   const lang = cardLang(parsed.card)
-  return jsx(
-    Component,
-    {
-      card: parsed.card,
-      display,
-      sessionId: chatId,
-      lang
-    },
-    // Not keyed by the chat id: a new chat's id changes from its runtime id to its stored id while
-    // the card is on screen, and remounting then would drop what the user just did.
-    `${parsed.card.cardId}\u0000${generation}`
-  )
+  // A wrapper without a box of its own (display: contents), so the arrival reveal can find the card.
+  return jsx('div', {
+    ref: hostRef,
+    className: 'huic-host',
+    style: { display: 'contents' },
+    children: jsx(
+      Component,
+      {
+        card: parsed.card,
+        display,
+        sessionId: chatId,
+        lang
+      },
+      // Not keyed by the chat id: a new chat's id changes from its runtime id to its stored id while
+      // the card is on screen, and remounting then would drop what the user just did.
+      `${parsed.card.cardId}\u0000${generation}`
+    )
+  })
 }
 
 // ── 81-plan.js ──
