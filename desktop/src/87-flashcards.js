@@ -322,8 +322,7 @@ REPLY_BUILDERS.flashcards = (card, answer, lang, data) => {
   // stays under the cap; the indexes and rounds are always sent.
   if (data.again.length) {
     const practise = data.again.map(i => card.cards[i].front)
-    const withFronts = `✓ ${summary}\n${REPLY_TAG} ${JSON.stringify({ ...data, practise })}`
-    if ([...withFronts].length <= MAX_REPLY) data.practise = practise
+    if (replySize('✓', summary, { ...data, practise }) <= MAX_REPLY) data.practise = practise
   }
   return { mark: '✓', summary }
 }

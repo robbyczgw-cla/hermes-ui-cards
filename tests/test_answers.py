@@ -30,6 +30,7 @@ def isolated(tmp_path, monkeypatch):
     tool._pending.clear()
     tool._turn_platform.clear()
     tool._turn_cards.clear()
+    getattr(tool, '_hint_due', set()).clear()
     yield tmp_path
 
 

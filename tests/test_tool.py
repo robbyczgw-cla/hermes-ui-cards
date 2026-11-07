@@ -26,6 +26,7 @@ def isolated(tmp_path, monkeypatch):
     tool._pending.clear()
     tool._turn_platform.clear()
     tool._turn_cards.clear()
+    getattr(tool, '_hint_due', set()).clear()
     yield tmp_path
 
 
@@ -213,6 +214,23 @@ def test_desktop_hint_is_sent_again_when_its_text_changed_either_way():
     tool.configure(None)
     assert desktop_turn(_rows(3, hint_at=2, hint=restricted)) == tool.DESKTOP_HINT
     assert desktop_turn(_rows(3, hint_at=2, multimodal=True, hint=restricted)) == tool.DESKTOP_HINT
+
+
+def test_the_turn_after_a_compaction_restates_the_hint():
+    """Hermes runs pre_llm_call before turn-start compaction, and compaction may drop, merge or
+    summarize the row that carried the hint (or its api_content). So the first turn after a
+    post_compaction event restates the hint, whatever the history still seems to hold; once."""
+    history = _rows(3, hint_at=2)
+    assert desktop_turn(history) == "", "a recent row carries it"
+    tool.on_compaction(session_id="h1")  # in place: Hermes passes no old id
+    assert desktop_turn(history) == tool.DESKTOP_HINT
+    assert desktop_turn(_rows(3, hint_at=2)) == "", "only once"
+    tool.on_compaction(session_id="h2", old_session_id="h1")  # continued under a new id
+    out = tool.on_turn_start(session_id="h2", platform="desktop", user_message="x",
+                             conversation_history=_rows(3, hint_at=2) + [{"role": "user", "content": "x"}])
+    assert out["context"] == tool.DESKTOP_HINT
+    tool.on_compaction(session_id="cli-1")  # a non-Desktop chat: nothing to restate there
+    assert tool.on_turn_start(session_id="cli-1", platform="cli", user_message="x", conversation_history=[]) is None
 
 
 def test_hint_copies_stay_bounded_over_a_long_desktop_chat():

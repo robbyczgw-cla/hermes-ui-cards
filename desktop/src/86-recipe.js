@@ -268,10 +268,10 @@ REPLY_BUILDERS.recipe = (card, answer, lang, data) => {
   const summary = t(lang, 'rShopping', { servings, x: parts.join(sep) })
   // Names and units are available in the original card, keyed by ingredient ID.
   // Omit repeated text only when it would make the machine payload too large.
-  if ([...JSON.stringify(data)].length > MAX_REPLY - 400) {
+  if (replySize('✓', summary, data) > MAX_REPLY) {
     data.missing = data.missing.map(({ id, qty }) => qty === undefined ? { id } : { id, qty })
     data.ingredient_source = 'Original recipe card identified by card; look up ingredients by id'
-    if ([...JSON.stringify(data)].length > MAX_REPLY - 400) {
+    if (replySize('✓', summary, data) > MAX_REPLY) {
       const missing = new Map(data.missing.map(m => [m.id, m]))
       data.missing_indexes = card.ingredients.flatMap((ingredient, index) => {
         const item = missing.get(ingredient.id)

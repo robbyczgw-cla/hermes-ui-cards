@@ -105,7 +105,9 @@ Details that make it dependable:
   it (for cards of that chat from the last 30 minutes).
 - **Plugin tools are found.** Hermes hides plugin tools behind its tool search by default; on Desktop
   the plugin adds a one-line hint so the model knows cards exist. Hermes keeps it with that message,
-  so it is added again only when none of the last 20 messages carries it (or its text changed).
+  so it is added again only when none of the last 20 messages carries its current text (so also after
+  the card types changed), and on the turn after Hermes compacts the chat (the compacting turn itself
+  may go without it).
 
 ## Fallback and other surfaces
 

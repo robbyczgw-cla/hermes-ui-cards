@@ -426,7 +426,6 @@ REPLY_BUILDERS.review = (card, answer, lang, data) => {
   if (data.undecided.length) summary += t(lang, 'rReviewOpen', { n: data.undecided.length })
   // Titles help the model, but only while the whole reply stays under the cap.
   const titles = Object.fromEntries(card.items.map(i => [i.id, i.title]))
-  const withTitles = `✓ ${summary}\n${REPLY_TAG} ${JSON.stringify({ ...data, titles })}`
-  if ([...withTitles].length <= MAX_REPLY) data.titles = titles
+  if (replySize('✓', summary, { ...data, titles }) <= MAX_REPLY) data.titles = titles
   return { summary }
 }

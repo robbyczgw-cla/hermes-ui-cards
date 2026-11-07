@@ -37,6 +37,8 @@ _turn_platform: dict[str, tuple[float, str]] = {}
 # session id -> {normalized card JSON: tool result, or an Event while the first call builds it}
 # for the running turn (idempotent repeats)
 _turn_cards: dict[str, dict[str, "str | threading.Event"]] = {}
+# sessions whose next turn restates the Desktop hint: a compaction may have dropped the row carrying it
+_hint_due: set[str] = set()
 CARD_ID_RE = store.CARD_ID_RE
 REPLY_RE = store.REPLY_RE
 
@@ -437,7 +439,10 @@ def on_turn_start(session_id: str = "", platform: str = "", user_message: str = 
         parts.append(context)
     if surface == "desktop" and bool(setting("enabled", True)):
         hint = desktop_hint()
-        if not _hint_in_recent_rows(conversation_history, hint):
+        with _pending_lock:
+            due = session_id in _hint_due
+            _hint_due.discard(session_id)
+        if due or not _hint_in_recent_rows(conversation_history, hint):
             parts.append(hint)
     return {"context": "\n\n".join(parts)} if parts else None
 
@@ -457,6 +462,14 @@ def on_compaction(session_id: str = "", old_session_id: str = "", **_kwargs):
     """post_compaction: Hermes continues the chat ``old_session_id`` as ``session_id``. Its cards stay
     its cards, answered or open, under the new id (and MEDIA lines of a running turn move along)."""
     session_id, old_session_id = str(session_id or ""), str(old_session_id or "")
+    if session_id:
+        # Hermes builds this hook's context before turn-start compaction and does not ask again, and
+        # compaction may drop, merge or summarize the row that carried the hint: the next turn of
+        # this chat restates it (the compacting turn itself may go without it).
+        with _pending_lock:
+            if len(_hint_due) > 1000:
+                _hint_due.clear()
+            _hint_due.add(session_id)
     if not session_id or not old_session_id or session_id == old_session_id:
         return None
     with _pending_lock:

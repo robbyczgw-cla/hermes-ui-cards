@@ -83,7 +83,8 @@ the card (they are saved as a draft) and send nothing:
 | quiz | `score`, `total`, `answers: [{q, chosen, correct}]` | `✓ Quiz: 4 of 5 correct` / `✓ Quiz: 4 von 5 richtig` |
 
 A message is capped at 4000 Unicode code points, including the attached-context line and JSON
-escaping. Only the
+escaping (`@` counts six). Optional copies (review titles, flashcard fronts) and the compact forms of
+recipe and checklist replies are chosen on that final size. Only the
 human-readable first line may be shortened; machine-readable values are never truncated.
 Checklist replies include both item IDs and the corresponding texts in card order. If
 the complete reply would exceed the cap, the reply omits `done` and `open` and instead

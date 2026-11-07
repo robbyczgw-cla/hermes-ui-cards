@@ -893,8 +893,18 @@ function replyJson(data) {
   return JSON.stringify(data).replace(/@/g, '\\u0040')
 }
 
+function replySuffix(data) {
+  return `\n\n${ATTACHED_MARKER}\n\n${REPLY_TAG} ${replyJson(data)}`
+}
+
+// Code points of the message this reply would be, exactly as sent (attached-context line, escaped
+// JSON). Builders decide on optional copies and compact forms with this, never with plain JSON.
+function replySize(mark, summary, data) {
+  return [...`${mark} ${summary}${replySuffix(data)}`].length
+}
+
 function fitReply(mark, summary, data, tail = '') {
-  const suffix = `\n\n${ATTACHED_MARKER}\n\n${REPLY_TAG} ${replyJson(data)}`
+  const suffix = replySuffix(data)
   const available = MAX_REPLY - [...`${mark} ${suffix}`].length
   const room = available - [...tail].length
   summary = room > 0 ? clip(summary, room) + tail : clip(summary + tail, Math.max(0, available))
@@ -5426,8 +5436,7 @@ REPLY_BUILDERS.review = (card, answer, lang, data) => {
   if (data.undecided.length) summary += t(lang, 'rReviewOpen', { n: data.undecided.length })
   // Titles help the model, but only while the whole reply stays under the cap.
   const titles = Object.fromEntries(card.items.map(i => [i.id, i.title]))
-  const withTitles = `✓ ${summary}\n${REPLY_TAG} ${JSON.stringify({ ...data, titles })}`
-  if ([...withTitles].length <= MAX_REPLY) data.titles = titles
+  if (replySize('✓', summary, { ...data, titles }) <= MAX_REPLY) data.titles = titles
   return { summary }
 }
 
@@ -6720,10 +6729,10 @@ REPLY_BUILDERS.recipe = (card, answer, lang, data) => {
   const summary = t(lang, 'rShopping', { servings, x: parts.join(sep) })
   // Names and units are available in the original card, keyed by ingredient ID.
   // Omit repeated text only when it would make the machine payload too large.
-  if ([...JSON.stringify(data)].length > MAX_REPLY - 400) {
+  if (replySize('✓', summary, data) > MAX_REPLY) {
     data.missing = data.missing.map(({ id, qty }) => qty === undefined ? { id } : { id, qty })
     data.ingredient_source = 'Original recipe card identified by card; look up ingredients by id'
-    if ([...JSON.stringify(data)].length > MAX_REPLY - 400) {
+    if (replySize('✓', summary, data) > MAX_REPLY) {
       const missing = new Map(data.missing.map(m => [m.id, m]))
       data.missing_indexes = card.ingredients.flatMap((ingredient, index) => {
         const item = missing.get(ingredient.id)
@@ -7064,8 +7073,7 @@ REPLY_BUILDERS.flashcards = (card, answer, lang, data) => {
   // stays under the cap; the indexes and rounds are always sent.
   if (data.again.length) {
     const practise = data.again.map(i => card.cards[i].front)
-    const withFronts = `✓ ${summary}\n${REPLY_TAG} ${JSON.stringify({ ...data, practise })}`
-    if ([...withFronts].length <= MAX_REPLY) data.practise = practise
+    if (replySize('✓', summary, { ...data, practise }) <= MAX_REPLY) data.practise = practise
   }
   return { mark: '✓', summary }
 }

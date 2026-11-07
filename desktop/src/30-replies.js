@@ -245,8 +245,18 @@ function replyJson(data) {
   return JSON.stringify(data).replace(/@/g, '\\u0040')
 }
 
+function replySuffix(data) {
+  return `\n\n${ATTACHED_MARKER}\n\n${REPLY_TAG} ${replyJson(data)}`
+}
+
+// Code points of the message this reply would be, exactly as sent (attached-context line, escaped
+// JSON). Builders decide on optional copies and compact forms with this, never with plain JSON.
+function replySize(mark, summary, data) {
+  return [...`${mark} ${summary}${replySuffix(data)}`].length
+}
+
 function fitReply(mark, summary, data, tail = '') {
-  const suffix = `\n\n${ATTACHED_MARKER}\n\n${REPLY_TAG} ${replyJson(data)}`
+  const suffix = replySuffix(data)
   const available = MAX_REPLY - [...`${mark} ${suffix}`].length
   const room = available - [...tail].length
   summary = room > 0 ? clip(summary, room) + tail : clip(summary + tail, Math.max(0, available))
