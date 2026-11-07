@@ -1,8 +1,8 @@
 // rating: a keyboard-operable radio scale (contiguous stars or a segmented number row),
 // an optional comment. Digits rate, Enter sends.
 
-Object.assign(STRINGS.en, { keyRate: '[{keys}] to rate · [Enter] to send', keyRate10: '[1–9] [0] to rate (0 is 10) · [Enter] to send', rateEcho: '{n} of {max}' })
-Object.assign(STRINGS.de, { keyRate: '[{keys}] zum Bewerten · [Enter] zum Senden', keyRate10: '[1–9] [0] zum Bewerten (0 ist 10) · [Enter] zum Senden', rateEcho: '{n} von {max}' })
+Object.assign(STRINGS.en, { keyRate: '[Enter] to send', keyRate10: '[Enter] to send', rateEcho: '{n} of {max}' })
+Object.assign(STRINGS.de, { keyRate: '[Enter] zum Senden', keyRate10: '[Enter] zum Senden', rateEcho: '{n} von {max}' })
 
 const RATING_CSS = `
 .huic[data-card-type="rating"] .huic-stars{display:grid;grid-template-columns:repeat(var(--huic-n),minmax(0,34px));gap:2px;max-width:100%;margin-left:-3px}

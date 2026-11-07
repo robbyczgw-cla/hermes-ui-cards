@@ -2143,16 +2143,17 @@ function useCardAnswer(card, sessionId, lang) {
 // Options carry number badges: digits pick, Enter sends (same helpers serve schedule and quiz).
 
 Object.assign(STRINGS.en, {
-  keyChoose: '[{keys}] to choose · [Enter] to send',
-  keyToggle: '[{keys}] to select · [Enter] to send',
-  keyCheck: '[{keys}] to choose · [Enter] to check',
+  // Digit keys are not promised: Hermes sends typed digits to its composer. Enter works on a focused option.
+  keyChoose: '[Enter] to send',
+  keyToggle: '[Enter] to send',
+  keyCheck: '[Enter] to check',
   keyNext: '[Enter] to continue',
   keySend: '[Enter] to send'
 })
 Object.assign(STRINGS.de, {
-  keyChoose: '[{keys}] zum Wählen · [Enter] zum Senden',
-  keyToggle: '[{keys}] zum Auswählen · [Enter] zum Senden',
-  keyCheck: '[{keys}] zum Wählen · [Enter] zum Prüfen',
+  keyChoose: '[Enter] zum Senden',
+  keyToggle: '[Enter] zum Senden',
+  keyCheck: '[Enter] zum Prüfen',
   keyNext: '[Enter] zum Weitermachen',
   keySend: '[Enter] zum Senden'
 })
@@ -3480,8 +3481,8 @@ function ConfirmCard({ card, sessionId, display, lang }) {
 // rating: a keyboard-operable radio scale (contiguous stars or a segmented number row),
 // an optional comment. Digits rate, Enter sends.
 
-Object.assign(STRINGS.en, { keyRate: '[{keys}] to rate · [Enter] to send', keyRate10: '[1–9] [0] to rate (0 is 10) · [Enter] to send', rateEcho: '{n} of {max}' })
-Object.assign(STRINGS.de, { keyRate: '[{keys}] zum Bewerten · [Enter] zum Senden', keyRate10: '[1–9] [0] zum Bewerten (0 ist 10) · [Enter] zum Senden', rateEcho: '{n} von {max}' })
+Object.assign(STRINGS.en, { keyRate: '[Enter] to send', keyRate10: '[Enter] to send', rateEcho: '{n} of {max}' })
+Object.assign(STRINGS.de, { keyRate: '[Enter] zum Senden', keyRate10: '[Enter] zum Senden', rateEcho: '{n} von {max}' })
 
 const RATING_CSS = `
 .huic[data-card-type="rating"] .huic-stars{display:grid;grid-template-columns:repeat(var(--huic-n),minmax(0,34px));gap:2px;max-width:100%;margin-left:-3px}

@@ -2,16 +2,17 @@
 // Options carry number badges: digits pick, Enter sends (same helpers serve schedule and quiz).
 
 Object.assign(STRINGS.en, {
-  keyChoose: '[{keys}] to choose · [Enter] to send',
-  keyToggle: '[{keys}] to select · [Enter] to send',
-  keyCheck: '[{keys}] to choose · [Enter] to check',
+  // Digit keys are not promised: Hermes sends typed digits to its composer. Enter works on a focused option.
+  keyChoose: '[Enter] to send',
+  keyToggle: '[Enter] to send',
+  keyCheck: '[Enter] to check',
   keyNext: '[Enter] to continue',
   keySend: '[Enter] to send'
 })
 Object.assign(STRINGS.de, {
-  keyChoose: '[{keys}] zum Wählen · [Enter] zum Senden',
-  keyToggle: '[{keys}] zum Auswählen · [Enter] zum Senden',
-  keyCheck: '[{keys}] zum Wählen · [Enter] zum Prüfen',
+  keyChoose: '[Enter] zum Senden',
+  keyToggle: '[Enter] zum Senden',
+  keyCheck: '[Enter] zum Prüfen',
   keyNext: '[Enter] zum Weitermachen',
   keySend: '[Enter] zum Senden'
 })

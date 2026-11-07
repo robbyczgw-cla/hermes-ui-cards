@@ -18,13 +18,13 @@ const quiz = {
   ]
 }
 
-test('choice: number badges, digit selects, Enter sends, hint names the keys', async t => {
+test('choice: number badges, digit selects, Enter sends, hint promises only Enter', async t => {
   const result = toolResult(choice)
   const { container } = await render(t, result)
   const radios = container.querySelectorAll('[role="radio"]')
   assert.deepEqual([...radios].map(r => r.querySelector('.huic-num').textContent), ['1', '2', '3'])
-  assert.match(container.querySelector('.huic-hint').textContent, /1–3 to choose · Enter to send/)
-  assert.deepEqual([...container.querySelectorAll('.huic-hint .huic-keys kbd')].map(k => k.textContent), ['1–3', 'Enter'], 'keys are drawn as key caps')
+  assert.match(container.querySelector('.huic-hint').textContent, /^Enter to send$/)
+  assert.deepEqual([...container.querySelectorAll('.huic-hint .huic-keys kbd')].map(k => k.textContent), ['Enter'], 'only Enter is promised (the host sends typed digits to its composer)')
   assert.match(container.textContent, /Best value/)
   await key(radios[0], '3')
   assert.equal(radios[2].getAttribute('aria-checked'), 'true')
@@ -40,7 +40,7 @@ test('choice: multiple toggles by digit, Enter sends only a valid selection; Ger
   const result = toolResult({ ...choice, lang: 'de', multiple: true, min: 2 })
   const { container } = await render(t, result)
   const boxes = container.querySelectorAll('[role="checkbox"]')
-  assert.match(container.querySelector('.huic-hint').textContent, /1–3 zum Auswählen · Enter zum Senden/)
+  assert.match(container.querySelector('.huic-hint').textContent, /Enter zum Senden$/)
   // The pick rule is for everyone; only the shortcuts sit in .huic-keys (hidden on touch screens and narrow views).
   const hint = container.querySelector('.huic-hint')
   assert.match(hint.textContent, /^Mindestens 2 auswählen/)
@@ -88,7 +88,7 @@ test('rating: digits rate (0 is ten), hover previews, Enter sends, echo names th
   const result = toolResult({ type: 'rating', question: 'How?', scale: 5, lowLabel: 'Poor', highLabel: 'Great' })
   const { container } = await render(t, result)
   const stars = container.querySelectorAll('[role="radio"]')
-  assert.match(container.querySelector('.huic-hint').textContent, /1–5 to rate · Enter to send/)
+  assert.match(container.querySelector('.huic-hint').textContent, /^Enter to send$/)
   assert.match(container.textContent, /1 = Poor · 5 = Great/)
   await act(async () => { stars[1].dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true })) })
   assert.equal(container.querySelectorAll('.huic-star-on').length, 2, 'hover fills up to the pointer')
@@ -150,7 +150,7 @@ test('schedule: chips with numbers skip unavailable slots; digit and Enter work;
   assert.equal(chips[1].disabled, true, 'unavailable chip is not focusable')
   assert.ok((chips[1].querySelector('.huic-num')) === (null))
   assert.equal(chips[2].querySelector('.huic-num').textContent, '2', 'numbers count available slots only')
-  assert.match(container.querySelector('.huic-hint').textContent, /1–2 to choose · Enter to send/)
+  assert.match(container.querySelector('.huic-hint').textContent, /Enter to send$/)
   await key(chips[0], '2')
   assert.equal(chips[2].getAttribute('aria-checked'), 'true')
   await key(chips[2], 'Enter')
@@ -181,7 +181,7 @@ test('quiz: keyboard flow, tile feedback, result screen, send', async t => {
   const { container } = await render(t, result)
   const segs = () => [...container.querySelectorAll('.huic-qseg')].map(s => s.className.replace('huic-qseg', '').trim())
   assert.equal(segs().length, 2)
-  assert.match(container.querySelector('.huic-hint').textContent, /1–2 to choose · Enter to check/)
+  assert.match(container.querySelector('.huic-hint').textContent, /Enter to check$/)
   const first = container.querySelector('[role="radio"]')
   await key(first, '1')
   await key(first, 'Enter')
