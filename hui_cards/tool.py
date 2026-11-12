@@ -111,9 +111,12 @@ def cards_dir() -> Path:
 
 def _prune(directory: Path) -> None:
     files = sorted(directory.glob("*.md"), key=lambda p: p.stat().st_mtime)
-    for old in files[:-MAX_CARD_FILES]:
+    cutoff = time.time() - store.RETENTION_DAYS * 24 * 60 * 60
+    over_limit = set(files[:-MAX_CARD_FILES])
+    for old in files:
         try:
-            old.unlink()
+            if old.stat().st_mtime < cutoff or old in over_limit:
+                old.unlink()
         except OSError:
             pass
 

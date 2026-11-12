@@ -268,6 +268,22 @@ def test_old_card_files_are_pruned(monkeypatch):
     assert len(list(tool.cards_dir().glob("*.md"))) == 3
 
 
+def test_card_files_expire_by_modification_time(monkeypatch):
+    import os
+    import time
+
+    directory = tool.cards_dir()
+    old = directory / "old.md"
+    recent = directory / "recent.md"
+    old.write_text("old")
+    recent.write_text("recent")
+    age = (tool.store.RETENTION_DAYS + 1) * 24 * 60 * 60
+    os.utime(old, (time.time() - age, time.time() - age))
+    tool._prune(directory)
+    assert not old.exists()
+    assert recent.exists()
+
+
 def test_tool_description_stays_small():
     schema = tool.tool_schema()
     assert schema["name"] == "hui_present"

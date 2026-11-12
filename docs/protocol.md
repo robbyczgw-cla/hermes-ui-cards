@@ -208,6 +208,9 @@ cards*, *Card types* and *Cards for the Hermes UI+ app* affect cards created aft
 list reaches the tool description after a Hermes restart (an empty or unrecognized list means all types).
 
 **Retention.** The 2,000 most recently shown or answered cards (with up to 8 answering chats and 16
-member chats each, answer data up to 20,000 bytes) and 5,000 compaction links. Reading does not refresh
-retention; nothing expires by time; deleting a chat does not delete its entries. The Markdown card copies
-in `cards/` keep the newest 500.
+member chats each, answer data up to 20,000 bytes) and 5,000 compaction links. On a store pruning pass,
+cards not shown or answered for more than 90 days and their members and answers are deleted; compaction
+links older than 90 days are deleted unless connected to a retained card. The link count cap still applies.
+Reading does not refresh retention; deleting a chat does not delete its entries. When a Markdown card
+copy is written, copies in `cards/` last modified more than 90 days ago are deleted, and at most the
+newest 500 are kept.

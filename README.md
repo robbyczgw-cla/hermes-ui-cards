@@ -208,10 +208,13 @@ and sent:
   branches and when it was shown; each answer (up to 8 chats per card): the mark, line 1 (up to 300
   characters) and the answer data, including free text you typed into the card (form values, comments,
   notes), up to 20,000 bytes; and the compaction links Hermes reports (up to 5,000). The 2,000 most
-  recently shown or answered cards are kept; reading doesn't refresh that, there is no time-based
-  expiry, and deleting a chat does not delete its entries.
+  recently shown or answered cards are kept. On a store pruning pass, cards not shown or answered
+  for more than 90 days and their members and answers are deleted; older compaction links are deleted
+  unless connected to a retained card. The 5,000-link cap still applies. Reading doesn't refresh
+  retention, and deleting a chat does not delete its entries.
 - `cards/<id>.md`: the text version of each Desktop card plus the card itself (for a confirm card,
-  also its action and command). The newest 500 are kept.
+  also its action and command). When a card copy is written, copies last modified more than 90 days
+  ago are deleted, and at most the newest 500 are kept.
 
 **To the model provider**, as context added to the turn that answers a card: the card's type, title
 and id, for a confirm card its action and command, and notes when the answer is stale or a duplicate.

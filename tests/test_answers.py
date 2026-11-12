@@ -83,6 +83,39 @@ def db_rows(table):
         conn.close()
 
 
+def test_retention_expires_inactive_cards_and_unrelated_links_but_keeps_live_line(monkeypatch):
+    now = 200 * 24 * 60 * 60 * 1000
+    clock = [now]
+    monkeypatch.setattr(store, "_now_ms", lambda: clock[0])
+    store.note_shown("old", "old-card", "choice")
+    store.record_answer("old", {"card": "old-card", "data": {}})
+    store.link_sessions("old-next", "old")
+    store.note_shown("live", "live-card", "choice")
+    store.link_sessions("middle", "live")
+    store.link_sessions("next", "middle")
+    clock[0] += (store.RETENTION_DAYS + 1) * 24 * 60 * 60 * 1000
+    # Answering through an old continuation keeps its entire line usable.
+    assert store.record_answer("next", {"card": "live-card", "data": {}})["status"] == "recorded"
+    assert {r[0] for r in db_rows("cards")} == {"live-card"}
+    assert {r[0] for r in db_rows("members")} == {"live-card"}
+    assert {r[0] for r in db_rows("answers")} == {"live-card"}
+    assert {r[0] for r in db_rows("links")} == {"middle", "next"}
+    assert "live-card" in store.lookup("live", ["live-card"])["answers"]
+
+
+def test_retention_keeps_boundary_and_refreshes_when_shown_again(monkeypatch):
+    clock = [200 * 24 * 60 * 60 * 1000]
+    monkeypatch.setattr(store, "_now_ms", lambda: clock[0])
+    store.note_shown("s", "boundary", "choice")
+    store.note_shown("s", "reshown", "choice")
+    clock[0] += store.RETENTION_DAYS * 24 * 60 * 60 * 1000
+    store.note_shown("s", "reshown", "choice")
+    assert {r[0] for r in db_rows("cards")} == {"boundary", "reshown"}
+    clock[0] += 1
+    store.note_shown("s", "new", "choice")
+    assert {r[0] for r in db_rows("cards")} == {"reshown", "new"}
+
+
 # ── recording ──
 
 def test_shown_card_is_open_until_answered_then_answered(events):
@@ -370,7 +403,7 @@ def _hold_worker(home, ready, release):
     _os.environ["HERMES_HOME"] = home
     from hui_cards import store as worker_store
     with worker_store._db(write=True) as conn:
-        conn.execute("INSERT INTO links (session, parent, at) VALUES ('held', 'x', 1)")
+        conn.execute("INSERT INTO links (session, parent, at) VALUES ('held', 'x', ?)", (worker_store._now_ms(),))
         ready.set()
         release.wait(timeout=10)
         time.sleep(0.2)
@@ -379,6 +412,8 @@ def _hold_worker(home, ready, release):
 def _mp_or_skip():
     """multiprocessing needs OS semaphores/sockets; some sandboxes deny them. Skip there instead of failing."""
     import multiprocessing as mp
+    # Python 3.14 defaults to forkserver on Linux, which needs a Unix socket that some sandboxes deny.
+    mp = mp.get_context("fork" if "fork" in mp.get_all_start_methods() else None)
     try:
         mp.Event()
     except (PermissionError, OSError) as exc:
@@ -412,7 +447,8 @@ def test_a_writer_waits_for_another_process_transaction(isolated):
     assert store.record_answer("s1", store.parse_reply(click_message("held-card")))["status"] == "recorded"
     holder.join(10)
     assert holder.exitcode == 0
-    assert [r[1] for r in db_rows("answers")] == ["s1"] and ("held", "x", 1) in db_rows("links")
+    assert [r[1] for r in db_rows("answers")] == ["s1"]
+    assert [(r[0], r[1]) for r in db_rows("links")] == [("held", "x")]
 
 
 # ── bounds ──

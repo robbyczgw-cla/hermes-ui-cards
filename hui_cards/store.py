@@ -32,6 +32,7 @@ from pathlib import Path
 
 PLUGIN_ID = "hermes-ui-cards"
 DB_NAME = "answers.db"
+RETENTION_DAYS = 90
 MAX_CARDS = 2000              # cards kept; the least recently touched go first
 MAX_LINKS = 5000              # compaction links kept
 MAX_SESSIONS_PER_CARD = 8     # answering chats per card (a card copied into branches)
@@ -209,10 +210,19 @@ def _visible(answers: dict, session_id: str, line: set[str]) -> dict | None:
 
 
 def _prune(conn) -> None:
+    cutoff = _now_ms() - RETENTION_DAYS * 24 * 60 * 60 * 1000
+    conn.execute("DELETE FROM cards WHERE touched < ?", (cutoff,))
     conn.execute("DELETE FROM cards WHERE card IN (SELECT card FROM cards ORDER BY touched DESC LIMIT -1 OFFSET ?)",
                  (MAX_CARDS,))
     conn.execute("DELETE FROM members WHERE card NOT IN (SELECT card FROM cards)")
     conn.execute("DELETE FROM answers WHERE card NOT IN (SELECT card FROM cards)")
+    # Keep the entire continuation component of every retained card: a lookup can arrive from
+    # either direction, including sessions that have no member or answer row of their own.
+    conn.execute("WITH RECURSIVE live(s) AS ("
+                 "SELECT session FROM members UNION SELECT session FROM answers "
+                 "UNION SELECT l.parent FROM links l JOIN live ON l.session = live.s "
+                 "UNION SELECT l.session FROM links l JOIN live ON l.parent = live.s) "
+                 "DELETE FROM links WHERE at < ? AND session NOT IN (SELECT s FROM live)", (cutoff,))
     conn.execute("DELETE FROM links WHERE session IN (SELECT session FROM links ORDER BY at DESC LIMIT -1 OFFSET ?)",
                  (MAX_LINKS,))
 
@@ -234,6 +244,7 @@ def note_shown(session_id: str, card_id: str, card_type: str) -> None:
     with _db(write=True) as conn:
         conn.execute("INSERT OR IGNORE INTO cards (card, type, session, shown_at, touched) VALUES (?, ?, ?, ?, ?)",
                      (card_id, str(card_type)[:32], session_id, now, now))
+        conn.execute("UPDATE cards SET touched = ? WHERE card = ?", (now, card_id))
         _add_member(conn, card_id, session_id)
         _prune(conn)
 
