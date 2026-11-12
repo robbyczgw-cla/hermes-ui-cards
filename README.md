@@ -7,7 +7,7 @@ a form, approve a risky step), and when you submit one, your answer goes back as
 
 ![A confirm card in the Hermes Webapp asks before sending three invitations; after Send 3 invitations it shows Approved, and after a marked wait cut Hermes reports the three local receipts](assets/confirm-demo.gif)
 
-<!-- DEMO VIDEO LINK -->
+Demo video (1:28): [on X](https://x.com/CamiAi__/status/2118980850800820604)
 
 ## Install
 
