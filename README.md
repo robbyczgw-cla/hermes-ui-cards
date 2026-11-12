@@ -9,6 +9,10 @@ a form, approve a risky step), and when you submit one, your answer goes back as
 
 Demo video (1:28): [on X](https://x.com/CamiAi__/status/2118980850800820604)
 
+> **One step after installing:** turn on the plugin's **Desktop** half (Capabilities → Plugins → HUI+ Cards →
+> Desktop). Hermes keeps Desktop halves off until you do; without it, each card arrives as a small Markdown
+> attachment instead of a card. The install link below turns it on for you.
+
 ## Install
 
 Requires **Hermes 0.22.6 or newer** (the version that lets a plugin draw the files its own tool

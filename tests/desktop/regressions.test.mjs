@@ -278,7 +278,7 @@ test('a draft made under the runtime id is still there when the chat is reopened
   await again.unmount()
 }))
 
-// Review 5, ba61671 regression: the same mounted card moving to ANOTHER chat (a branch made before
+// the same mounted card moving to ANOTHER chat (a branch made before
 // the trunk answered: both histories hold the same tool result) must not take the trunk's state.
 test('a branch never inherits the trunk answer through a reused card', withHostAtoms(async () => {
   const storage = makeStorage()

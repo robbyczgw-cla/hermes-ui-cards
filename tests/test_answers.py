@@ -99,7 +99,7 @@ def test_shown_card_is_open_until_answered_then_answered(events):
 
 
 def test_the_live_event_carries_no_answer_data(events):
-    # Review 4 #1: broadcast_plugin_event reaches every connected window, also other profiles'.
+    # broadcast_plugin_event reaches every connected window, also other profiles'.
     cid = show("s1")["cardId"]
     answer("s1", cid, line1="✓ Chose: secret budget")
     assert events == [("hermes-ui-cards", "answers.changed", {})]
@@ -132,7 +132,7 @@ CONFIRM_PRIVATE = {"type": "confirm", "title": "Private cleanup", "action": "Del
 
 
 def test_an_unrelated_chat_cannot_answer_lock_or_read_a_card(events):
-    # Review 4 #2: chat B sends a [hui-card] line with chat A's card id.
+    # chat B sends a [hui-card] line with chat A's card id.
     cid = show("alice", CONFIRM_PRIVATE)["cardId"]
     msg = "✓ Approved\n[hui-card] " + json.dumps({"card": cid, "type": "confirm", "decision": "yes"})
     ctx = tool.on_turn_start(session_id="mallory", platform="desktop", user_message=msg,
@@ -162,7 +162,7 @@ def test_a_branch_whose_history_holds_the_card_may_answer_it():
     [{"role": "assistant", "tool_calls": [{"id": "c1", "function": {"name": "read_file", "arguments": "{}"}}]},
      {"role": "tool", "tool_call_id": "c1", "content": '{"ok": true, "cardId": "%s"}'}],
     [{"role": "tool", "tool_call_id": "c9", "content": '{"ok": true, "cardId": "%s"}'}],
-    # Review 5 #2: the tool_call bridge ran terminal; its command mentions hui_present and echoes the id
+    # the tool_call bridge ran terminal; its command mentions hui_present and echoes the id
     [{"role": "assistant", "tool_calls": [{"id": "c1", "type": "function", "function": {
         "name": "tool_call", "arguments": json.dumps({"name": "terminal", "arguments": {
             "command": "printf '%%s\\n' hui_present '{\"cardId\": \"%s\"}'"}})}}]},
@@ -192,7 +192,7 @@ def test_copied_card_ids_are_no_proof(history):
 
 
 def test_compaction_keeps_answered_and_open_cards_under_the_new_id():
-    # Review 4 #5: answered before the session id rotated; and answered after it.
+    # answered before the session id rotated; and answered after it.
     before = show("old-id")["cardId"]
     answer("old-id", before)
     later = show("old-id", {**CHOICE, "question": "And then?"})["cardId"]
@@ -260,7 +260,7 @@ def test_answers_to_unknown_cards_are_not_recorded(isolated):
 
 
 def test_an_answer_is_recorded_after_the_markdown_copy_was_pruned(monkeypatch):
-    # Review 4 #4: 500 Markdown copies, 2000 cards in the store.
+    # 500 Markdown copies, 2000 cards in the store.
     cid = show("s1", CONFIRM_PRIVATE)["cardId"]
     monkeypatch.setattr(tool, "MAX_CARD_FILES", 1)
     show("s1", {**CHOICE, "question": "Newer?"})
@@ -334,7 +334,7 @@ def test_profiles_keep_separate_stores(profiles):
 
 
 def test_a_storage_error_fails_closed_instead_of_using_the_process_home(profiles, isolated):
-    # Review 4 #3: the launch profile (process home) has the answer; the request runs in profile B.
+    # the launch profile (process home) has the answer; the request runs in profile B.
     Scope, state = profiles
     with Scope("launch"):
         cid = show("alice-event")["cardId"]
@@ -376,9 +376,19 @@ def _hold_worker(home, ready, release):
         time.sleep(0.2)
 
 
-def test_concurrent_processes_lose_no_answer(isolated):
-    # Review 4 #7: two processes answer the same card at the same moment.
+def _mp_or_skip():
+    """multiprocessing needs OS semaphores/sockets; some sandboxes deny them. Skip there instead of failing."""
     import multiprocessing as mp
+    try:
+        mp.Event()
+    except (PermissionError, OSError) as exc:
+        pytest.skip(f"multiprocessing is not available here: {exc}")
+    return mp
+
+
+def test_concurrent_processes_lose_no_answer(isolated):
+    # Two processes answer the same card at the same moment.
+    mp = _mp_or_skip()
     store.note_shown("origin", "race-card", "choice")
     sessions = [f"branch-{i}" for i in range(4)]
     barrier = mp.Barrier(len(sessions))
@@ -392,7 +402,7 @@ def test_concurrent_processes_lose_no_answer(isolated):
 
 
 def test_a_writer_waits_for_another_process_transaction(isolated):
-    import multiprocessing as mp
+    mp = _mp_or_skip()
     store.note_shown("s1", "held-card", "choice")
     ready, release = mp.Event(), mp.Event()
     holder = mp.Process(target=_hold_worker, args=(str(isolated), ready, release))
@@ -429,7 +439,7 @@ def test_chats_per_card_are_bounded(monkeypatch):
 
 
 def test_legal_unicode_replies_keep_their_data():
-    # Review 4 #6: three 800-character CJK textareas fit the Desktop's 4000 code points.
+    # three 800-character CJK textareas fit the Desktop's 4000 code points.
     values = {"a": "漢" * 800, "b": "漢" * 800, "c": "漢" * 800}
     msg = "✓ Form sent\n[hui-card] " + json.dumps({"card": "f-1", "type": "form", "values": values},
                                                    ensure_ascii=False, separators=(",", ":"))

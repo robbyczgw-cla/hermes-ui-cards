@@ -19,6 +19,7 @@ import math
 import re
 from datetime import datetime
 from pathlib import Path
+import ipaddress
 from urllib.parse import urlsplit
 
 HERE = Path(__file__).resolve().parent
@@ -100,6 +101,22 @@ def _coerce(value, types: list, path: str, ctx: _Ctx):
     return False, value
 
 
+def _bracket_host_ok(netloc: str) -> bool:
+    """A [..] host must be an IPv6 address or a lowercase-v IPvFuture literal, like the Desktop validator.
+    Python 3.14's urlsplit also accepts an uppercase "V", which older versions and the Desktop reject."""
+    m = re.search(r"\[([^\]]*)\]", netloc)
+    if not m:
+        return True
+    inner = m.group(1)
+    if re.fullmatch(r"v[0-9a-fA-F]+\..+", inner):
+        return True
+    try:
+        ipaddress.IPv6Address(inner.split("%", 1)[0])
+        return True
+    except ValueError:
+        return False
+
+
 def _check_format(fmt: str, value: str, path: str, ctx: _Ctx) -> bool:
     if fmt == "https-url":
         try:
@@ -107,11 +124,13 @@ def _check_format(fmt: str, value: str, path: str, ctx: _Ctx) -> bool:
         except ValueError:
             parts = None
         if (parts is None or parts.scheme != "https" or "." not in (parts.hostname or "")
+                or not _bracket_host_ok(parts.netloc or "")
                 or parts.username or parts.password or re.search(r"\s", value)):
             ctx.errors.append(f"{path}: must be an https:// URL (got \"{value[:60]}\")")
             return False
     elif fmt == "datetime":
-        ok = bool(_DATETIME.match(value))
+        # Hour 24 is not a time of day; Python 3.14's fromisoformat rolls it over to the next day.
+        ok = bool(_DATETIME.match(value)) and not re.search(r"[T ]24:", value)
         if ok:
             try:
                 datetime.fromisoformat(value.replace("Z", "+00:00"))

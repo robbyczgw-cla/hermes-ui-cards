@@ -204,7 +204,7 @@ test('this window keeps its own receipt when the server has another answer', asy
 })
 
 test('a receipt this window holds is never removed by the server, however old', async () => {
-  // The server not knowing an answer proves nothing about its delivery (review 4, finding 4).
+  // The server not knowing an answer proves nothing about its delivery.
   const result = toolResult(CHOICE)
   const cardId = JSON.parse(result).cardId
   const key = `answer.sess-1\u0000${cardId}`
@@ -291,7 +291,7 @@ test('undo delay comes from the tool result until the backend has been read', as
   await unmount()
 })
 
-// ── Review 5 #9: the first lookup gates the actions until it settles ──
+// ── the first lookup gates the actions until it settles ──
 
 // ctx.setTimeout that only records: a test fires the callbacks due by a simulated time.
 function manualTimers() {
@@ -454,7 +454,7 @@ test('a failed lookup says so; a later successful one clears it', async () => {
   await view.unmount()
 })
 
-// ── Review 5 #8: local receipts belong to one source + profile ──
+// ── local receipts belong to one source + profile ──
 
 function withOwnerAtoms(fn) {
   return async () => {

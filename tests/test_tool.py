@@ -420,7 +420,7 @@ def test_history_proof_reads_hermes_message_shapes():
 
 
 def test_history_proof_follows_the_bridge_selected_tool():
-    # Review 5 #2: the bridge's selected tool decides, in both of Hermes' shapes; a result Hermes
+    # the bridge's selected tool decides, in both of Hermes' shapes; a result Hermes
     # moved to a file still counts by the preview of its first characters.
     out = run({"card": CHOICE}, "desktop", session_id="h2")
     cid = out["cardId"]
@@ -498,7 +498,7 @@ def test_media_safety_net_never_changes_other_text():
     tag = out["media"]
     wrong = tag.replace("hermes-ui-cards", "hermes-union")
     cases = [
-        # a colon before a code block must not swallow the block (review 8)
+        # a colon before a code block must not swallow the block
         f"The syntax is MEDIA:\n```\nnot a path\n```\n{tag}",
         # blank lines inside code survive a repair elsewhere
         f"```python\ns = '''a\n\n\nb'''\n```\n{wrong}",
