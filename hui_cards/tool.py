@@ -214,12 +214,7 @@ def _message_text(message) -> str:
 def _messages_since_card(history, card_id: str, user_message: str) -> int | None:
     """User messages typed after the card was shown (the current one excluded), or None if the
     card's tool result is not in the history (compacted away or another session)."""
-    if not isinstance(history, list):
-        return None
-    shown = None
-    for index, message in enumerate(history):
-        if isinstance(message, dict) and message.get("role") == "tool" and _presented_card_id(_message_text(message)) == card_id:
-            shown = index
+    shown = _card_result_index(history, card_id)
     if shown is None:
         return None
     later = [m for m in history[shown + 1:] if isinstance(m, dict) and m.get("role") == "user"]
@@ -233,12 +228,7 @@ def earlier_answer_in_history(history, card_id: str, user_message: str = "") -> 
     result (``{"mark", "summary"}``), or None. The current message is left out when Hermes passes it
     as the last row. This catches a repeat the store cannot see: the card or this chat's answer row
     was dropped (expiry, the card or answer caps) and restored, possibly by another branch."""
-    if not isinstance(history, list):
-        return None
-    shown = None
-    for index, message in enumerate(history):
-        if isinstance(message, dict) and message.get("role") == "tool" and _presented_card_id(_message_text(message)) == card_id:
-            shown = index
+    shown = _card_result_index(history, card_id)
     if shown is None:
         return None
     rows = history[shown + 1:]
@@ -329,21 +319,29 @@ def _presented_card_id(text: str) -> str | None:
     return match.group(1) if match else None
 
 
-def history_shows_card(history, card_id: str) -> bool:
-    """Whether this chat's own history holds the successful hui_present result that created the
-    card (true for the chat that showed it and for branches copied from it, false for any other
-    chat). The result must belong to a hui_present call and name exactly this card id: another
-    tool's output that merely contains the id proves nothing."""
+def _card_result_index(history, card_id: str) -> int | None:
+    """Where in this history the successful hui_present result that created the card is, or None.
+    The result must belong to a hui_present call (by name or through the tool_call bridge) and name
+    exactly this card id: another tool's output that merely contains or copies the result counts
+    neither as proof nor as the point where the card was shown. Card ids are unique, so the first
+    such result is the card's own."""
     if not isinstance(history, list) or not isinstance(card_id, str) or not CARD_ID_RE.match(card_id):
-        return False
+        return None
     calls = _present_call_ids(history)
-    for message in history:
+    for index, message in enumerate(history):
         if not isinstance(message, dict) or message.get("role") != "tool":
             continue
         if message.get("tool_call_id") in calls or message.get("name") == TOOL_NAME:
             if _presented_card_id(_message_text(message)) == card_id:
-                return True
-    return False
+                return index
+    return None
+
+
+def history_shows_card(history, card_id: str) -> bool:
+    """Whether this chat's own history holds the successful hui_present result that created the
+    card (true for the chat that showed it and for branches copied from it, false for any other
+    chat)."""
+    return _card_result_index(history, card_id) is not None
 
 
 CONFIRM_DECISIONS = {

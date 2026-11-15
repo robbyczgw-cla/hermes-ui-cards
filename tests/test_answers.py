@@ -965,3 +965,47 @@ def test_a_failed_first_call_lets_the_twin_build_the_card(monkeypatch):
     assert "hui_present failed" in json.loads(first)["error"]
     second = json.loads(tool.present({"card": CHOICE}, session_id="p2", surface="desktop"))
     assert second["ok"] is True
+
+
+def _unrelated_copy(out):
+    """A non-hui_present tool call whose result is a success-shaped copy of the card's result."""
+    return [{"role": "assistant", "content": "", "tool_calls": [{"id": "call_rf", "type": "function", "function": {
+                "name": "read_file", "arguments": json.dumps({"path": "card.json"})}}]},
+            {"role": "tool", "tool_call_id": "call_rf", "content": json.dumps(out, ensure_ascii=False)},
+            {"role": "assistant", "content": "That is the card file."}]
+
+
+@pytest.mark.parametrize("via_bridge", [True, False], ids=["tool_call bridge", "direct call"])
+def test_an_unrelated_tool_result_does_not_hide_an_earlier_approval(monkeypatch, events, via_bridge):
+    # Review fixture: s1 approves and acts; 91 days later a branch restores the card; in s1 a
+    # read_file result copies the card's result; then s1 replays its approval.
+    clock = [200 * DAY_MS]
+    monkeypatch.setattr(store, "_now_ms", lambda: clock[0])
+    out = show("s1", CONFIRM_YES)
+    cid = out["cardId"]
+    msg = _card_answer(cid, "confirm")
+    shown = history_with(out, via_bridge)
+    tool.on_turn_start(session_id="s1", platform="desktop", user_message=msg,
+                       conversation_history=shown + [{"role": "user", "content": msg}])
+    clock[0] += (store.RETENTION_DAYS + 1) * DAY_MS
+    tool.on_turn_start(session_id="branch", platform="desktop", user_message=msg,
+                       conversation_history=shown + [{"role": "user", "content": msg}])
+    replay = (shown + [{"role": "user", "content": msg}, {"role": "assistant", "content": "Dropped."},
+                       {"role": "user", "content": "show me the card file"}]
+              + _unrelated_copy(out) + [{"role": "user", "content": msg}])
+    ctx = tool.on_turn_start(session_id="s1", platform="desktop", user_message=msg,
+                             conversation_history=replay)["context"]
+    assert "already answered in this chat" in ctx and "Do not act on it a second time" in ctx
+    assert "Do exactly that action" not in ctx
+    assert "wrote 2 other messages after this card" in ctx, "the copy does not reset the staleness count"
+
+
+@pytest.mark.parametrize("via_bridge", [True, False], ids=["tool_call bridge", "direct call"])
+def test_a_first_approval_after_an_unrelated_copy_stays_a_first_approval(events, via_bridge):
+    out = show("s1", CONFIRM_YES)
+    msg = _card_answer(out["cardId"], "confirm")
+    history = history_with(out, via_bridge) + _unrelated_copy(out) + [{"role": "user", "content": msg}]
+    ctx = tool.on_turn_start(session_id="s1", platform="desktop", user_message=msg,
+                             conversation_history=history)["context"]
+    assert "Do exactly that action" in ctx and "already answered" not in ctx
+    assert "could not confirm" not in ctx
