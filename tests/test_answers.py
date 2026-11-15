@@ -202,10 +202,93 @@ def test_an_approval_after_expiry_is_not_read_as_a_first_approval(monkeypatch, e
                                conversation_history=history)["context"]
     assert "Do exactly that action" in first and "could not confirm" not in first
     clock[0] += (store.RETENTION_DAYS + 1) * DAY_MS
+    # Hermes passes the current message as the last history row.
+    replay = history + [{"role": "user", "content": yes}, {"role": "assistant", "content": "Dropped."},
+                        {"role": "user", "content": yes}]
     again = tool.on_turn_start(session_id="s1", platform="desktop", user_message=yes,
+                               conversation_history=replay)["context"]
+    assert "already answered in this chat" in again and "Do not act on it a second time" in again
+    assert "Do exactly that action" not in again
+    # No earlier answer visible (e.g. it went with a compaction): the store still says it can't tell.
+    clock[0] += (store.RETENTION_DAYS + 1) * DAY_MS
+    blind = tool.on_turn_start(session_id="s1", platform="desktop", user_message=yes,
                                conversation_history=history + [{"role": "user", "content": yes}])["context"]
-    assert tool.FORGOTTEN_NOTE.format(days=store.RETENTION_DAYS) in again
-    assert "do not act on it a second time" in again
+    assert tool.FORGOTTEN_NOTE.format(days=store.RETENTION_DAYS) in blind
+
+
+PLAN_CARD = {"type": "plan", "title": "Migrate the database", "steps": [{"title": "Dump"}, {"title": "Drop old"}]}
+
+
+def _card_answer(cid, kind):
+    data = {"card": cid, "type": kind, "decision": "yes"} if kind == "confirm" else \
+        {"card": cid, "type": kind, "action": "run", "steps": ["s1", "s2"]}
+    return "✓ Approved\n[hui-card] " + json.dumps(data)
+
+
+@pytest.mark.parametrize("card", [CONFIRM_YES, PLAN_CARD], ids=["confirm", "plan"])
+def test_a_branch_restoring_an_expired_card_does_not_hide_the_original_answer(monkeypatch, events, card):
+    # s1 answers and acts; 91 days later a copied branch restores the card; then s1 replays its answer.
+    clock = [200 * DAY_MS]
+    monkeypatch.setattr(store, "_now_ms", lambda: clock[0])
+    out = show("s1", card)
+    cid = out["cardId"]
+    msg = _card_answer(cid, card["type"])
+    done = history_with(out) + [{"role": "user", "content": msg}, {"role": "assistant", "content": "Done."}]
+    tool.on_turn_start(session_id="s1", platform="desktop", user_message=msg,
+                       conversation_history=history_with(out) + [{"role": "user", "content": msg}])
+    clock[0] += (store.RETENTION_DAYS + 1) * DAY_MS
+    tool.on_turn_start(session_id="branch", platform="desktop", user_message=msg,
+                       conversation_history=history_with(out) + [{"role": "user", "content": msg}])
+    ctx = tool.on_turn_start(session_id="s1", platform="desktop", user_message=msg,
+                             conversation_history=done + [{"role": "user", "content": msg}])["context"]
+    assert "already answered in this chat" in ctx and "Do not act on it a second time" in ctx
+    assert "Do exactly that action" not in ctx
+
+
+def test_an_answer_dropped_by_the_answer_cap_is_still_seen_as_answered(monkeypatch, events):
+    out = show("s1", CONFIRM_YES)
+    cid = out["cardId"]
+    msg = _card_answer(cid, "confirm")
+    first = history_with(out) + [{"role": "user", "content": msg}]
+    tool.on_turn_start(session_id="s1", platform="desktop", user_message=msg, conversation_history=first)
+    for i in range(store.MAX_SESSIONS_PER_CARD):  # branches push s1's answer row out
+        tool.on_turn_start(session_id=f"b{i}", platform="desktop", user_message=msg,
+                           conversation_history=history_with(out) + [{"role": "user", "content": msg}])
+    assert "s1" not in {r[1] for r in db_rows("answers")}
+    ctx = tool.on_turn_start(session_id="s1", platform="desktop", user_message=msg,
+                             conversation_history=first + [{"role": "assistant", "content": "Done."},
+                                                           {"role": "user", "content": msg}])["context"]
+    assert "already answered in this chat" in ctx and "Do exactly that action" not in ctx
+
+
+def test_the_current_message_alone_is_not_an_earlier_answer(events):
+    out = show("s1", CONFIRM_YES)
+    msg = _card_answer(out["cardId"], "confirm")
+    ctx = tool.on_turn_start(session_id="s1", platform="desktop", user_message=msg,
+                             conversation_history=history_with(out) + [{"role": "user", "content": msg}])["context"]
+    assert "Do exactly that action" in ctx and "already answered" not in ctx
+
+
+def test_a_failed_first_lookup_cleanup_is_retried(monkeypatch):
+    clock = [200 * DAY_MS]
+    monkeypatch.setattr(store, "_now_ms", lambda: clock[0])
+    store.note_shown("s", "c-old", "choice")
+    clock[0] += (store.RETENTION_DAYS + 1) * DAY_MS
+    store._expired_paths.clear()  # a new process
+    real_prune = store._prune
+    calls = []
+
+    def busy_once(conn):
+        calls.append(1)
+        if len(calls) == 1:
+            raise sqlite3.OperationalError("database is locked")
+        real_prune(conn)
+
+    monkeypatch.setattr(store, "_prune", busy_once)
+    assert store.lookup("s", ["c-old"]) == {"answers": {}, "open": []}
+    assert [r[0] for r in db_rows("cards")] == ["c-old"], "the busy pass deleted nothing"
+    store.lookup("s", ["c-old"])
+    assert db_rows("cards") == [], "the next lookup retries the cleanup"
 
 
 def test_an_open_card_answered_after_expiry_in_a_compacted_chat_is_not_discounted(monkeypatch, events):

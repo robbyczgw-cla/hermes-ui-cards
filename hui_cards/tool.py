@@ -228,6 +228,33 @@ def _messages_since_card(history, card_id: str, user_message: str) -> int | None
     return len(later)
 
 
+def earlier_answer_in_history(history, card_id: str, user_message: str = "") -> dict | None:
+    """The first answer to this card that the chat's history already holds after the card's tool
+    result (``{"mark", "summary"}``), or None. The current message is left out when Hermes passes it
+    as the last row. This catches a repeat the store cannot see: the card or this chat's answer row
+    was dropped (expiry, the card or answer caps) and restored, possibly by another branch."""
+    if not isinstance(history, list):
+        return None
+    shown = None
+    for index, message in enumerate(history):
+        if isinstance(message, dict) and message.get("role") == "tool" and _presented_card_id(_message_text(message)) == card_id:
+            shown = index
+    if shown is None:
+        return None
+    rows = history[shown + 1:]
+    last = rows[-1] if rows else None
+    if (isinstance(last, dict) and last.get("role") == "user"
+            and _message_text(last).strip() == (user_message or "").strip()):
+        rows = rows[:-1]
+    for message in rows:
+        if not isinstance(message, dict) or message.get("role") != "user":
+            continue
+        reply = store.parse_reply(_message_text(message))
+        if reply is not None and reply["card"] == card_id:
+            return {"mark": reply["mark"], "summary": reply["summary"]}
+    return None
+
+
 def _json_object(value):
     """A dict from a dict or a JSON object string, else None."""
     if isinstance(value, str):
@@ -401,11 +428,17 @@ def answer_turn(session_id: str, user_message: str, history=None) -> str | None:
             card = None
         if card is None and outcome.get("type"):
             reply = {**reply, "type": outcome["type"]}
-        # The store had no record of the card (expired, evicted, unreachable): it cannot tell a
-        # first answer from a repeated one, so the model is told to check the conversation.
+        duplicate = outcome["record"] if status == "duplicate" else None
+        if duplicate is None and shown_here:
+            # The store's first-answer check misses a repeat whose earlier answer row is gone
+            # (expired card restored here or in another branch, the per-card answer cap): the
+            # chat's own history still shows that earlier answer.
+            duplicate = earlier_answer_in_history(history, card_id, user_message)
+        # The store had no record of the card (expired, evicted, unreachable) and the history shows
+        # no earlier answer either: it cannot tell a first answer from a repeat, so the model is told
+        # to check the conversation.
         forgotten = status == "failed" or bool(outcome.get("restored"))
-        return answer_context(reply, card, history, user_message,
-                              duplicate=outcome["record"] if status == "duplicate" else None, forgotten=forgotten)
+        return answer_context(reply, card, history, user_message, duplicate=duplicate, forgotten=forgotten)
     if status == "foreign":
         return FOREIGN_NOTE.format(card_id=card_id)
     # No record and no proof in this history: an expired card of a compacted chat looks the same as

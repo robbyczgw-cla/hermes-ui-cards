@@ -8,8 +8,9 @@
 - Answer memory and Markdown card copies expire after 90 days without use: an expired card is no longer
   returned from that moment; the rows go at plugin start, on a process' first lookup and on every write.
 - An answer to a card the store no longer knows is never read as a certain first approval: the model is
-  told it may be a repeat; without the card in the chat history it is a neutral note instead of "not
-  shown in this chat".
+  told it may be a repeat, and an earlier answer still in the chat history makes it a duplicate (also
+  when another branch restored the card or the per-card answer cap dropped the row); without the card in
+  the chat history it is a neutral note instead of "not shown in this chat".
 - The store's link pruning uses one recursive term (SQLite older than 3.34 rejected the earlier form).
 - On the surface `gui` (a Hermes GUI client the hook does not identify as Desktop/Webapp, e.g. Hermes
   Mobile) checklist items are Markdown checkboxes (still numbered for typed answers); the text

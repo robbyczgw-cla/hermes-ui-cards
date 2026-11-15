@@ -224,10 +224,14 @@ write. The link count cap still applies. Reading does not refresh retention; del
 delete its entries. When the plugin starts and when a Markdown card copy is written, copies in `cards/`
 last modified more than 90 days ago are deleted, and at most the newest 500 are kept.
 
-**Answers the store cannot check.** If the chat's history still holds the card's tool result but the
-store has no record of the card (expired, past the 2,000-card cap, or the store failed), the answer is
-recorded as a first answer and the context says the plugin could not confirm it is the first: if the
-conversation shows the card was already answered and acted on, the model must not act a second time.
+**Answers the store cannot check.** When the chat's history holds the card's tool result and, after it,
+an earlier user message answering the same card, the answer gets the duplicate note (no "do exactly
+that action") even if the store lost that earlier answer: the card expired and was restored here or in
+another branch, or the 8-chats-per-card cap pushed this chat's answer out. If the history shows no
+earlier answer but the store has no record of the card (expired, past the 2,000-card cap, or the store
+failed), the answer is recorded as a first answer and the context says the plugin could not confirm it
+is the first: if the conversation shows the card was already answered and acted on, the model must not
+act a second time.
 If the history does not hold the card either (for example an expired card in a compacted chat), the
 context says the answer memory has no record of it: the model reads the answer as the user's, but it
 approves nothing on its own. A card the store knows as another chat's gets the "not shown in this

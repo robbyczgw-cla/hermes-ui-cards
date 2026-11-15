@@ -397,9 +397,9 @@ def _expire_on_first_access() -> None:
     path = data_root() / DB_NAME
     if str(path) in _expired_paths or not path.exists():
         return
-    _expired_paths.add(str(path))
     with _db(write=True) as conn:
         _prune(conn)
+    _expired_paths.add(str(path))  # only after the commit: a failed pass (busy writer) is retried
 
 
 # ── what the backend route answers ──

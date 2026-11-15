@@ -9,7 +9,8 @@ The Desktop half reaches them with ctx.rest (Hermes Desktop and the Webapp alike
 - GET /settings  the display settings (compact, accent, undo time) to apply to cards already
   on screen after a save in Settings → Plugins
 
-Read-only: the agent half (tool + pre_llm_call hook) writes the records (hui_cards/store.py).
+Read-only, apart from one expiry pass on a process' first lookup in a profile (store.lookup deletes
+expired rows): the agent half (tool + pre_llm_call hook) writes the records (hui_cards/store.py).
 Handlers are plain `def`, so Hermes runs them in a worker thread with the request's profile
 scope, never blocking the gateway's event loop. Both routes read that profile only: its plugin
 data dir and its config.yaml.
