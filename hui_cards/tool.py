@@ -588,9 +588,16 @@ DESKTOP_NEXT = (
 )
 TEXT_NEXT = (
     "Interactive cards can't be shown on this surface. Send the text in `text` as your reply, unchanged "
-    "(one short intro sentence before it is fine). The user answers by typing a number or words; map their "
-    "reply to the options in this card."
+    "(one short intro sentence about its content is fine; don't mention cards, tools or this surface). "
+    "The user answers by typing a number or words; map their reply to the options in this card."
 )
+# Surfaces that render Markdown task lists (Hermes Mobile reports itself as "gui"): there the ☐/☑ lines
+# become "- [ ]" / "- [x]" items, which look like checkboxes; the numbers stay so the user can reply with them.
+MARKDOWN_TASK_SURFACES = {"gui"}
+
+
+def _markdown_tasks(text: str) -> str:
+    return re.sub(r"(?m)^([☐☑]) ", lambda m: "- [x] " if m.group(1) == "☑" else "- [ ] ", text)
 HUI_NEXT = (
     "Send the `hui` block as your reply (one short intro sentence before it is fine). "
     "Do not repeat the card or ask the same question again. End your turn. "
@@ -718,6 +725,8 @@ def _build(card: dict, warnings: list, session_id: str, surface: str) -> str:
             result.update({"surface": surface, "hui": "```hui\n" + encoded + "\n```",
                            "text": text, "next": HUI_NEXT})
     else:
+        if surface in MARKDOWN_TASK_SURFACES:
+            text = _markdown_tasks(text)
         result.update({"surface": surface or "text", "text": text, "next": TEXT_NEXT})
     if warnings:
         result["warnings"] = warnings

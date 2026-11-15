@@ -6,7 +6,7 @@ from .fallback import render_text
 from .schema import CARD_TYPES, SCHEMA, validate_card
 from .tool import current_surface, enabled_types, setting
 
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 
 USAGE = "Usage: /cards · /cards types · /cards demo <type>"
 

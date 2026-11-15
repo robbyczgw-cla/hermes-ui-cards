@@ -1,6 +1,17 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.1
+
+- README links the demo video and says up front to turn on the Desktop half.
+- The Python validator agrees with the Desktop validator under Python 3.14 (hour 24 and uppercase
+  IPvFuture hosts are rejected on both sides).
+- Answer memory and Markdown card copies expire after 90 days without use.
+- Hermes Mobile gets checklist items as Markdown checkboxes (still numbered for typed answers); the text
+  instruction asks the model not to talk about cards or the surface.
+- Tests: the cross-process store tests skip where a sandbox denies multiprocessing; tested with Hermes
+  0.22.7 and 0.23.1.
+
+## 0.1.0
 
 First version.
 

@@ -16,7 +16,7 @@ Demo video (1:28): [on X](https://x.com/CamiAi__/status/2118980850800820604)
 ## Install
 
 Requires **Hermes 0.22.6 or newer** (the version that lets a plugin draw the files its own tool
-produces).
+produces). Tested with Hermes 0.22.7 and 0.23.1.
 
 1. Install and enable the plugin:
 
@@ -143,6 +143,7 @@ Details that make it dependable:
 |---|---|
 | Hermes Desktop, Hermes Webapp | Interactive cards |
 | CLI, TUI, Telegram, Discord, other messaging, web dashboard chat | A plain-text version with numbered options; you answer by typing |
+| Hermes Mobile (beta) | The same text version, with Markdown checkboxes on checklists; you answer by typing the numbers. The app does not run plugin UI, so cards are not clickable there |
 | Hermes API server with the [Hermes UI+](https://github.com/robbyczgw-cla/hermes-ui-plus) app | The app's own cards for the supported variants of 12 types ([details](hui_cards/hui_blocks.py)); plan, review, compare, recipe and flashcards always as text. Answers use the app's reply format; the Desktop's undo and receipts don't carry over |
 | Desktop with the Desktop half switched off | The text version as a Markdown attachment |
 | Desktop with *Interactive cards* switched off | The text version, for cards created after the switch |

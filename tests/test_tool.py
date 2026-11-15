@@ -62,6 +62,19 @@ def test_text_surfaces_get_plain_text_and_no_file(isolated):
     assert not (isolated / "plugin-data").exists()
 
 
+def test_hermes_mobile_gets_markdown_checkboxes_with_numbers(isolated):
+    # Hermes Mobile reports its sessions as "gui" and renders Markdown task lists as checkboxes.
+    card = {"type": "checklist", "title": "Packing", "items": [
+        {"text": "Passport", "category": "Docs"}, {"text": "Charger", "category": "Tech", "checked": True}]}
+    out = run({"card": card}, "gui")
+    assert "media" not in out and out["surface"] == "gui"
+    assert "Docs\n- [ ] 1. Passport" in out["text"] and "Tech\n- [x] 2. Charger" in out["text"]
+    assert "☐" not in out["text"] and "don't mention cards" in out["next"]
+    # Other text surfaces keep the plain marks.
+    for surface in ("telegram", "cli"):
+        assert "☐ 1. Passport" in run({"card": card}, surface)["text"]
+
+
 def test_markdown_preview_preserves_compare_lines_and_literal_markers():
     card = {'type': 'compare', 'title': 'Trips', 'columns': [
         {'title': 'Prague', 'subtitle': 'Old town', 'pros': ['Cheap eats'], 'cons': ['Long trip']},

@@ -3,7 +3,7 @@
   "label": "HUI+ Cards",
   "description": "Backend for the HUI+ Cards Desktop half: answers across devices and live display settings. No dashboard page.",
   "icon": "Sparkles",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "tab": { "path": "/hermes-ui-cards", "position": "end", "hidden": true },
   "entry": "dist/index.js",
   "api": "plugin_api.py"

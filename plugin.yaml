@@ -1,5 +1,5 @@
 name: hermes-ui-cards
-version: 0.1.0
+version: 0.1.1
 manifest_version: 2
 description: Interactive answer cards in Hermes Desktop and the Hermes Webapp, with text elsewhere.
 author: robbyczgw-cla

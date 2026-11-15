@@ -127,6 +127,8 @@ most 300 code points, email 200, textarea 1000, Other 300, and Change and rating
 ## 4. Text version (CLI, TUI, messaging)
 
 Plain text, no Markdown, so it reads the same in a raw terminal and on every messaging platform.
+One exception: Hermes Mobile (its sessions report `gui`) renders Markdown task lists, so there the
+`☐`/`☑` lines become `- [ ]`/`- [x]` items with the same numbers.
 Blank lines set the title and the closing "Reply …" hint apart; items with detail lines (steps,
 quiz questions, plan steps, review items) get a blank line between them. English chrome, German when
 `card.lang` starts with `de`. Examples:
