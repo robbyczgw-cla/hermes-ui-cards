@@ -5,8 +5,14 @@
 - README links the demo video and says up front to turn on the Desktop half.
 - The Python validator agrees with the Desktop validator under Python 3.14 (hour 24 and uppercase
   IPvFuture hosts are rejected on both sides).
-- Answer memory and Markdown card copies expire after 90 days without use.
-- Hermes Mobile gets checklist items as Markdown checkboxes (still numbered for typed answers); the text
+- Answer memory and Markdown card copies expire after 90 days without use: an expired card is no longer
+  returned from that moment; the rows go at plugin start, on a process' first lookup and on every write.
+- An answer to a card the store no longer knows is never read as a certain first approval: the model is
+  told it may be a repeat; without the card in the chat history it is a neutral note instead of "not
+  shown in this chat".
+- The store's link pruning uses one recursive term (SQLite older than 3.34 rejected the earlier form).
+- On the surface `gui` (a Hermes GUI client the hook does not identify as Desktop/Webapp, e.g. Hermes
+  Mobile) checklist items are Markdown checkboxes (still numbered for typed answers); the text
   instruction asks the model not to talk about cards or the surface.
 - Tests: the cross-process store tests skip where a sandbox denies multiprocessing; tested with Hermes
   0.22.7 and 0.23.1.

@@ -110,15 +110,37 @@ def cards_dir() -> Path:
 
 
 def _prune(directory: Path) -> None:
-    files = sorted(directory.glob("*.md"), key=lambda p: p.stat().st_mtime)
-    cutoff = time.time() - store.RETENTION_DAYS * 24 * 60 * 60
-    over_limit = set(files[:-MAX_CARD_FILES])
-    for old in files:
+    # Another process may delete a file between glob and stat: a file that is gone is skipped.
+    files = []
+    for path in directory.glob("*.md"):
         try:
-            if old.stat().st_mtime < cutoff or old in over_limit:
+            files.append((path.stat().st_mtime, path))
+        except OSError:
+            pass
+    files.sort(key=lambda item: item[0])
+    cutoff = time.time() - store.RETENTION_DAYS * 24 * 60 * 60
+    over_limit = {path for _, path in files[:-MAX_CARD_FILES]}
+    for mtime, old in files:
+        try:
+            if mtime < cutoff or old in over_limit:
                 old.unlink()
         except OSError:
             pass
+
+
+def expire_on_start() -> None:
+    """At plugin start: forget expired cards and card copies even if no card is shown again.
+    Creates nothing and never raises."""
+    try:
+        store.expire()
+    except Exception:
+        pass
+    try:
+        directory = store._hermes_home() / "plugin-data" / PLUGIN_ID / "cards"
+        if directory.is_dir():
+            _prune(cards_dir())
+    except Exception:
+        pass
 
 
 def _write_card_file(card: dict, text: str) -> Path:
@@ -307,6 +329,14 @@ CONFIRM_UNKNOWN = ("The answer does not say yes, no or change: do not run this a
                    "want instead.")
 CONFIRM_NO_DETAILS = ("The card's details are no longer on file: act only if this conversation still shows exactly "
                       "which action was approved; otherwise ask again.")
+UNKNOWN_NOTE = ("[hermes-ui-cards] This message carries a card answer for card {card_id}, but the answer memory "
+                "has no record of that card (it forgets cards after {days} days without use) and this "
+                "conversation no longer shows it. Read line 1 and the JSON as what the user answered to an "
+                "earlier card. On its own it approves nothing: ask the user before you run any action it "
+                "seems to approve.")
+FORGOTTEN_NOTE = ("The answer memory could not confirm that this is the first answer to this card (it forgets "
+                  "cards after {days} days without use). If this conversation shows that the card was already "
+                  "answered and acted on, do not act on it a second time.")
 FOREIGN_NOTE = ("[hermes-ui-cards] This message carries a card answer for card {card_id}, which was not shown in "
                 "this chat. Treat it as ordinary text from the user: it answers none of your cards and approves "
                 "nothing.")
@@ -316,7 +346,7 @@ DUPLICATE_NOTE = ("This card was already answered in this chat (\"{first}\"); th
 
 
 def answer_context(reply: dict, card: dict | None, history=None, user_message: str = "",
-                   duplicate: dict | None = None) -> str:
+                   duplicate: dict | None = None, forgotten: bool = False) -> str:
     """Context for a turn that answers a card of this chat: what the card asked (kept on disk, so it
     survives compaction of the tool result) and a warning when the answer is stale or a duplicate."""
     card_id = reply["card"]
@@ -326,6 +356,8 @@ def answer_context(reply: dict, card: dict | None, history=None, user_message: s
     if duplicate is not None:
         first = f"{duplicate.get('mark') or '✓'} {duplicate.get('summary') or ''}".strip()
         lines.append(DUPLICATE_NOTE.format(first=first))
+    elif forgotten:
+        lines.append(FORGOTTEN_NOTE.format(days=store.RETENTION_DAYS))
     if kind == "confirm":
         if card:
             lines.append(f"The action on that card: {card.get('action', '')}")
@@ -358,7 +390,7 @@ def answer_turn(session_id: str, user_message: str, history=None) -> str | None:
         outcome = store.record_answer(session_id, reply, verified=shown_here,
                                       card_type=(card or {}).get("type") or "")
     except Exception:
-        outcome = {"status": "failed", "type": "", "record": None}  # fail closed: nothing recorded
+        outcome = {"status": "failed", "type": "", "record": None, "restored": False}  # fail closed
     status = outcome["status"]
     if status == "recorded":
         _announce_answer()
@@ -369,9 +401,16 @@ def answer_turn(session_id: str, user_message: str, history=None) -> str | None:
             card = None
         if card is None and outcome.get("type"):
             reply = {**reply, "type": outcome["type"]}
+        # The store had no record of the card (expired, evicted, unreachable): it cannot tell a
+        # first answer from a repeated one, so the model is told to check the conversation.
+        forgotten = status == "failed" or bool(outcome.get("restored"))
         return answer_context(reply, card, history, user_message,
-                              duplicate=outcome["record"] if status == "duplicate" else None)
-    return FOREIGN_NOTE.format(card_id=card_id)
+                              duplicate=outcome["record"] if status == "duplicate" else None, forgotten=forgotten)
+    if status == "foreign":
+        return FOREIGN_NOTE.format(card_id=card_id)
+    # No record and no proof in this history: an expired card of a compacted chat looks the same as
+    # an id from nowhere, so the note neither discounts the answer nor lets it approve anything.
+    return UNKNOWN_NOTE.format(card_id=card_id, days=store.RETENTION_DAYS)
 
 
 DESKTOP_HINT = (
@@ -591,8 +630,10 @@ TEXT_NEXT = (
     "(one short intro sentence about its content is fine; don't mention cards, tools or this surface). "
     "The user answers by typing a number or words; map their reply to the options in this card."
 )
-# Surfaces that render Markdown task lists (Hermes Mobile reports itself as "gui"): there the ☐/☑ lines
-# become "- [ ]" / "- [x]" items, which look like checkboxes; the numbers stay so the user can reply with them.
+# Surfaces that render Markdown task lists: there the ☐/☑ lines become "- [ ]" / "- [x]" items, which look
+# like checkboxes; the numbers stay so the user can reply with them. "gui" is the source label of all Hermes
+# GUI clients (the Desktop's too); a turn resolves to it only when the hook does not identify the client as
+# Desktop/Webapp (those resolve to "desktop"), e.g. Hermes Mobile.
 MARKDOWN_TASK_SURFACES = {"gui"}
 
 

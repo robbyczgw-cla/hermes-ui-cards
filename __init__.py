@@ -17,6 +17,7 @@ HERE = Path(__file__).resolve().parent
 
 def register(ctx):
     tool.configure(lambda key, default: ctx.get_config(key, default=default))
+    tool.expire_on_start()  # expired cards go even if this install never shows a card again
     schema = tool.tool_schema()
     ctx.register_tool(
         name=tool.TOOL_NAME,

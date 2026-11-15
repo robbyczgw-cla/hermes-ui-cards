@@ -13,8 +13,9 @@ approve, edit your plan. Everything else stays text. Most replies are not cards.
 - **You are about to run a multi-step job** (migration, refactor, cleanup, trip booking) → `plan`.
   The user chooses optional steps, reorders, adds notes, then runs it. Mark risky steps
   with `risk`, show real `command`s. Run exactly the steps that come back, in that order.
-- **You drafted many things the user must judge** (replies, file deletions, suggested edits) →
-  `review`: one pass of Keep/Drop with comments instead of ten questions.
+- **You drafted many things the user must judge** (replies, suggested edits, summaries) →
+  `review`: one pass of Keep/Drop with comments instead of ten questions. Deleting files is not a
+  review: ask with `confirm` or `plan`.
 - **You hand over a list to work through** (packing, shopping, release steps) → `checklist`.
 - **The user weighs 2–4 candidates** → `compare` with aligned `rows`, `best` per row and at most
   one column `best: true` (only if you have a reason).

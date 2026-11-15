@@ -29,6 +29,9 @@ What the tool returns depends on where the chat runs:
 | Desktop with *Interactive cards* switched off | `text` | The text version (applies to cards created after the switch) |
 | API server, *Cards for the Hermes UI+ app* `hui`, or `auto` with the Hermes UI+ plugin enabled | `hui`: a fenced ```` ```hui ```` block, plus `text` | The Hermes UI+ app's own card, for the supported variants of 12 types (see `hui_cards/hui_blocks.py`); plan, review, compare, recipe and flashcards always get text |
 | CLI, TUI, messaging platforms, the web dashboard chat, other API clients | `text` | Numbered options and a "Reply with …" hint |
+| Hermes Mobile and other GUI clients the hook does not identify as Desktop/Webapp (surface `gui`) | `text`, checklist items as Markdown task items | The text version with checkboxes; the user answers by typing the numbers |
+
+`gui` is the source label Hermes GUI clients give their sessions, the Desktop's included. The plugin sees `gui` as the surface only when Hermes' hook does not identify the client as Desktop or Webapp, e.g. Hermes Mobile; Desktop and Webapp chats get interactive cards as usual.
 
 On Desktop the model writes one short sentence and the `MEDIA:` line on its own line. If it
 forgets the line, the plugin's `transform_llm_output` hook appends it (for cards of the same
@@ -127,8 +130,10 @@ most 300 code points, email 200, textarea 1000, Other 300, and Change and rating
 ## 4. Text version (CLI, TUI, messaging)
 
 Plain text, no Markdown, so it reads the same in a raw terminal and on every messaging platform.
-One exception: Hermes Mobile (its sessions report `gui`) renders Markdown task lists, so there the
-`☐`/`☑` lines become `- [ ]`/`- [x]` items with the same numbers.
+One exception: on the surface `gui` (a Hermes GUI client the hook does not identify as Desktop or
+Webapp, e.g. Hermes Mobile, which renders Markdown task lists) the `☐`/`☑` lines become
+`- [ ]`/`- [x]` items with the same numbers. `gui` itself is the source label of all Hermes GUI
+clients, the Desktop's too; Desktop and Webapp chats resolve to `desktop` and get interactive cards.
 Blank lines set the title and the closing "Reply …" hint apart; items with detail lines (steps,
 quiz questions, plan steps, review items) get a blank line between them. English chrome, German when
 `card.lang` starts with `de`. Examples:
@@ -210,9 +215,20 @@ cards*, *Card types* and *Cards for the Hermes UI+ app* affect cards created aft
 list reaches the tool description after a Hermes restart (an empty or unrecognized list means all types).
 
 **Retention.** The 2,000 most recently shown or answered cards (with up to 8 answering chats and 16
-member chats each, answer data up to 20,000 bytes) and 5,000 compaction links. On a store pruning pass,
-cards not shown or answered for more than 90 days and their members and answers are deleted; compaction
-links older than 90 days are deleted unless connected to a retained card. The link count cap still applies.
-Reading does not refresh retention; deleting a chat does not delete its entries. When a Markdown card
-copy is written, copies in `cards/` last modified more than 90 days ago are deleted, and at most the
-newest 500 are kept.
+member chats each, answer data up to 20,000 bytes) and 5,000 compaction links. A card not shown or
+answered for more than 90 days is expired from that moment: `lookup` no longer returns it and an
+answer treats it as unknown. The rows (the card, its members and answers, and compaction links older
+than 90 days that are not connected to a retained card) are deleted when the plugin starts
+(`store.expire`), on the first lookup of a process in a profile (the Desktop backend), and on every
+write. The link count cap still applies. Reading does not refresh retention; deleting a chat does not
+delete its entries. When the plugin starts and when a Markdown card copy is written, copies in `cards/`
+last modified more than 90 days ago are deleted, and at most the newest 500 are kept.
+
+**Answers the store cannot check.** If the chat's history still holds the card's tool result but the
+store has no record of the card (expired, past the 2,000-card cap, or the store failed), the answer is
+recorded as a first answer and the context says the plugin could not confirm it is the first: if the
+conversation shows the card was already answered and acted on, the model must not act a second time.
+If the history does not hold the card either (for example an expired card in a compacted chat), the
+context says the answer memory has no record of it: the model reads the answer as the user's, but it
+approves nothing on its own. A card the store knows as another chat's gets the "not shown in this
+chat" note.

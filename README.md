@@ -143,10 +143,12 @@ Details that make it dependable:
 |---|---|
 | Hermes Desktop, Hermes Webapp | Interactive cards |
 | CLI, TUI, Telegram, Discord, other messaging, web dashboard chat | A plain-text version with numbered options; you answer by typing |
-| Hermes Mobile (beta) | The same text version, with Markdown checkboxes on checklists; you answer by typing the numbers. The app does not run plugin UI, so cards are not clickable there |
+| Hermes Mobile (beta) and other GUI clients the plugin sees as `gui` | The same text version, with Markdown checkboxes on checklists; you answer by typing the numbers. These apps do not run plugin UI, so cards are not clickable there |
 | Hermes API server with the [Hermes UI+](https://github.com/robbyczgw-cla/hermes-ui-plus) app | The app's own cards for the supported variants of 12 types ([details](hui_cards/hui_blocks.py)); plan, review, compare, recipe and flashcards always as text. Answers use the app's reply format; the Desktop's undo and receipts don't carry over |
 | Desktop with the Desktop half switched off | The text version as a Markdown attachment |
 | Desktop with *Interactive cards* switched off | The text version, for cards created after the switch |
+
+`gui` is the source label Hermes GUI clients give their sessions, the Desktop's included. The plugin sees `gui` as the surface only when Hermes' hook does not identify the client as Desktop or Webapp, e.g. Hermes Mobile; Desktop and Webapp chats get interactive cards as usual.
 
 The text version of the checklist demo:
 
@@ -191,8 +193,8 @@ In Desktop, the command palette has *HUI+ Cards: show an example card*.
 - Answer synchronization between devices is eventual (see above), and it follows the backend the window
   is connected to: in a split view with chats of different profiles or backends, cards of the inactive
   one are not synchronized.
-- Tested against Hermes 0.22.7; 0.22.6 is the first version with the APIs the plugin needs, but it was
-  not run here.
+- Tested against Hermes 0.22.7 and 0.23.1; 0.22.6 is the first version with the APIs the plugin needs,
+  but it was not run here.
 - With `plugins.isolation: host`, Desktop detection and the backend routes are untested.
 - Card images are loaded from the `https` URLs the model puts on the card (it is told to use only URLs
   it got from a tool or from you).
@@ -209,21 +211,26 @@ and sent:
   branches and when it was shown; each answer (up to 8 chats per card): the mark, line 1 (up to 300
   characters) and the answer data, including free text you typed into the card (form values, comments,
   notes), up to 20,000 bytes; and the compaction links Hermes reports (up to 5,000). The 2,000 most
-  recently shown or answered cards are kept. On a store pruning pass, cards not shown or answered
-  for more than 90 days and their members and answers are deleted; older compaction links are deleted
-  unless connected to a retained card. The 5,000-link cap still applies. Reading doesn't refresh
-  retention, and deleting a chat does not delete its entries.
+  recently shown or answered cards are kept. A card not shown or answered for 90 days is forgotten
+  from then on (no longer returned, an answer to it is treated as one to an unknown card); its members
+  and answers, and compaction links older than 90 days that no retained card needs, are deleted when
+  the plugin starts, on the first lookup of a Hermes process in a profile, and on every write. The
+  5,000-link cap still applies. Reading doesn't refresh retention, and deleting a chat does not delete
+  its entries.
 - `cards/<id>.md`: the text version of each Desktop card plus the card itself (for a confirm card,
-  also its action and command). When a card copy is written, copies last modified more than 90 days
-  ago are deleted, and at most the newest 500 are kept.
+  also its action and command). When the plugin starts and whenever a card copy is written, copies
+  last modified more than 90 days ago are deleted, and at most the newest 500 are kept.
 
 **To the model provider**, as context added to the turn that answers a card: the card's type, title
-and id, for a confirm card its action and command, and notes when the answer is stale or a duplicate.
+and id, for a confirm card its action and command, and notes when the answer is stale, a duplicate, or
+for a card the store no longer knows (then the model is told it may be a repeat, or that it approves
+nothing on its own).
 On Desktop, a one-line hint that cards exist (on the first turn, then when no message of the last 20
 carries it). Hermes stores this context with the user message in its session database and sends it
 again with that message in later turns, like the message itself.
 
-**Backend routes** (read-only, under `/api/plugins/hermes-ui-cards/`, behind Hermes' own sign-in):
+**Backend routes** (read-only apart from deleting expired entries on a process' first lookup, under
+`/api/plugins/hermes-ui-cards/`, behind Hermes' own sign-in):
 `GET /answers` returns the answers of one chat's cards to any client signed in to that backend that
 knows the chat and card ids; `GET /settings` returns the display settings. After each recorded answer
 the plugin broadcasts an empty `answers.changed` event so open windows check again.

@@ -31,6 +31,7 @@ def isolated(tmp_path, monkeypatch):
     tool._turn_platform.clear()
     tool._turn_cards.clear()
     getattr(tool, '_hint_due', set()).clear()
+    store._expired_paths.clear()
     yield tmp_path
 
 
@@ -83,8 +84,11 @@ def db_rows(table):
         conn.close()
 
 
+DAY_MS = 24 * 60 * 60 * 1000
+
+
 def test_retention_expires_inactive_cards_and_unrelated_links_but_keeps_live_line(monkeypatch):
-    now = 200 * 24 * 60 * 60 * 1000
+    now = 200 * DAY_MS
     clock = [now]
     monkeypatch.setattr(store, "_now_ms", lambda: clock[0])
     store.note_shown("old", "old-card", "choice")
@@ -93,9 +97,11 @@ def test_retention_expires_inactive_cards_and_unrelated_links_but_keeps_live_lin
     store.note_shown("live", "live-card", "choice")
     store.link_sessions("middle", "live")
     store.link_sessions("next", "middle")
-    clock[0] += (store.RETENTION_DAYS + 1) * 24 * 60 * 60 * 1000
+    clock[0] += 60 * DAY_MS
     # Answering through an old continuation keeps its entire line usable.
     assert store.record_answer("next", {"card": "live-card", "data": {}})["status"] == "recorded"
+    clock[0] += (store.RETENTION_DAYS - 60 + 1) * DAY_MS  # the links are now older than the retention
+    store.expire()
     assert {r[0] for r in db_rows("cards")} == {"live-card"}
     assert {r[0] for r in db_rows("members")} == {"live-card"}
     assert {r[0] for r in db_rows("answers")} == {"live-card"}
@@ -103,17 +109,114 @@ def test_retention_expires_inactive_cards_and_unrelated_links_but_keeps_live_lin
     assert "live-card" in store.lookup("live", ["live-card"])["answers"]
 
 
-def test_retention_keeps_boundary_and_refreshes_when_shown_again(monkeypatch):
-    clock = [200 * 24 * 60 * 60 * 1000]
+def test_retention_keeps_a_link_chain_in_both_directions(monkeypatch):
+    # up2 <- up1 <- mid <- down1 <- down2 (each continues the one on its left); the card is mid's.
+    clock = [200 * DAY_MS]
+    monkeypatch.setattr(store, "_now_ms", lambda: clock[0])
+    store.note_shown("mid", "chain-card", "choice")
+    for new, old in (("up1", "up2"), ("mid", "up1"), ("down1", "mid"), ("down2", "down1"), ("y", "x")):
+        assert store.link_sessions(new, old)
+    clock[0] += 60 * DAY_MS
+    assert store.record_answer("mid", {"card": "chain-card", "data": {}})["status"] == "recorded"
+    clock[0] += 31 * DAY_MS  # every link is 91 days old, the card 31
+    statements = []
+    real_open = store._open
+
+    def traced(path):
+        conn = real_open(path)
+        conn.set_trace_callback(statements.append)
+        return conn
+
+    monkeypatch.setattr(store, "_open", traced)
+    store.expire()
+    assert {r[0] for r in db_rows("links")} == {"up1", "mid", "down1", "down2"}, "the unrelated x <- y goes"
+    assert "chain-card" in store.lookup("down2", ["chain-card"])["answers"]
+    assert "chain-card" in store.lookup("up2", ["chain-card"])["answers"]
+    # SQLite before 3.34 rejects a recursive CTE with more than one recursive term.
+    recursive = [q for q in statements if "WITH RECURSIVE" in q and "live" in q]
+    assert recursive and all(q.count("JOIN live") == 1 for q in recursive)
+
+
+def test_retention_keeps_the_boundary(monkeypatch):
+    clock = [200 * DAY_MS]
     monkeypatch.setattr(store, "_now_ms", lambda: clock[0])
     store.note_shown("s", "boundary", "choice")
-    store.note_shown("s", "reshown", "choice")
-    clock[0] += store.RETENTION_DAYS * 24 * 60 * 60 * 1000
-    store.note_shown("s", "reshown", "choice")
-    assert {r[0] for r in db_rows("cards")} == {"boundary", "reshown"}
-    clock[0] += 1
+    clock[0] += store.RETENTION_DAYS * DAY_MS
     store.note_shown("s", "new", "choice")
-    assert {r[0] for r in db_rows("cards")} == {"reshown", "new"}
+    assert {r[0] for r in db_rows("cards")} == {"boundary", "new"}
+    assert store.lookup("s", ["boundary"])["open"] == ["boundary"]
+    clock[0] += 1
+    assert store.lookup("s", ["boundary"])["open"] == [], "expired the moment it is older"
+    store.note_shown("s", "newer", "choice")
+    assert {r[0] for r in db_rows("cards")} == {"new", "newer"}
+
+
+def test_an_expired_card_is_hidden_and_deleted_without_another_write(monkeypatch):
+    clock = [200 * DAY_MS]
+    monkeypatch.setattr(store, "_now_ms", lambda: clock[0])
+    store.note_shown("s", "c-old", "choice")
+    store.record_answer("s", {"card": "c-old", "data": {"x": 1}})
+    assert "c-old" in store.lookup("s", ["c-old"])["answers"]
+    clock[0] += (store.RETENTION_DAYS + 10) * DAY_MS
+    assert store.lookup("s", ["c-old"]) == {"answers": {}, "open": []}, "not served once expired"
+    assert store.record_answer("s", {"card": "c-old", "data": {}})["status"] == "unknown"
+    assert db_rows("answers") == [], "the answer attempt deleted it"
+    store.note_shown("s", "c-new", "choice")
+    store.record_answer("s", {"card": "c-new", "data": {}})
+    store._expired_paths.clear()  # a new process (Desktop backend), no write after this
+    clock[0] += (store.RETENTION_DAYS + 1) * DAY_MS
+    assert store.lookup("s", ["c-new"]) == {"answers": {}, "open": []}
+    assert db_rows("answers") == [] and db_rows("cards") == [], "its first lookup deleted it"
+
+
+def test_plugin_start_deletes_expired_cards_and_copies(monkeypatch, isolated):
+    clock = [200 * DAY_MS]
+    monkeypatch.setattr(store, "_now_ms", lambda: clock[0])
+    cid = show("s1")["cardId"]
+    answer("s1", cid)
+    copy = tool.cards_dir() / f"{cid}.md"
+    old = time.time() - (store.RETENTION_DAYS + 1) * 24 * 60 * 60
+    import os
+    os.utime(copy, (old, old))
+    clock[0] += (store.RETENTION_DAYS + 1) * DAY_MS
+    tool.expire_on_start()
+    assert db_rows("cards") == [] and db_rows("answers") == [] and not copy.exists()
+
+
+def test_plugin_start_creates_nothing(isolated):
+    tool.expire_on_start()
+    assert not (isolated / "plugin-data").exists()
+
+
+CONFIRM_YES = {"type": "confirm", "title": "Drop table", "action": "Drop the staging table"}
+
+
+def test_an_approval_after_expiry_is_not_read_as_a_first_approval(monkeypatch, events):
+    clock = [200 * DAY_MS]
+    monkeypatch.setattr(store, "_now_ms", lambda: clock[0])
+    out = show("s1", CONFIRM_YES)
+    cid = out["cardId"]
+    yes = "✓ Approved\n[hui-card] " + json.dumps({"card": cid, "type": "confirm", "decision": "yes"})
+    history = history_with(out)
+    first = tool.on_turn_start(session_id="s1", platform="desktop", user_message=yes,
+                               conversation_history=history)["context"]
+    assert "Do exactly that action" in first and "could not confirm" not in first
+    clock[0] += (store.RETENTION_DAYS + 1) * DAY_MS
+    again = tool.on_turn_start(session_id="s1", platform="desktop", user_message=yes,
+                               conversation_history=history + [{"role": "user", "content": yes}])["context"]
+    assert tool.FORGOTTEN_NOTE.format(days=store.RETENTION_DAYS) in again
+    assert "do not act on it a second time" in again
+
+
+def test_an_open_card_answered_after_expiry_in_a_compacted_chat_is_not_discounted(monkeypatch, events):
+    clock = [200 * DAY_MS]
+    monkeypatch.setattr(store, "_now_ms", lambda: clock[0])
+    cid = show("s1")["cardId"]
+    clock[0] += (store.RETENTION_DAYS + 1) * DAY_MS
+    show("s1", {**CHOICE, "question": "Other?"})  # any write prunes the old card
+    ctx = answer("s1", cid, history=[{"role": "user", "content": "[compacted summary]"}])["context"]
+    assert "was not shown in this chat" not in ctx and "answers none of your cards" not in ctx
+    assert "Read line 1 and the JSON as what the user answered" in ctx and "approves nothing" in ctx
 
 
 # ── recording ──
@@ -289,7 +392,7 @@ def test_text_surfaces_record_nothing(isolated):
 def test_answers_to_unknown_cards_are_not_recorded(isolated):
     ctx = tool.on_turn_start(session_id="s1", platform="desktop", user_message=click_message("ghost-0000000000"))
     assert not (isolated / "plugin-data" / "hermes-ui-cards" / store.DB_NAME).exists()
-    assert "was not shown in this chat" in ctx["context"]
+    assert "has no record of that card" in ctx["context"] and "approves nothing" in ctx["context"]
 
 
 def test_an_answer_is_recorded_after_the_markdown_copy_was_pruned(monkeypatch):
@@ -308,9 +411,11 @@ def test_storage_failure_never_breaks_the_turn(monkeypatch):
     cid = show("s1")["cardId"]
     monkeypatch.setattr(store, "_open", lambda *a: (_ for _ in ()).throw(sqlite3.OperationalError("disk full")))
     ctx = answer("s1", cid, history=history_with(show("s2")))
-    assert "was not shown in this chat" in ctx["context"], "unprovable: nothing private is said"
+    assert "has no record of that card" in ctx["context"], "unprovable: nothing private is said"
+    assert "approves nothing" in ctx["context"]
     ctx = answer("s1", cid, history=history_with({"ok": True, "cardId": cid, "type": "choice"}))
     assert "This message answers your choice card" in ctx["context"], "its own history still proves it"
+    assert "could not confirm that this is the first answer" in ctx["context"], "no duplicate check possible"
     assert store.lookup("s1", [cid]) == {"answers": {}, "open": []}
     assert json.loads(tool.present({"card": {**CHOICE, "question": "Again?"}}, session_id="s1",
                                    surface="desktop"))["ok"] is True
@@ -382,7 +487,7 @@ def test_a_storage_error_fails_closed_instead_of_using_the_process_home(profiles
         assert out["ok"] is True and "media" not in out and out["text"], "text version, no file anywhere"
         ctx = tool.on_turn_start(session_id="alice-event", platform="desktop", user_message=click_message(cid),
                                  conversation_history=[])
-        assert "was not shown in this chat" in ctx["context"]
+        assert "has no record of that card" in ctx["context"] and "approves nothing" in ctx["context"]
     assert not (isolated / "plugin-data").exists(), "nothing under the process' own HERMES_HOME"
     assert not (isolated / "profile-b").exists(), "nor under profile B"
 

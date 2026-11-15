@@ -7,7 +7,13 @@ Hermes imports a plugin's backend as a standalone module, outside the plugin pac
 
 Storage: one SQLite file, ``<plugin data dir of the active profile>/answers.db``. Every write is
 one ``BEGIN IMMEDIATE`` transaction, so two processes of one profile (the Desktop backend, a CLI
-chat, a branch) never lose each other's update; the routes only read.
+chat, a branch) never lose each other's update. The routes only read, apart from one expiry pass on
+a process' first lookup in a profile.
+
+Retention: a card that was neither shown nor answered for RETENTION_DAYS is forgotten together with
+its members, answers and the compaction links nothing retained needs. A lookup never returns an
+expired card, and an answer treats it as unknown, from the moment it expires; the rows themselves are
+deleted at plugin start (``expire``), on a process' first lookup in a profile, and on every write.
 
 A card belongs to the chat that showed it. ``members``: that chat plus any branch whose own
 history holds the card's tool result. ``links``: compaction continuations Hermes reported through
@@ -209,19 +215,26 @@ def _visible(answers: dict, session_id: str, line: set[str]) -> dict | None:
     return min(seen, key=lambda r: r["at"] if isinstance(r.get("at"), int) else 0) if seen else None
 
 
+def _cutoff() -> int:
+    """Cards touched before this moment (ms) are expired."""
+    return _now_ms() - RETENTION_DAYS * 24 * 60 * 60 * 1000
+
+
 def _prune(conn) -> None:
-    cutoff = _now_ms() - RETENTION_DAYS * 24 * 60 * 60 * 1000
+    cutoff = _cutoff()
     conn.execute("DELETE FROM cards WHERE touched < ?", (cutoff,))
     conn.execute("DELETE FROM cards WHERE card IN (SELECT card FROM cards ORDER BY touched DESC LIMIT -1 OFFSET ?)",
                  (MAX_CARDS,))
     conn.execute("DELETE FROM members WHERE card NOT IN (SELECT card FROM cards)")
     conn.execute("DELETE FROM answers WHERE card NOT IN (SELECT card FROM cards)")
     # Keep the entire continuation component of every retained card: a lookup can arrive from
-    # either direction, including sessions that have no member or answer row of their own.
-    conn.execute("WITH RECURSIVE live(s) AS ("
-                 "SELECT session FROM members UNION SELECT session FROM answers "
-                 "UNION SELECT l.parent FROM links l JOIN live ON l.session = live.s "
-                 "UNION SELECT l.session FROM links l JOIN live ON l.parent = live.s) "
+    # either direction, including sessions that have no member or answer row of their own. The links
+    # are walked as undirected edges, so the CTE has one recursive term: SQLite accepts more than one
+    # only since 3.34, and Hermes sets no minimum SQLite (CTEs in DELETE need 3.8.3).
+    conn.execute("WITH RECURSIVE edges(a, b) AS (SELECT session, parent FROM links "
+                 "UNION ALL SELECT parent, session FROM links), "
+                 "live(s) AS (SELECT session FROM members UNION SELECT session FROM answers "
+                 "UNION SELECT e.b FROM edges e JOIN live ON e.a = live.s) "
                  "DELETE FROM links WHERE at < ? AND session NOT IN (SELECT s FROM live)", (cutoff,))
     conn.execute("DELETE FROM links WHERE session IN (SELECT session FROM links ORDER BY at DESC LIMIT -1 OFFSET ?)",
                  (MAX_LINKS,))
@@ -242,9 +255,10 @@ def note_shown(session_id: str, card_id: str, card_type: str) -> None:
         return
     now = _now_ms()
     with _db(write=True) as conn:
+        # Card ids are new for every card (random suffix) and a repeated call returns the cached
+        # result, so this runs once per card: nothing to refresh on a second showing.
         conn.execute("INSERT OR IGNORE INTO cards (card, type, session, shown_at, touched) VALUES (?, ?, ?, ?, ?)",
                      (card_id, str(card_type)[:32], session_id, now, now))
-        conn.execute("UPDATE cards SET touched = ? WHERE card = ?", (now, card_id))
         _add_member(conn, card_id, session_id)
         _prune(conn)
 
@@ -315,21 +329,27 @@ def record_answer(session_id: str, reply: dict, verified: bool = False, card_typ
     Returns ``{"status": s, "type": t, "record": r}`` with s one of
     ``recorded`` (stored), ``duplicate`` (this line already answered; ``record`` is that first answer,
     nothing changes), ``foreign`` (the card belongs to another chat: nothing stored),
-    ``unknown`` (no such card here), ``invalid``. Storage errors raise: the caller fails closed."""
+    ``unknown`` (no such card here, or it expired), ``invalid``. ``restored`` is True when the store
+    had no record of the card and re-created it from the history proof: an earlier answer to it may
+    have been forgotten (expiry or the card cap). Storage errors raise: the caller fails closed."""
     if not _valid_session(session_id) or not isinstance(reply, dict) or not _valid_card(reply.get("card")):
-        return {"status": "invalid", "type": "", "record": None}
+        return {"status": "invalid", "type": "", "record": None, "restored": False}
     card_id = reply["card"]
     if not verified and not (data_root() / DB_NAME).exists():
-        return {"status": "unknown", "type": "", "record": None}  # nothing shown here yet: create nothing
+        return {"status": "unknown", "type": "", "record": None, "restored": False}  # nothing shown yet
     now = _now_ms()
     data = reply.get("data") if isinstance(reply.get("data"), dict) else {}
     record = {"mark": reply.get("mark") if reply.get("mark") in MARKS else "✓",
               "summary": _one_line(reply.get("summary"), MAX_SUMMARY), "data": data, "at": now}
     with _db(write=True) as conn:
-        row = conn.execute("SELECT type FROM cards WHERE card = ?", (card_id,)).fetchone()
+        row = conn.execute("SELECT type, touched FROM cards WHERE card = ?", (card_id,)).fetchone()
+        if row is not None and row[1] < _cutoff():
+            _prune(conn)  # expired but not deleted yet: forget it now, as a lookup already does
+            row = None
+        restored = row is None
         if row is None:
             if not verified:
-                return {"status": "unknown", "type": "", "record": None}
+                return {"status": "unknown", "type": "", "record": None, "restored": False}
             kind = str(card_type or reply.get("type") or "")[:32]
             conn.execute("INSERT INTO cards (card, type, session, shown_at, touched) VALUES (?, ?, ?, ?, ?)",
                          (card_id, kind, session_id, now, now))
@@ -338,11 +358,11 @@ def record_answer(session_id: str, reply: dict, verified: bool = False, card_typ
         up, line = _line(conn, session_id)
         if not up & _members(conn, card_id):
             if not verified:
-                return {"status": "foreign", "type": kind, "record": None}
+                return {"status": "foreign", "type": kind, "record": None, "restored": False}
             _add_member(conn, card_id, session_id)
         first = _visible(_answers(conn, card_id), session_id, line)
         if first is not None:
-            return {"status": "duplicate", "type": kind, "record": _public(first)}
+            return {"status": "duplicate", "type": kind, "record": _public(first), "restored": False}
         conn.execute("INSERT OR REPLACE INTO answers (card, session, mark, summary, data, at) VALUES (?, ?, ?, ?, ?, ?)",
                      (card_id, session_id, record["mark"], record["summary"],
                       json.dumps(data, ensure_ascii=False, separators=(",", ":")), now))
@@ -350,7 +370,36 @@ def record_answer(session_id: str, reply: dict, verified: bool = False, card_typ
                      "ORDER BY at DESC LIMIT -1 OFFSET ?)", (card_id, card_id, MAX_SESSIONS_PER_CARD))
         conn.execute("UPDATE cards SET touched = ? WHERE card = ?", (now, card_id))
         _prune(conn)
-    return {"status": "recorded", "type": kind, "record": record}
+    return {"status": "recorded", "type": kind, "record": record, "restored": restored}
+
+
+# ── expiry outside writes ──
+
+_expired_paths: set[str] = set()
+
+
+def expire() -> None:
+    """Delete what expired, if this profile has a store: at plugin start, so an install that stops
+    showing cards still forgets them. Creates nothing. Storage errors raise."""
+    if not (_hermes_home() / "plugin-data" / PLUGIN_ID / DB_NAME).exists():
+        return
+    path = data_root() / DB_NAME
+    if not path.exists():
+        return
+    with _db(write=True) as conn:
+        _prune(conn)
+    _expired_paths.add(str(path))
+
+
+def _expire_on_first_access() -> None:
+    """One expiry pass per process and profile, before the first lookup there (the Desktop backend
+    serves every profile and never writes otherwise)."""
+    path = data_root() / DB_NAME
+    if str(path) in _expired_paths or not path.exists():
+        return
+    _expired_paths.add(str(path))
+    with _db(write=True) as conn:
+        _prune(conn)
 
 
 # ── what the backend route answers ──
@@ -370,7 +419,8 @@ def lookup(session_id, card_ids) -> dict:
     Answered: this chat, or a session on its continuation line, answered the card. Open: the card
     belongs to this chat (or a chat it continues) and nobody on the line answered it yet. A card in
     neither list is unknown here: another chat's card, shown before this version, on another
-    backend, evicted, or the store is unreachable (fail closed: the Desktop keeps its local state)."""
+    backend, expired or evicted, or the store is unreachable (fail closed: the Desktop keeps its
+    local state)."""
     out: dict = {"answers": {}, "open": []}
     if not _valid_session(session_id) or not isinstance(card_ids, (list, tuple)):
         return out
@@ -378,11 +428,19 @@ def lookup(session_id, card_ids) -> dict:
     if not wanted:
         return out
     try:
+        try:
+            _expire_on_first_access()
+        except Exception:
+            pass  # the age check below still hides what expired
         with _db(write=False) as conn:
             if conn is None:
                 return out
             up, line = _line(conn, session_id)
+            cutoff = _cutoff()
             for card_id in wanted:
+                row = conn.execute("SELECT touched FROM cards WHERE card = ?", (card_id,)).fetchone()
+                if row is None or row[0] < cutoff:
+                    continue  # unknown or expired: say nothing about it
                 members = _members(conn, card_id)
                 if not members & line:
                     continue  # not this chat's card: say nothing about it

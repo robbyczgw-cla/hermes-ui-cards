@@ -297,6 +297,21 @@ def test_card_files_expire_by_modification_time(monkeypatch):
     assert recent.exists()
 
 
+def test_card_file_prune_skips_a_file_deleted_by_another_process(monkeypatch):
+    directory = tool.cards_dir()
+    (directory / "kept.md").write_text("kept")
+    gone = directory / "gone.md"
+    real_glob = type(directory).glob
+
+    def glob_then_delete(self, pattern):
+        found = list(real_glob(self, pattern))
+        return found + [gone]  # listed, then deleted by a concurrent prune before stat()
+
+    monkeypatch.setattr(type(directory), "glob", glob_then_delete)
+    tool._prune(directory)  # must not raise FileNotFoundError
+    assert (directory / "kept.md").exists()
+
+
 def test_tool_description_stays_small():
     schema = tool.tool_schema()
     assert schema["name"] == "hui_present"
@@ -429,7 +444,8 @@ def test_stale_confirm_answer_is_flagged():
 
 
 def test_answer_turn_ignores_unknown_or_hostile_ids():
-    assert "was not shown in this chat" in tool.answer_turn("s1", _answer("nope-000"), [])
+    ctx = tool.answer_turn("s1", _answer("nope-000"), [])
+    assert "has no record of that card" in ctx and "approves nothing" in ctx
     assert tool.answer_turn("s1", _answer("../../etc/passwd"), []) is None
     assert tool.answer_turn("s1", "just text", []) is None
     assert tool.answer_turn("s1", "[hui-card] {not json", []) is None
