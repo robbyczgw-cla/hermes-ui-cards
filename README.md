@@ -16,7 +16,7 @@ Demo video (1:28): [on X](https://x.com/CamiAi__/status/2118980850800820604)
 ## Install
 
 Requires **Hermes 0.22.6 or newer** (the version that lets a plugin draw the files its own tool
-produces). Tested with Hermes 0.22.7 and 0.23.1.
+produces). Tested with Hermes 0.22.7, 0.23.1 and 0.23.4.
 
 1. Install and enable the plugin:
 
@@ -88,6 +88,14 @@ Click a card for the full image.
 | [![The flashcards example card](assets/cards/flashcards.jpg)](assets/cards/flashcards.jpg) | [![The rating example card](assets/cards/rating.jpg)](assets/cards/rating.jpg) | [![The slider example card](assets/cards/slider.jpg)](assets/cards/slider.jpg) | [![The quiz example card](assets/cards/quiz.jpg)](assets/cards/quiz.jpg) |
 
 Dark theme: [plan](assets/cards/plan-dark.jpg) · [review](assets/cards/review-dark.jpg) · [checklist](assets/cards/checklist-dark.jpg) · [compare](assets/cards/compare-dark.jpg) · [confirm](assets/cards/confirm-dark.jpg) · [form](assets/cards/form-dark.jpg).
+
+## Cards and Hermes' HTML previews
+
+Hermes can also show an HTML file the model writes, live in a message (`::preview`), and that page can
+send a prompt back. That suits one-off widgets. HUI+ Cards is for questions with a known shape: every
+card is checked against one schema and works the same way each time (keyboard, screen reader, light and
+dark theme), keeps drafts, sends back a structured answer the model can act on, offers undo, locks once
+answered (other windows follow once they sync), and falls back to text in the CLI, Telegram and Hermes Mobile.
 
 ## How it works
 
@@ -193,7 +201,7 @@ In Desktop, the command palette has *HUI+ Cards: show an example card*.
 - Answer synchronization between devices is eventual (see above), and it follows the backend the window
   is connected to: in a split view with chats of different profiles or backends, cards of the inactive
   one are not synchronized.
-- Tested against Hermes 0.22.7 and 0.23.1; 0.22.6 is the first version with the APIs the plugin needs,
+- Tested against Hermes 0.22.7, 0.23.1 and 0.23.4; 0.22.6 is the first version with the APIs the plugin needs,
   but it was not run here.
 - With `plugins.isolation: host`, Desktop detection and the backend routes are untested.
 - Card images are loaded from the `https` URLs the model puts on the card (it is told to use only URLs

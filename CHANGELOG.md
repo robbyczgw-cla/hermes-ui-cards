@@ -16,7 +16,7 @@
   Mobile) checklist items are Markdown checkboxes (still numbered for typed answers); the text
   instruction asks the model not to talk about cards or the surface.
 - Tests: the cross-process store tests skip where a sandbox denies multiprocessing; tested with Hermes
-  0.22.7 and 0.23.1.
+  0.22.7, 0.23.1 and 0.23.4.
 
 ## 0.1.0
 
